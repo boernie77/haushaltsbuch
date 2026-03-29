@@ -1,0 +1,170 @@
+const { Sequelize, DataTypes } = require('sequelize');
+
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  logging: process.env.NODE_ENV !== 'production' ? console.log : false,
+  pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+});
+
+// ── User ────────────────────────────────────────────────────────────────────
+const User = sequelize.define('User', {
+  id:           { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:         { type: DataTypes.STRING, allowNull: false },
+  email:        { type: DataTypes.STRING, allowNull: false, unique: true, validate: { isEmail: true } },
+  password:     { type: DataTypes.STRING, allowNull: false },
+  role:         { type: DataTypes.ENUM('superadmin', 'admin', 'member'), defaultValue: 'member' },
+  theme:        { type: DataTypes.ENUM('feminine', 'masculine'), defaultValue: 'feminine' },
+  avatar:       { type: DataTypes.STRING, allowNull: true },
+  isActive:     { type: DataTypes.BOOLEAN, defaultValue: true },
+  lastLoginAt:  { type: DataTypes.DATE, allowNull: true },
+  inviteCode:   { type: DataTypes.STRING, allowNull: true },
+}, { tableName: 'users', timestamps: true });
+
+// ── Household ────────────────────────────────────────────────────────────────
+const Household = sequelize.define('Household', {
+  id:             { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:           { type: DataTypes.STRING, allowNull: false },
+  description:    { type: DataTypes.TEXT, allowNull: true },
+  currency:       { type: DataTypes.STRING(3), defaultValue: 'EUR' },
+  monthlyBudget:  { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+  budgetWarningAt: { type: DataTypes.INTEGER, defaultValue: 80, comment: 'Warn at X% of budget' },
+  isShared:       { type: DataTypes.BOOLEAN, defaultValue: false },
+  adminUserId:    { type: DataTypes.UUID, allowNull: false },
+}, { tableName: 'households', timestamps: true });
+
+// ── HouseholdMember ──────────────────────────────────────────────────────────
+const HouseholdMember = sequelize.define('HouseholdMember', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId: { type: DataTypes.UUID, allowNull: false },
+  userId:      { type: DataTypes.UUID, allowNull: false },
+  role:        { type: DataTypes.ENUM('admin', 'member', 'viewer'), defaultValue: 'member' },
+  joinedAt:    { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+}, { tableName: 'household_members', timestamps: false });
+
+// ── Category ─────────────────────────────────────────────────────────────────
+const Category = sequelize.define('Category', {
+  id:           { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:         { type: DataTypes.STRING, allowNull: false },
+  nameDE:       { type: DataTypes.STRING, allowNull: true },
+  icon:         { type: DataTypes.STRING, allowNull: false },
+  color:        { type: DataTypes.STRING(7), defaultValue: '#6B7280' },
+  isSystem:     { type: DataTypes.BOOLEAN, defaultValue: true },
+  householdId:  { type: DataTypes.UUID, allowNull: true, comment: 'null = global system category' },
+  sortOrder:    { type: DataTypes.INTEGER, defaultValue: 0 },
+}, { tableName: 'categories', timestamps: true });
+
+// ── Transaction ───────────────────────────────────────────────────────────────
+const Transaction = sequelize.define('Transaction', {
+  id:              { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  amount:          { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  description:     { type: DataTypes.STRING, allowNull: true },
+  note:            { type: DataTypes.TEXT, allowNull: true },
+  date:            { type: DataTypes.DATEONLY, allowNull: false },
+  type:            { type: DataTypes.ENUM('expense', 'income'), defaultValue: 'expense' },
+  categoryId:      { type: DataTypes.UUID, allowNull: true },
+  householdId:     { type: DataTypes.UUID, allowNull: false },
+  userId:          { type: DataTypes.UUID, allowNull: false },
+  receiptImage:    { type: DataTypes.STRING, allowNull: true },
+  receiptRaw:      { type: DataTypes.TEXT, allowNull: true, comment: 'Raw OCR text' },
+  paperlessDocId:  { type: DataTypes.INTEGER, allowNull: true },
+  isConfirmed:     { type: DataTypes.BOOLEAN, defaultValue: true, comment: 'False = OCR suggestion pending review' },
+  merchant:        { type: DataTypes.STRING, allowNull: true },
+  tags:            { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
+}, { tableName: 'transactions', timestamps: true });
+
+// ── Budget ────────────────────────────────────────────────────────────────────
+const Budget = sequelize.define('Budget', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId: { type: DataTypes.UUID, allowNull: false },
+  categoryId:  { type: DataTypes.UUID, allowNull: true, comment: 'null = total household budget' },
+  limitAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  month:       { type: DataTypes.INTEGER, allowNull: true },
+  year:        { type: DataTypes.INTEGER, allowNull: false },
+  warningAt:   { type: DataTypes.INTEGER, defaultValue: 80 },
+}, { tableName: 'budgets', timestamps: true });
+
+// ── PaperlessConfig ────────────────────────────────────────────────────────────
+const PaperlessConfig = sequelize.define('PaperlessConfig', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId: { type: DataTypes.UUID, allowNull: false, unique: true },
+  baseUrl:     { type: DataTypes.STRING, allowNull: false },
+  apiToken:    { type: DataTypes.STRING, allowNull: false },
+  isActive:    { type: DataTypes.BOOLEAN, defaultValue: true },
+}, { tableName: 'paperless_configs', timestamps: true });
+
+// ── PaperlessDocumentType ────────────────────────────────────────────────────
+const PaperlessDocumentType = sequelize.define('PaperlessDocumentType', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId:   { type: DataTypes.UUID, allowNull: false },
+  paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
+  name:          { type: DataTypes.STRING, allowNull: false },
+  syncedAt:      { type: DataTypes.DATE, allowNull: true },
+}, { tableName: 'paperless_document_types', timestamps: true });
+
+// ── PaperlessCorrespondent ───────────────────────────────────────────────────
+const PaperlessCorrespondent = sequelize.define('PaperlessCorrespondent', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId:   { type: DataTypes.UUID, allowNull: false },
+  paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
+  name:          { type: DataTypes.STRING, allowNull: false },
+  syncedAt:      { type: DataTypes.DATE, allowNull: true },
+}, { tableName: 'paperless_correspondents', timestamps: true });
+
+// ── PaperlessTag ──────────────────────────────────────────────────────────────
+const PaperlessTag = sequelize.define('PaperlessTag', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId:   { type: DataTypes.UUID, allowNull: false },
+  paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
+  name:          { type: DataTypes.STRING, allowNull: false },
+  color:         { type: DataTypes.STRING(7), allowNull: true },
+  syncedAt:      { type: DataTypes.DATE, allowNull: true },
+}, { tableName: 'paperless_tags', timestamps: true });
+
+// ── InviteCode ────────────────────────────────────────────────────────────────
+const InviteCode = sequelize.define('InviteCode', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  code:        { type: DataTypes.STRING, allowNull: false, unique: true },
+  householdId: { type: DataTypes.UUID, allowNull: true },
+  role:        { type: DataTypes.ENUM('admin', 'member', 'viewer'), defaultValue: 'member' },
+  createdById: { type: DataTypes.UUID, allowNull: false },
+  usedById:    { type: DataTypes.UUID, allowNull: true },
+  usedAt:      { type: DataTypes.DATE, allowNull: true },
+  expiresAt:   { type: DataTypes.DATE, allowNull: true },
+  maxUses:     { type: DataTypes.INTEGER, defaultValue: 1 },
+  useCount:    { type: DataTypes.INTEGER, defaultValue: 0 },
+}, { tableName: 'invite_codes', timestamps: true });
+
+// ── Associations ──────────────────────────────────────────────────────────────
+Household.hasMany(HouseholdMember, { foreignKey: 'householdId' });
+HouseholdMember.belongsTo(Household, { foreignKey: 'householdId' });
+User.hasMany(HouseholdMember, { foreignKey: 'userId' });
+HouseholdMember.belongsTo(User, { foreignKey: 'userId' });
+
+Household.hasMany(Transaction, { foreignKey: 'householdId' });
+Transaction.belongsTo(Household, { foreignKey: 'householdId' });
+User.hasMany(Transaction, { foreignKey: 'userId' });
+Transaction.belongsTo(User, { foreignKey: 'userId' });
+Category.hasMany(Transaction, { foreignKey: 'categoryId' });
+Transaction.belongsTo(Category, { foreignKey: 'categoryId' });
+
+Household.hasMany(Budget, { foreignKey: 'householdId' });
+Household.hasOne(PaperlessConfig, { foreignKey: 'householdId' });
+Household.hasMany(PaperlessDocumentType, { foreignKey: 'householdId' });
+Household.hasMany(PaperlessCorrespondent, { foreignKey: 'householdId' });
+Household.hasMany(PaperlessTag, { foreignKey: 'householdId' });
+Household.hasMany(Category, { foreignKey: 'householdId' });
+
+module.exports = {
+  sequelize,
+  User,
+  Household,
+  HouseholdMember,
+  Category,
+  Transaction,
+  Budget,
+  PaperlessConfig,
+  PaperlessDocumentType,
+  PaperlessCorrespondent,
+  PaperlessTag,
+  InviteCode,
+};

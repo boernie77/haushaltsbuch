@@ -1,0 +1,31 @@
+import { useEffect } from 'react';
+import { Stack } from 'expo-router';
+import { PaperProvider } from 'react-native-paper';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
+import { useAuthStore } from '../src/store/authStore';
+import { getTheme } from '../src/themes';
+
+export default function RootLayout() {
+  const { loadStoredAuth, user } = useAuthStore();
+  const theme = getTheme(user?.theme || 'feminine');
+
+  useEffect(() => {
+    loadStoredAuth();
+  }, []);
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <PaperProvider theme={theme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(auth)" />
+            <Stack.Screen name="(tabs)" />
+          </Stack>
+          <Toast />
+        </PaperProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}

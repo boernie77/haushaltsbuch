@@ -1,0 +1,80 @@
+import { create } from 'zustand';
+import { api } from '../services/api';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: 'superadmin' | 'admin' | 'member';
+  theme: 'feminine' | 'masculine';
+  avatar?: string;
+}
+
+interface Household {
+  id: string;
+  name: string;
+  currency: string;
+  monthlyBudget?: number;
+  budgetWarningAt: number;
+  memberRole: string;
+}
+
+interface AuthState {
+  token: string | null;
+  user: User | null;
+  currentHousehold: Household | null;
+  households: Household[];
+  isAuthenticated: boolean;
+
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, inviteCode?: string) => Promise<void>;
+  logout: () => void;
+  loadStoredAuth: () => Promise<void>;
+  setCurrentHousehold: (h: Household) => void;
+  setHouseholds: (h: Household[]) => void;
+  updateUser: (data: Partial<User>) => void;
+}
+
+export const useAuthStore = create<AuthState>((set, get) => ({
+  token: null,
+  user: null,
+  currentHousehold: null,
+  households: [],
+  isAuthenticated: false,
+
+  login: async (email, password) => {
+    const { data } = await api.post('/auth/login', { email, password });
+    localStorage.setItem('auth_token', data.token);
+    api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+    set({ token: data.token, user: data.user, isAuthenticated: true });
+  },
+
+  register: async (name, email, password, inviteCode) => {
+    const { data } = await api.post('/auth/register', { name, email, password, inviteCode });
+    localStorage.setItem('auth_token', data.token);
+    api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
+    set({ token: data.token, user: data.user, isAuthenticated: true });
+  },
+
+  logout: () => {
+    localStorage.removeItem('auth_token');
+    delete api.defaults.headers.common['Authorization'];
+    set({ token: null, user: null, currentHousehold: null, households: [], isAuthenticated: false });
+  },
+
+  loadStoredAuth: async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    try {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const { data } = await api.get('/auth/me');
+      set({ token, user: data.user, isAuthenticated: true });
+    } catch {
+      localStorage.removeItem('auth_token');
+    }
+  },
+
+  setCurrentHousehold: (currentHousehold) => set({ currentHousehold }),
+  setHouseholds: (households) => set({ households }),
+  updateUser: (data) => set(state => ({ user: state.user ? { ...state.user, ...data } : null })),
+}));

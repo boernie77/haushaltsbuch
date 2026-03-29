@@ -1,0 +1,362 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View, ScrollView, StyleSheet, TouchableOpacity, Image, Alert, KeyboardAvoidingView, Platform
+} from 'react-native';
+import {
+  Text, TextInput, Button, useTheme, SegmentedButtons, Chip, Portal, Modal, List, ActivityIndicator
+} from 'react-native-paper';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { format } from 'date-fns';
+import Toast from 'react-native-toast-message';
+import { useAuthStore } from '../../src/store/authStore';
+import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI } from '../../src/services/api';
+
+export default function AddTransactionScreen() {
+  const theme = useTheme() as any;
+  const { currentHousehold } = useAuthStore();
+
+  const [type, setType] = useState('expense');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [merchant, setMerchant] = useState('');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [showCategories, setShowCategories] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showPaperless, setShowPaperless] = useState(false);
+  const [paperlessData, setPaperlessData] = useState<any>(null);
+  const [paperlessDocType, setPaperlessDocType] = useState<any>(null);
+  const [paperlessCorrespondent, setPaperlessCorrespondent] = useState<any>(null);
+  const [paperlessTags, setPaperlessTags] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (currentHousehold) {
+      categoryAPI.getAll(currentHousehold.id).then(({ data }) => setCategories(data.categories));
+    }
+  }, [currentHousehold]);
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Keine Berechtigung', 'Kamerazugriff wird benötigt.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8, base64: false, allowsEditing: true
+    });
+    if (!result.canceled) {
+      setReceiptImage(result.assets[0].uri);
+      analyzeReceipt(result.assets[0].uri);
+    }
+  };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8
+    });
+    if (!result.canceled) {
+      setReceiptImage(result.assets[0].uri);
+      analyzeReceipt(result.assets[0].uri);
+    }
+  };
+
+  const analyzeReceipt = async (uri: string) => {
+    setOcrLoading(true);
+    try {
+      const { data } = await ocrAPI.analyze(uri);
+      const r = data.result;
+      if (r.amount) setAmount(r.amount.toString());
+      if (r.merchant) setMerchant(r.merchant);
+      if (r.description) setDescription(r.description);
+      if (r.date) setDate(r.date);
+      if (r.categoryId) {
+        const cat = categories.find(c => c.id === r.categoryId);
+        if (cat) setSelectedCategory(cat);
+      }
+      Toast.show({ type: 'success', text1: '✅ Quittung analysiert', text2: `Erkannte Kategorie: ${r.confidence}% Sicherheit` });
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'OCR fehlgeschlagen', text2: 'Bitte manuell eingeben' });
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const loadPaperlessData = async () => {
+    if (!currentHousehold || paperlessData) return;
+    try {
+      const { data } = await paperlessAPI.getData(currentHousehold.id);
+      setPaperlessData(data);
+    } catch {}
+  };
+
+  const handleSave = async () => {
+    if (!amount || !currentHousehold) {
+      Toast.show({ type: 'error', text1: 'Bitte Betrag eingeben' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const form = new FormData();
+      form.append('amount', amount);
+      form.append('description', description);
+      form.append('merchant', merchant);
+      form.append('date', date);
+      form.append('type', type);
+      form.append('householdId', currentHousehold.id);
+      if (selectedCategory) form.append('categoryId', selectedCategory.id);
+      if (receiptImage) {
+        form.append('receipt', { uri: receiptImage, type: 'image/jpeg', name: 'receipt.jpg' } as any);
+      }
+
+      const { data } = await transactionAPI.create(form);
+
+      // Upload to Paperless if configured
+      if (receiptImage && (paperlessDocType || paperlessCorrespondent || paperlessTags.length > 0)) {
+        try {
+          await paperlessAPI.upload({
+            transactionId: data.transaction.id,
+            documentTypeId: paperlessDocType?.id,
+            correspondentId: paperlessCorrespondent?.id,
+            tagIds: JSON.stringify(paperlessTags.map((t: any) => t.id)),
+            title: description || merchant || `Quittung ${date}`
+          });
+          Toast.show({ type: 'success', text1: '📄 An Paperless übertragen' });
+        } catch {}
+      }
+
+      // Budget warning
+      if (data.budgetWarning) {
+        const w = data.budgetWarning[0];
+        Toast.show({
+          type: 'error',
+          text1: w.isOver ? '⚠️ Budget überschritten!' : '⚠️ Budget-Warnung',
+          text2: `${Math.round(w.percentage)}% des Budgets verbraucht`,
+          visibilityTime: 5000
+        });
+      }
+
+      Toast.show({ type: 'success', text1: 'Ausgabe gespeichert' });
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: 'Fehler beim Speichern', text2: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <MaterialCommunityIcons name="arrow-left" color="#fff" size={24} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Neue Buchung</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.content}>
+          {/* Type */}
+          <SegmentedButtons
+            value={type}
+            onValueChange={setType}
+            buttons={[
+              { value: 'expense', label: '💸 Ausgabe', icon: 'minus-circle' },
+              { value: 'income', label: '💰 Einnahme', icon: 'plus-circle' }
+            ]}
+            style={styles.segmented}
+          />
+
+          {/* Amount */}
+          <TextInput
+            label="Betrag (€)"
+            value={amount}
+            onChangeText={setAmount}
+            mode="outlined"
+            keyboardType="decimal-pad"
+            style={styles.input}
+            left={<TextInput.Icon icon="currency-eur" />}
+          />
+
+          {/* Description */}
+          <TextInput
+            label="Beschreibung"
+            value={description}
+            onChangeText={setDescription}
+            mode="outlined"
+            style={styles.input}
+            left={<TextInput.Icon icon="text" />}
+          />
+
+          {/* Merchant */}
+          <TextInput
+            label="Händler / Geschäft"
+            value={merchant}
+            onChangeText={setMerchant}
+            mode="outlined"
+            style={styles.input}
+            left={<TextInput.Icon icon="store" />}
+          />
+
+          {/* Date */}
+          <TextInput
+            label="Datum (YYYY-MM-DD)"
+            value={date}
+            onChangeText={setDate}
+            mode="outlined"
+            style={styles.input}
+            left={<TextInput.Icon icon="calendar" />}
+          />
+
+          {/* Category */}
+          <TouchableOpacity
+            style={[styles.categoryPicker, { borderColor: theme.colors.outline, borderRadius: theme.roundness }]}
+            onPress={() => setShowCategories(true)}
+          >
+            <Text style={{ color: theme.colors.onSurface }}>
+              {selectedCategory ? `${selectedCategory.icon} ${selectedCategory.nameDE || selectedCategory.name}` : 'Kategorie wählen...'}
+            </Text>
+            <MaterialCommunityIcons name="chevron-down" color={theme.colors.onSurface} size={20} />
+          </TouchableOpacity>
+
+          {/* Receipt Image */}
+          <View style={styles.receiptSection}>
+            <Text style={[styles.sectionLabel, { color: theme.colors.onSurface }]}>Quittung</Text>
+            {ocrLoading && (
+              <View style={styles.ocrLoading}>
+                <ActivityIndicator color={theme.colors.primary} />
+                <Text style={{ color: theme.colors.onSurface, marginLeft: 8 }}>Analysiere Quittung mit KI...</Text>
+              </View>
+            )}
+            {receiptImage && (
+              <Image source={{ uri: receiptImage }} style={styles.receiptImage} />
+            )}
+            <View style={styles.receiptButtons}>
+              <Button mode="outlined" onPress={takePhoto} icon="camera" style={styles.receiptButton}>
+                Foto aufnehmen
+              </Button>
+              <Button mode="outlined" onPress={pickImage} icon="image" style={styles.receiptButton}>
+                Galerie
+              </Button>
+            </View>
+          </View>
+
+          {/* Paperless */}
+          {receiptImage && (
+            <TouchableOpacity
+              style={[styles.paperlessToggle, { borderColor: theme.colors.outline }]}
+              onPress={() => { setShowPaperless(!showPaperless); loadPaperlessData(); }}
+            >
+              <MaterialCommunityIcons name="file-document" color={theme.colors.primary} size={20} />
+              <Text style={{ color: theme.colors.primary, marginLeft: 8 }}>
+                Paperless-Einstellungen {showPaperless ? '▲' : '▼'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {showPaperless && paperlessData && (
+            <View style={[styles.paperlessSection, { backgroundColor: theme.colors.surfaceVariant, borderRadius: theme.roundness }]}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface }]}>Dokumententyp</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {paperlessData.documentTypes.map((dt: any) => (
+                  <Chip
+                    key={dt.id}
+                    selected={paperlessDocType?.id === dt.id}
+                    onPress={() => setPaperlessDocType(paperlessDocType?.id === dt.id ? null : dt)}
+                    style={styles.chip}
+                  >{dt.name}</Chip>
+                ))}
+              </ScrollView>
+              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface, marginTop: 8 }]}>Korrespondent</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {paperlessData.correspondents.map((c: any) => (
+                  <Chip
+                    key={c.id}
+                    selected={paperlessCorrespondent?.id === c.id}
+                    onPress={() => setPaperlessCorrespondent(paperlessCorrespondent?.id === c.id ? null : c)}
+                    style={styles.chip}
+                  >{c.name}</Chip>
+                ))}
+              </ScrollView>
+              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface, marginTop: 8 }]}>Tags</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {paperlessData.tags.map((t: any) => (
+                  <Chip
+                    key={t.id}
+                    selected={paperlessTags.some((pt: any) => pt.id === t.id)}
+                    onPress={() => {
+                      const exists = paperlessTags.some((pt: any) => pt.id === t.id);
+                      setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
+                    }}
+                    style={styles.chip}
+                  >{t.name}</Chip>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Save Button */}
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            loading={saving}
+            disabled={saving}
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary, borderRadius: theme.roundness }]}
+            contentStyle={styles.saveButtonContent}
+            icon="check"
+          >
+            Speichern
+          </Button>
+        </View>
+      </ScrollView>
+
+      {/* Category Modal */}
+      <Portal>
+        <Modal visible={showCategories} onDismiss={() => setShowCategories(false)}
+          contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>Kategorie wählen</Text>
+          <ScrollView>
+            {categories.map(cat => (
+              <List.Item
+                key={cat.id}
+                title={`${cat.icon} ${cat.nameDE || cat.name}`}
+                onPress={() => { setSelectedCategory(cat); setShowCategories(false); }}
+                titleStyle={{ color: theme.colors.onSurface }}
+                right={() => selectedCategory?.id === cat.id ? <MaterialCommunityIcons name="check" size={20} color={theme.colors.primary} /> : null}
+              />
+            ))}
+          </ScrollView>
+        </Modal>
+      </Portal>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: 52 },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  content: { padding: 16 },
+  segmented: { marginBottom: 16 },
+  input: { marginBottom: 12 },
+  categoryPicker: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderWidth: 1, marginBottom: 12 },
+  receiptSection: { marginBottom: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: '600', opacity: 0.7, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  ocrLoading: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, padding: 12 },
+  receiptImage: { width: '100%', height: 200, borderRadius: 12, marginBottom: 8 },
+  receiptButtons: { flexDirection: 'row', gap: 8 },
+  receiptButton: { flex: 1 },
+  paperlessToggle: { flexDirection: 'row', alignItems: 'center', padding: 12, borderWidth: 1, borderRadius: 8, marginBottom: 8 },
+  paperlessSection: { padding: 12, marginBottom: 12 },
+  chip: { marginRight: 8 },
+  saveButton: { marginTop: 8, elevation: 2 },
+  saveButtonContent: { paddingVertical: 8 },
+  modal: { margin: 20, padding: 20, borderRadius: 16, maxHeight: '80%' },
+  modalTitle: { fontSize: 18, fontWeight: '600', marginBottom: 12 },
+});

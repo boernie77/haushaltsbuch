@@ -1,0 +1,113 @@
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { Text, TextInput, Button, useTheme } from 'react-native-paper';
+import { router } from 'expo-router';
+import { useAuthStore } from '../../src/store/authStore';
+import { householdAPI } from '../../src/services/api';
+import Toast from 'react-native-toast-message';
+import { LinearGradient } from 'expo-linear-gradient';
+
+export default function LoginScreen() {
+  const theme = useTheme() as any;
+  const { login, setHouseholds, setCurrentHousehold } = useAuthStore();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleLogin = async () => {
+    if (!email || !password) {
+      Toast.show({ type: 'error', text1: 'Bitte alle Felder ausfüllen' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await login(email, password);
+      const { data } = await householdAPI.getAll();
+      setHouseholds(data.households);
+      if (data.households.length > 0) setCurrentHousehold(data.households[0]);
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: 'Anmeldung fehlgeschlagen', text2: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <LinearGradient
+        colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
+        style={styles.gradient}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.logoContainer}>
+            <Text style={styles.emoji}>💰</Text>
+            <Text style={[styles.title, { color: '#fff' }]}>Haushaltsbuch</Text>
+            <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>Deine Finanzen im Blick</Text>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: theme.colors.surface, borderRadius: theme.roundness }]}>
+            <Text style={[styles.cardTitle, { color: theme.colors.onSurface }]}>Anmelden</Text>
+
+            <TextInput
+              label="E-Mail"
+              value={email}
+              onChangeText={setEmail}
+              mode="outlined"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={styles.input}
+              left={<TextInput.Icon icon="email" />}
+            />
+
+            <TextInput
+              label="Passwort"
+              value={password}
+              onChangeText={setPassword}
+              mode="outlined"
+              secureTextEntry={!showPassword}
+              style={styles.input}
+              left={<TextInput.Icon icon="lock" />}
+              right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(!showPassword)} />}
+            />
+
+            <Button
+              mode="contained"
+              onPress={handleLogin}
+              loading={loading}
+              disabled={loading}
+              style={[styles.button, { backgroundColor: theme.colors.primary }]}
+              contentStyle={styles.buttonContent}
+            >
+              Anmelden
+            </Button>
+
+            <Button
+              mode="text"
+              onPress={() => router.push('/(auth)/register')}
+              style={styles.linkButton}
+            >
+              Noch kein Konto? Registrieren
+            </Button>
+          </View>
+        </ScrollView>
+      </LinearGradient>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  gradient: { flex: 1 },
+  container: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  logoContainer: { alignItems: 'center', marginBottom: 32 },
+  emoji: { fontSize: 64, marginBottom: 8 },
+  title: { fontSize: 32, fontWeight: 'bold', letterSpacing: 0.5 },
+  subtitle: { fontSize: 16, marginTop: 4 },
+  card: { padding: 24, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 12 },
+  cardTitle: { fontSize: 22, fontWeight: '600', marginBottom: 20 },
+  input: { marginBottom: 12 },
+  button: { marginTop: 8, borderRadius: 12 },
+  buttonContent: { paddingVertical: 6 },
+  linkButton: { marginTop: 8 },
+});

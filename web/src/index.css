@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #E91E8C;
+  --primary-light: #FFD6EC;
+  --primary-dark: #9C27B0;
+  --income: #4CAF50;
+  --expense: #E91E8C;
+  --warning: #FF9800;
+}
+
+.dark {
+  --primary: #2196F3;
+  --primary-light: #1565C0;
+  --primary-dark: #0097A7;
+  --income: #4CAF50;
+  --expense: #F44336;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  @apply bg-pink-50 dark:bg-slate-900 text-gray-900 dark:text-gray-100;
+}
+
+.card {
+  @apply bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-pink-100 dark:border-slate-700;
+}
+
+.btn-primary {
+  @apply bg-[var(--primary)] hover:opacity-90 text-white font-semibold px-4 py-2 rounded-xl transition-all;
+}
+
+.input {
+  @apply w-full border border-gray-200 dark:border-slate-600 rounded-xl px-3 py-2 bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-[var(--primary)];
+}
