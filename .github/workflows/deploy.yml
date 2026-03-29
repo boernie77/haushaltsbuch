@@ -1,36 +1,36 @@
-name: Deploy
+name: Deploy to Hetzner VPS
 
 on:
   workflow_dispatch:
-    # Deployment wird nur manuell ausgelöst (Actions → Run workflow)
-    # Automatisches Deployment bei Push ist deaktiviert bis Server eingerichtet ist
+    # Manuell auslösen: GitHub → Actions → "Deploy to Hetzner VPS" → Run workflow
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to Server via SSH
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          host: 37.27.193.27
+          username: root
+          key: ${{ secrets.HETZNER_SSH_KEY }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
+            set -e
+            cd /opt/haushaltsbuch
             git pull origin main
-            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" > .env
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
-            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
-            echo "ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}" >> .env
-            echo "APP_URL=${{ secrets.APP_URL }}" >> .env
-            echo "API_URL=${{ secrets.API_URL }}" >> .env
-            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}" >> .env
-            echo "SMTP_PORT=${{ secrets.SMTP_PORT }}" >> .env
-            echo "SMTP_USER=${{ secrets.SMTP_USER }}" >> .env
-            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}" >> .env
-            docker compose pull
-            docker compose up -d --build
-            docker compose exec backend node src/utils/seedCategories.js || true
-            echo "✅ Deployment successful"
+
+            # .env neu schreiben
+            cat > .env << 'ENVEOF'
+            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+            ALLOWED_ORIGINS=https://haushalt.bernauer24.com
+            APP_URL=https://haushalt.bernauer24.com
+            API_URL=https://haushalt.bernauer24.com/api
+            ENVEOF
+
+            docker compose build --no-cache
+            docker compose up -d
+            sleep 5
+            docker compose exec -T backend node -e "require('./src/utils/seedCategories').seedSystemCategories()" || true
+            echo "✅ Deployment erfolgreich"
