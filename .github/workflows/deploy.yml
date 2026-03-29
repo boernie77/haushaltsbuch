@@ -1,9 +1,9 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    # Deployment wird nur manuell ausgelöst (Actions → Run workflow)
+    # Automatisches Deployment bei Push ist deaktiviert bis Server eingerichtet ist
 
 jobs:
   deploy:
