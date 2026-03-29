@@ -56,7 +56,7 @@ export default function TransactionsPage() {
     try {
       const fd = new FormData();
       fd.append('receipt', file);
-      const { data } = await ocrAPI.analyze(URL.createObjectURL(file));
+      const { data } = await ocrAPI.analyze(file);
       const r = data.result;
       setForm(f => ({
         ...f,
