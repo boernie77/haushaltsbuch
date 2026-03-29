@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { auth } = require('../middleware/auth');
-const { Category } = require('../models');
+const { Category, Household, HouseholdMember, GlobalSettings, User } = require('../models');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -15,30 +15,53 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
 
-// GET /api/ocr/status — check if OCR is available
-router.get('/status', auth, (req, res) => {
-  res.json({ available: !!process.env.ANTHROPIC_API_KEY });
+// Key priority: 1. Household own key  2. Global key (if user has access)  3. Server env
+async function resolveApiKey(householdId, userId) {
+  // 1. Household's own key
+  if (householdId) {
+    const member = await HouseholdMember.findOne({ where: { householdId, userId } });
+    if (!member) return null;
+    const household = await Household.findByPk(householdId);
+    if (household?.aiEnabled && household?.anthropicApiKey) {
+      return household.anthropicApiKey;
+    }
+  }
+
+  // 2. Global key — available if public OR if this user has been granted access
+  const global = await GlobalSettings.findByPk('global');
+  if (global?.anthropicApiKey) {
+    if (global.aiKeyPublic) return global.anthropicApiKey;
+    const user = await User.findByPk(userId, { attributes: ['aiKeyGranted'] });
+    if (user?.aiKeyGranted) return global.anthropicApiKey;
+  }
+
+  // 3. Server env fallback
+  return process.env.ANTHROPIC_API_KEY || null;
+}
+
+// GET /api/ocr/status?householdId=
+router.get('/status', auth, async (req, res) => {
+  const apiKey = await resolveApiKey(req.query.householdId, req.user.id);
+  res.json({ available: !!apiKey });
 });
 
-// POST /api/ocr/analyze — analyze receipt image (requires ANTHROPIC_API_KEY)
+// POST /api/ocr/analyze
 router.post('/analyze', auth, upload.single('receipt'), async (req, res) => {
-  // Clean up helper
   const cleanup = () => {
     if (req.file?.path && fs.existsSync(req.file.path)) {
       try { fs.unlinkSync(req.file.path); } catch {}
     }
   };
 
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!req.file) { return res.status(400).json({ error: 'No image provided' }); }
+
+  const apiKey = await resolveApiKey(req.body.householdId, req.user.id);
+  if (!apiKey) {
     cleanup();
     return res.status(503).json({
-      error: 'OCR not configured',
-      message: 'Kein API-Key konfiguriert. Bitte manuell eingeben.'
+      error: 'ocr_not_configured',
+      message: 'KI-Analyse nicht aktiviert. Bitte in den Einstellungen einen API-Key hinterlegen.'
     });
-  }
-
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image provided' });
   }
 
   try {
@@ -49,7 +72,7 @@ router.post('/analyze', auth, upload.single('receipt'), async (req, res) => {
     const base64Image = fs.readFileSync(req.file.path).toString('base64');
     const mimeType = req.file.mimetype || 'image/jpeg';
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 1024,
@@ -75,11 +98,9 @@ Antworte NUR mit dem JSON-Objekt, ohne Erklärung.`
     });
 
     cleanup();
-
     const text = response.content[0].text.trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in response');
-
     res.json({ result: JSON.parse(jsonMatch[0]) });
   } catch (err) {
     cleanup();

@@ -15,9 +15,10 @@ const User = sequelize.define('User', {
   role:         { type: DataTypes.ENUM('superadmin', 'admin', 'member'), defaultValue: 'member' },
   theme:        { type: DataTypes.ENUM('feminine', 'masculine'), defaultValue: 'feminine' },
   avatar:       { type: DataTypes.STRING, allowNull: true },
-  isActive:     { type: DataTypes.BOOLEAN, defaultValue: true },
-  lastLoginAt:  { type: DataTypes.DATE, allowNull: true },
-  inviteCode:   { type: DataTypes.STRING, allowNull: true },
+  isActive:            { type: DataTypes.BOOLEAN, defaultValue: true },
+  lastLoginAt:         { type: DataTypes.DATE, allowNull: true },
+  inviteCode:          { type: DataTypes.STRING, allowNull: true },
+  aiKeyGranted:        { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Admin hat diesem User den globalen AI-Key freigegeben' },
 }, { tableName: 'users', timestamps: true });
 
 // ── Household ────────────────────────────────────────────────────────────────
@@ -28,8 +29,10 @@ const Household = sequelize.define('Household', {
   currency:       { type: DataTypes.STRING(3), defaultValue: 'EUR' },
   monthlyBudget:  { type: DataTypes.DECIMAL(10, 2), allowNull: true },
   budgetWarningAt: { type: DataTypes.INTEGER, defaultValue: 80, comment: 'Warn at X% of budget' },
-  isShared:       { type: DataTypes.BOOLEAN, defaultValue: false },
-  adminUserId:    { type: DataTypes.UUID, allowNull: false },
+  isShared:           { type: DataTypes.BOOLEAN, defaultValue: false },
+  adminUserId:        { type: DataTypes.UUID, allowNull: false },
+  anthropicApiKey:    { type: DataTypes.STRING, allowNull: true },
+  aiEnabled:          { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'households', timestamps: true });
 
 // ── HouseholdMember ──────────────────────────────────────────────────────────
@@ -120,6 +123,14 @@ const PaperlessTag = sequelize.define('PaperlessTag', {
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_tags', timestamps: true });
 
+// ── GlobalSettings ────────────────────────────────────────────────────────────
+// Single-row table (id = 'global') for app-wide settings managed by superadmin
+const GlobalSettings = sequelize.define('GlobalSettings', {
+  id:                  { type: DataTypes.STRING, primaryKey: true, defaultValue: 'global' },
+  anthropicApiKey:     { type: DataTypes.STRING, allowNull: true, comment: 'Central AI key set by superadmin' },
+  aiKeyPublic:         { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'If true, all users can use it; if false, only granted users' },
+}, { tableName: 'global_settings', timestamps: true });
+
 // ── InviteCode ────────────────────────────────────────────────────────────────
 const InviteCode = sequelize.define('InviteCode', {
   id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -166,5 +177,6 @@ module.exports = {
   PaperlessDocumentType,
   PaperlessCorrespondent,
   PaperlessTag,
+  GlobalSettings,
   InviteCode,
 };

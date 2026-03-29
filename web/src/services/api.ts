@@ -56,6 +56,8 @@ export const householdAPI = {
   getMembers: (id: string) => api.get(`/households/${id}/members`),
   createInvite: (id: string, d: any) => api.post(`/households/${id}/invite`, d),
   removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
+  getAiSettings: (id: string) => api.get(`/households/${id}/ai-settings`),
+  saveAiSettings: (id: string, d: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, d),
 };
 
 export const ocrAPI = {
@@ -86,4 +88,7 @@ export const adminAPI = {
   getHouseholds: () => api.get('/admin/households'),
   createInviteCode: (d: any) => api.post('/admin/invite-codes', d),
   getInviteCodes: () => api.get('/admin/invite-codes'),
+  getAiSettings: () => api.get('/admin/ai-settings'),
+  saveAiSettings: (d: { apiKey: string; aiKeyPublic: boolean }) => api.put('/admin/ai-settings', d),
+  toggleAiGrant: (id: string) => api.put(`/admin/users/${id}/ai-grant`),
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, UserMinus, Copy } from 'lucide-react';
+import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
@@ -12,11 +12,38 @@ export default function HouseholdPage() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', description: '', currency: 'EUR', monthlyBudget: '', budgetWarningAt: '80' });
 
+  // AI Settings state
+  const [aiSettings, setAiSettings] = useState<{ aiEnabled: boolean; hasApiKey: boolean; maskedApiKey: string | null }>({
+    aiEnabled: false, hasApiKey: false, maskedApiKey: null
+  });
+  const [aiKeyInput, setAiKeyInput] = useState('');
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+
   useEffect(() => {
     if (currentHousehold) {
       householdAPI.getMembers(currentHousehold.id).then(({ data }) => setMembers(data.members));
+      householdAPI.getAiSettings(currentHousehold.id).then(({ data }) => setAiSettings(data)).catch(() => {});
     }
   }, [currentHousehold]);
+
+  const handleSaveAi = async () => {
+    if (!currentHousehold) return;
+    setAiSaving(true);
+    try {
+      const { data } = await householdAPI.saveAiSettings(currentHousehold.id, {
+        aiEnabled: aiSettings.aiEnabled,
+        apiKey: aiKeyInput,
+      });
+      setAiSettings(data);
+      setAiKeyInput('');
+      toast.success(data.aiEnabled ? '✅ KI-Analyse aktiviert!' : 'KI-Analyse deaktiviert');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Fehler beim Speichern');
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,6 +179,90 @@ export default function HouseholdPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+          {/* AI Settings */}
+          <div className="card p-6">
+            <h2 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+              <Bot size={18} className="text-[var(--primary)]" /> KI-Quittungsanalyse
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              Claude AI erkennt automatisch Betrag, Händler und Kategorie aus Quittungsfotos.
+              Benötigt einen eigenen API-Key von{' '}
+              <a href="https://console.anthropic.com" target="_blank" rel="noreferrer"
+                className="text-[var(--primary)] hover:underline inline-flex items-center gap-1">
+                console.anthropic.com <ExternalLink size={12} />
+              </a>
+              {' '}(ca. 0,003 € pro Quittung).
+            </p>
+
+            {/* Enable Toggle */}
+            <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-700 mb-4">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white text-sm">KI-Analyse aktivieren</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {aiSettings.hasApiKey
+                    ? `Gespeicherter Key: ${aiSettings.maskedApiKey}`
+                    : 'Noch kein API-Key hinterlegt'}
+                </p>
+              </div>
+              <button
+                onClick={() => setAiSettings(s => ({ ...s, aiEnabled: !s.aiEnabled }))}
+                className={`relative w-12 h-6 rounded-full transition-colors ${aiSettings.aiEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}
+              >
+                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+            </div>
+
+            {/* API Key Input */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                {aiSettings.hasApiKey ? 'Neuen API-Key eingeben (zum Ersetzen)' : 'Anthropic API-Key'}
+              </label>
+              <div className="relative">
+                <input
+                  type={showAiKey ? 'text' : 'password'}
+                  className="input pr-10"
+                  placeholder="sk-ant-api03-..."
+                  value={aiKeyInput}
+                  onChange={e => setAiKeyInput(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAiKey(!showAiKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showAiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {aiSettings.hasApiKey && !aiKeyInput && (
+                <p className="text-xs text-gray-500 mt-1">Leer lassen, um den gespeicherten Key beizubehalten.</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => {
+                  if (confirm('API-Key wirklich löschen und KI deaktivieren?')) {
+                    setAiKeyInput('');
+                    setAiSettings(s => ({ ...s, aiEnabled: false }));
+                    householdAPI.saveAiSettings(currentHousehold.id, { aiEnabled: false, apiKey: '' })
+                      .then(() => { setAiSettings({ aiEnabled: false, hasApiKey: false, maskedApiKey: null }); toast.success('Key gelöscht'); })
+                      .catch(() => toast.error('Fehler'));
+                  }
+                }}
+                className={`text-sm text-red-500 hover:underline ${!aiSettings.hasApiKey ? 'invisible' : ''}`}
+              >
+                Key löschen
+              </button>
+              <button
+                onClick={handleSaveAi}
+                disabled={aiSaving}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              >
+                {aiSaving ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : <Bot size={16} />}
+                Einstellungen speichern
+              </button>
             </div>
           </div>
         </>

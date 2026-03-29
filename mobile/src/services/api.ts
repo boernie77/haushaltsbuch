@@ -66,6 +66,8 @@ export const householdAPI = {
   getMembers: (id: string) => api.get(`/households/${id}/members`),
   createInvite: (id: string, data: any) => api.post(`/households/${id}/invite`, data),
   removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
+  getAiSettings: (id: string) => api.get(`/households/${id}/ai-settings`),
+  saveAiSettings: (id: string, data: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, data),
 };
 
 // ── OCR API ───────────────────────────────────────────────────────────────────

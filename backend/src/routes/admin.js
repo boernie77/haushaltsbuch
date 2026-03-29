@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { User, Household, HouseholdMember, Transaction, InviteCode } = require('../models');
+const { User, Household, HouseholdMember, Transaction, InviteCode, GlobalSettings } = require('../models');
 const { auth, adminGuard, superAdminGuard } = require('../middleware/auth');
 const { fn, col } = require('sequelize');
 
@@ -87,6 +87,67 @@ router.get('/households', auth, superAdminGuard, async (req, res) => {
     res.json({ households });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch households' });
+  }
+});
+
+// GET /api/admin/ai-settings
+router.get('/ai-settings', auth, superAdminGuard, async (req, res) => {
+  try {
+    const settings = await GlobalSettings.findByPk('global');
+    const key = settings?.anthropicApiKey;
+    res.json({
+      hasApiKey: !!key,
+      maskedApiKey: key ? key.substring(0, 18) + '…' + key.substring(key.length - 4) : null,
+      aiKeyPublic: settings?.aiKeyPublic || false
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch AI settings' });
+  }
+});
+
+// PUT /api/admin/ai-settings
+router.put('/ai-settings', auth, superAdminGuard, async (req, res) => {
+  try {
+    const { apiKey, aiKeyPublic } = req.body;
+    let settings = await GlobalSettings.findByPk('global');
+    if (!settings) settings = await GlobalSettings.create({ id: 'global' });
+
+    const updates = { aiKeyPublic: !!aiKeyPublic };
+    if (apiKey && apiKey.trim()) {
+      // Validate the key before saving
+      try {
+        const Anthropic = require('@anthropic-ai/sdk');
+        const client = new Anthropic({ apiKey: apiKey.trim() });
+        await client.messages.create({ model: 'claude-haiku-4-5-20251001', max_tokens: 5, messages: [{ role: 'user', content: 'Hi' }] });
+      } catch (e) {
+        return res.status(400).json({ error: 'invalid_api_key', message: 'Der API-Key ist ungültig.' });
+      }
+      updates.anthropicApiKey = apiKey.trim();
+    }
+    if (apiKey === '') updates.anthropicApiKey = null;
+
+    await settings.update(updates);
+    const key = settings.anthropicApiKey;
+    res.json({
+      hasApiKey: !!key,
+      maskedApiKey: key ? key.substring(0, 18) + '…' + key.substring(key.length - 4) : null,
+      aiKeyPublic: settings.aiKeyPublic
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save AI settings' });
+  }
+});
+
+// PUT /api/admin/users/:id/ai-grant — toggle aiKeyGranted for a user
+router.put('/users/:id/ai-grant', auth, superAdminGuard, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, { attributes: { exclude: ['password'] } });
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    await user.update({ aiKeyGranted: !user.aiKeyGranted });
+    res.json({ user });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update AI grant' });
   }
 });
 

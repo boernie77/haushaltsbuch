@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Text, List, Switch, useTheme, Avatar, Divider, Button } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, ScrollView, StyleSheet, Alert, TextInput } from 'react-native';
+import { Text, List, Switch, useTheme, Avatar, Divider, Button, ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useAuthStore } from '../../src/store/authStore';
-import { api } from '../../src/services/api';
+import { api, householdAPI } from '../../src/services/api';
 import Toast from 'react-native-toast-message';
 
 export default function SettingsScreen() {
   const theme = useTheme() as any;
   const { user, logout, updateTheme, currentHousehold } = useAuthStore();
   const [isDark, setIsDark] = useState(user?.theme === 'masculine');
+
+  const [aiSettings, setAiSettings] = useState<{ aiEnabled: boolean; hasApiKey: boolean; maskedApiKey: string | null }>({ aiEnabled: false, hasApiKey: false, maskedApiKey: null });
+  const [aiKeyInput, setAiKeyInput] = useState('');
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+
+  useEffect(() => {
+    if (currentHousehold) {
+      householdAPI.getAiSettings(currentHousehold.id).then(({ data }) => setAiSettings(data)).catch(() => {});
+    }
+  }, [currentHousehold?.id]);
 
   const handleThemeChange = async (value: boolean) => {
     const newTheme = value ? 'masculine' : 'feminine';
@@ -19,6 +30,21 @@ export default function SettingsScreen() {
       updateTheme(newTheme);
     } catch {
       Toast.show({ type: 'error', text1: 'Theme konnte nicht gespeichert werden' });
+    }
+  };
+
+  const handleSaveAi = async () => {
+    if (!currentHousehold) return;
+    setAiSaving(true);
+    try {
+      const { data } = await householdAPI.saveAiSettings(currentHousehold.id, { aiEnabled: aiSettings.aiEnabled, apiKey: aiKeyInput });
+      setAiSettings(data);
+      setAiKeyInput('');
+      Toast.show({ type: 'success', text1: data.aiEnabled ? 'KI-Analyse aktiviert' : 'KI-Analyse deaktiviert' });
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.response?.data?.message || 'Fehler beim Speichern' });
+    } finally {
+      setAiSaving(false);
     }
   };
 
@@ -96,6 +122,41 @@ export default function SettingsScreen() {
       <Divider />
 
       <List.Section>
+        <List.Subheader style={{ color: theme.colors.primary }}>KI-Quittungsanalyse</List.Subheader>
+        <View style={[styles.aiCard, { backgroundColor: theme.colors.cardBackground }]}>
+          <View style={styles.aiRow}>
+            <Text style={[styles.aiLabel, { color: theme.colors.onSurface }]}>KI-Analyse aktivieren</Text>
+            <Switch value={aiSettings.aiEnabled} onValueChange={v => setAiSettings(s => ({ ...s, aiEnabled: v }))} color={theme.colors.primary} />
+          </View>
+          {aiSettings.hasApiKey && (
+            <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 12, marginBottom: 8 }}>
+              Key: {aiSettings.maskedApiKey}
+            </Text>
+          )}
+          <TextInput
+            style={[styles.aiInput, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
+            placeholder={aiSettings.hasApiKey ? 'Neuen Key eingeben (optional)' : 'sk-ant-api03-...'}
+            placeholderTextColor={theme.colors.onSurface + '60'}
+            value={aiKeyInput}
+            onChangeText={setAiKeyInput}
+            secureTextEntry={!showAiKey}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <View style={styles.aiRow}>
+            <Button mode="text" compact onPress={() => setShowAiKey(!showAiKey)} textColor={theme.colors.primary}>
+              {showAiKey ? 'Verbergen' : 'Anzeigen'}
+            </Button>
+            <Button mode="contained" compact onPress={handleSaveAi} disabled={aiSaving} buttonColor={theme.colors.primary}>
+              {aiSaving ? <ActivityIndicator size={14} color="#fff" /> : 'Speichern'}
+            </Button>
+          </View>
+        </View>
+      </List.Section>
+
+      <Divider />
+
+      <List.Section>
         <List.Subheader style={{ color: theme.colors.primary }}>Paperless</List.Subheader>
         <List.Item
           title="Paperless-ngx Verbindung"
@@ -147,4 +208,8 @@ const styles = StyleSheet.create({
   profileName: { fontSize: 18, fontWeight: '600' },
   profileEmail: { fontSize: 14, opacity: 0.7 },
   logoutContainer: { margin: 16, marginBottom: 40 },
+  aiCard: { marginHorizontal: 16, marginBottom: 8, padding: 16, borderRadius: 12, elevation: 1 },
+  aiRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  aiLabel: { fontSize: 14, fontWeight: '500' },
+  aiInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, marginBottom: 8 },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Home, BarChart2, Shield, Plus, Trash2, Ban, CheckCircle } from 'lucide-react';
+import { Users, Home, BarChart2, Shield, Plus, Trash2, Ban, CheckCircle, Bot, Eye, EyeOff, Globe } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
@@ -7,12 +7,18 @@ import { adminAPI } from '../services/api';
 
 export default function AdminPage() {
   const { user } = useAuthStore();
-  const [tab, setTab] = useState<'stats' | 'users' | 'households' | 'invites'>('stats');
+  const [tab, setTab] = useState<'stats' | 'users' | 'households' | 'invites' | 'ai'>('stats');
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [households, setHouseholds] = useState<any[]>([]);
   const [inviteCodes, setInviteCodes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // AI settings state
+  const [aiSettings, setAiSettings] = useState<{ hasApiKey: boolean; maskedApiKey: string | null; aiKeyPublic: boolean }>({ hasApiKey: false, maskedApiKey: null, aiKeyPublic: false });
+  const [aiKeyInput, setAiKeyInput] = useState('');
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
 
   if (user?.role !== 'superadmin' && user?.role !== 'admin') {
     return <div className="flex items-center justify-center h-full text-gray-500">Kein Zugriff</div>;
@@ -24,14 +30,48 @@ export default function AdminPage() {
       adminAPI.getStats(),
       adminAPI.getUsers(),
       adminAPI.getHouseholds(),
-      adminAPI.getInviteCodes()
-    ]).then(([s, u, h, i]) => {
+      adminAPI.getInviteCodes(),
+      adminAPI.getAiSettings()
+    ]).then(([s, u, h, i, ai]) => {
       setStats(s.data);
       setUsers(u.data.users);
       setHouseholds(h.data.households);
       setInviteCodes(i.data.codes);
+      setAiSettings(ai.data);
     }).finally(() => setLoading(false));
   }, []);
+
+  const handleSaveAiSettings = async () => {
+    setAiSaving(true);
+    try {
+      const { data } = await adminAPI.saveAiSettings({ apiKey: aiKeyInput, aiKeyPublic: aiSettings.aiKeyPublic });
+      setAiSettings(data);
+      setAiKeyInput('');
+      toast.success('KI-Einstellungen gespeichert');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Fehler beim Speichern');
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const handleDeleteAiKey = async () => {
+    if (!confirm('Globalen API-Key wirklich löschen?')) return;
+    try {
+      const { data } = await adminAPI.saveAiSettings({ apiKey: '', aiKeyPublic: false });
+      setAiSettings(data);
+      setAiKeyInput('');
+      toast.success('Key gelöscht');
+    } catch { toast.error('Fehler'); }
+  };
+
+  const handleToggleAiGrant = async (u: any) => {
+    try {
+      const { data } = await adminAPI.toggleAiGrant(u.id);
+      setUsers(prev => prev.map(x => x.id === u.id ? { ...x, aiKeyGranted: data.user.aiKeyGranted } : x));
+      toast.success(data.user.aiKeyGranted ? 'KI-Zugriff gewährt' : 'KI-Zugriff entzogen');
+    } catch { toast.error('Fehler'); }
+  };
 
   const handleToggleUser = async (u: any) => {
     try {
@@ -60,6 +100,7 @@ export default function AdminPage() {
     { id: 'users', label: `Benutzer (${users.length})`, icon: Users },
     { id: 'households', label: `Haushalte (${households.length})`, icon: Home },
     { id: 'invites', label: 'Einladungen', icon: Shield },
+    { id: 'ai', label: 'KI-Verwaltung', icon: Bot },
   ];
 
   return (
@@ -109,7 +150,7 @@ export default function AdminPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-slate-700">
                   <tr>
-                    {['Name', 'E-Mail', 'Rolle', 'Status', 'Registriert', ''].map(h => (
+                    {['Name', 'E-Mail', 'Rolle', 'Status', 'KI-Zugriff', 'Registriert', ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -128,6 +169,12 @@ export default function AdminPage() {
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {u.isActive ? 'Aktiv' : 'Deaktiviert'}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button onClick={() => handleToggleAiGrant(u)} title={u.aiKeyGranted ? 'KI-Zugriff entziehen' : 'KI-Zugriff gewähren'}
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${u.aiKeyGranted ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          <Bot size={11} /> {u.aiKeyGranted ? 'Gewährt' : 'Kein Zugriff'}
+                        </button>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-500">{format(new Date(u.createdAt), 'dd.MM.yyyy')}</td>
                       <td className="px-4 py-3 flex gap-2">
@@ -161,6 +208,105 @@ export default function AdminPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {tab === 'ai' && (
+            <div className="space-y-6 max-w-2xl">
+              <div className="card p-6 space-y-5">
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Bot size={18} className="text-[var(--primary)]" /> Globaler Anthropic API-Key
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Dieser zentrale Key wird verwendet, wenn ein Haushalt keinen eigenen Key konfiguriert hat.
+                  Du kannst festlegen, ob alle Benutzer ihn nutzen dürfen oder nur explizit freigegebene.
+                </p>
+
+                {/* Current key status */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {aiSettings.hasApiKey ? (
+                      <span className="text-green-600 dark:text-green-400">✓ Key hinterlegt: {aiSettings.maskedApiKey}</span>
+                    ) : (
+                      <span className="text-gray-500">Kein globaler Key hinterlegt</span>
+                    )}
+                  </p>
+                </div>
+
+                {/* New key input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {aiSettings.hasApiKey ? 'Neuen Key eingeben (zum Ersetzen)' : 'Anthropic API-Key'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showAiKey ? 'text' : 'password'}
+                      className="input pr-10"
+                      placeholder="sk-ant-api03-..."
+                      value={aiKeyInput}
+                      onChange={e => setAiKeyInput(e.target.value)}
+                    />
+                    <button type="button" onClick={() => setShowAiKey(!showAiKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      {showAiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Public toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-slate-700">
+                  <div className="flex items-center gap-2">
+                    <Globe size={16} className="text-[var(--primary)]" />
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white text-sm">Für alle Benutzer freigeben</p>
+                      <p className="text-xs text-gray-500">Wenn deaktiviert, nur für explizit freigegebene Benutzer</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setAiSettings(s => ({ ...s, aiKeyPublic: !s.aiKeyPublic }))}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${aiSettings.aiKeyPublic ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}>
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiKeyPublic ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  {aiSettings.hasApiKey && (
+                    <button onClick={handleDeleteAiKey} className="text-sm text-red-500 hover:underline">
+                      Key löschen
+                    </button>
+                  )}
+                  <button onClick={handleSaveAiSettings} disabled={aiSaving}
+                    className="btn-primary flex items-center gap-2 disabled:opacity-50 ml-auto">
+                    {aiSaving ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : <Bot size={16} />}
+                    Einstellungen speichern
+                  </button>
+                </div>
+              </div>
+
+              {/* Per-user grants (only relevant when not public) */}
+              {!aiSettings.aiKeyPublic && (
+                <div className="card p-6">
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                    <Users size={16} /> KI-Zugriff pro Benutzer
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    Klicke auf einen Benutzer, um den KI-Zugriff zu gewähren oder zu entziehen.
+                  </p>
+                  <div className="space-y-2">
+                    {users.map(u => (
+                      <div key={u.id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-slate-700 last:border-0">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{u.name}</p>
+                          <p className="text-xs text-gray-500">{u.email}</p>
+                        </div>
+                        <button onClick={() => handleToggleAiGrant(u)}
+                          className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 transition-colors ${u.aiKeyGranted ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          <Bot size={12} /> {u.aiKeyGranted ? 'Zugriff aktiv' : 'Kein Zugriff'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
