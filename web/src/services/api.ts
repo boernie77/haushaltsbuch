@@ -58,6 +58,15 @@ export const householdAPI = {
   removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
 };
 
+export const ocrAPI = {
+  status: () => api.get('/ocr/status'),
+  analyze: (file: File) => {
+    const fd = new FormData();
+    fd.append('receipt', file);
+    return api.post('/ocr/analyze', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+};
+
 export const paperlessAPI = {
   getConfig: (hid: string) => api.get(`/paperless/config/${hid}`),
   saveConfig: (d: any) => api.post('/paperless/config', d),
