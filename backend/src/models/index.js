@@ -151,6 +151,9 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
 const InviteCode = sequelize.define('InviteCode', {
   id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   code:        { type: DataTypes.STRING, allowNull: false, unique: true },
+  // 'new_household' = registrant gets their own new household (admin codes)
+  // 'add_member'    = registrant joins this specific household (household codes)
+  type:        { type: DataTypes.STRING, defaultValue: 'add_member' },
   householdId: { type: DataTypes.UUID, allowNull: true },
   role:        { type: DataTypes.ENUM('admin', 'member', 'viewer'), defaultValue: 'member' },
   createdById: { type: DataTypes.UUID, allowNull: false },

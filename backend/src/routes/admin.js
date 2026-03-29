@@ -165,7 +165,7 @@ router.post('/invite-codes', auth, superAdminGuard, async (req, res) => {
     const expiresAt = expiresIn ? new Date(Date.now() + parseInt(expiresIn) * 3600 * 1000) : null;
 
     const invite = await InviteCode.create({
-      code, role: role || 'member', maxUses: maxUses || 100,
+      code, type: 'new_household', role: 'admin', maxUses: maxUses || 1,
       createdById: req.user.id, expiresAt
     });
     res.status(201).json({ invite });

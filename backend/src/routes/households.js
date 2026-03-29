@@ -80,6 +80,7 @@ router.post('/:id/invite', auth, async (req, res) => {
 
     const invite = await InviteCode.create({
       code,
+      type: 'add_member',
       householdId: req.params.id,
       role: role || 'member',
       createdById: req.user.id,

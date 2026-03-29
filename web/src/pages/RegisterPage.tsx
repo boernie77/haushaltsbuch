@@ -52,8 +52,9 @@ export default function RegisterPage() {
               <input type="password" className="input" {...register('password', { required: true, minLength: 8 })} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Einladungscode (optional)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Einladungscode</label>
               <input type="text" className="input" placeholder="z.B. HB-ABC123" {...register('inviteCode')} />
+              <p className="text-xs text-gray-400 mt-1">Nur der allererste Benutzer benötigt keinen Code.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Design wählen</label>

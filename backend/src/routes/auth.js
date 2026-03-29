@@ -18,44 +18,45 @@ router.post('/register', [
   try {
     const { name, email, password, inviteCode } = req.body;
 
-    const existing = await User.findOne({ where: { email } });
-    if (existing) return res.status(409).json({ error: 'Email already registered' });
+    if (await User.findOne({ where: { email } })) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
 
-    // First user becomes superadmin
     const userCount = await User.count();
-    const role = userCount === 0 ? 'superadmin' : 'member';
+    const isFirst = userCount === 0;
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, password: hashedPassword, role });
-
-    // Handle invite code
-    if (inviteCode) {
-      const invite = await InviteCode.findOne({
-        where: { code: inviteCode, usedById: null }
-      });
-      if (invite) {
-        if (!invite.expiresAt || invite.expiresAt > new Date()) {
-          await invite.update({ usedById: user.id, usedAt: new Date(), useCount: invite.useCount + 1 });
-          if (invite.householdId) {
-            await HouseholdMember.create({
-              householdId: invite.householdId,
-              userId: user.id,
-              role: invite.role
-            });
-          }
-        }
+    // All users except the first require a valid invite code
+    let invite = null;
+    if (!isFirst) {
+      if (!inviteCode) {
+        return res.status(400).json({ error: 'invite_required', message: 'Ein Einladungscode ist erforderlich.' });
+      }
+      invite = await InviteCode.findOne({ where: { code: inviteCode } });
+      if (!invite || invite.useCount >= invite.maxUses || (invite.expiresAt && invite.expiresAt < new Date())) {
+        return res.status(400).json({ error: 'invalid_invite', message: 'Ungültiger oder abgelaufener Einladungscode.' });
       }
     }
 
-    // First user: create default household
-    if (userCount === 0) {
-      const household = await Household.create({
-        name: `${name}s Haushalt`,
-        adminUserId: user.id,
-        isShared: false,
-      });
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const user = await User.create({ name, email, password: hashedPassword, role: isFirst ? 'superadmin' : 'member' });
+
+    if (isFirst) {
+      // First user: superadmin with their own household
+      const household = await Household.create({ name: `${name}s Haushalt`, adminUserId: user.id, isShared: false });
       await HouseholdMember.create({ householdId: household.id, userId: user.id, role: 'admin' });
       await seedSystemCategories();
+    } else {
+      // Mark invite as used
+      await invite.update({ useCount: invite.useCount + 1, usedById: user.id, usedAt: new Date() });
+
+      if (invite.type === 'new_household' || !invite.householdId) {
+        // Admin invite: registrant gets their own new household and becomes its admin
+        const household = await Household.create({ name: `${name}s Haushalt`, adminUserId: user.id, isShared: false });
+        await HouseholdMember.create({ householdId: household.id, userId: user.id, role: 'admin' });
+      } else {
+        // Household invite: registrant joins the specific household
+        await HouseholdMember.create({ householdId: invite.householdId, userId: user.id, role: invite.role });
+      }
     }
 
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });

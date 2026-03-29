@@ -116,9 +116,10 @@ export default function AdminPage() {
 
   const handleCreateInvite = async () => {
     try {
-      const { data } = await adminAPI.createInviteCode({ role: 'member', maxUses: 100, expiresIn: 24 * 30 });
+      const { data } = await adminAPI.createInviteCode({ maxUses: 1, expiresIn: 24 * 30 });
       setInviteCodes(prev => [data.invite, ...prev]);
-      toast.success(`Einladungscode: ${data.invite.code}`);
+      navigator.clipboard?.writeText(data.invite.code);
+      toast.success(`Code erstellt & kopiert: ${data.invite.code}`);
     } catch { toast.error('Fehler'); }
   };
 
@@ -487,25 +488,34 @@ export default function AdminPage() {
 
           {tab === 'invites' && (
             <>
+              <div className="flex items-start gap-4 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 mb-2">
+                <div className="text-sm text-blue-700 dark:text-blue-300">
+                  <p className="font-medium mb-1">Einladungscodes für neue Haushalte</p>
+                  <p className="text-xs opacity-80">Jeder Code ermöglicht die Registrierung eines neuen Benutzers, der automatisch seinen eigenen Haushalt erhält und dessen Admin wird. Für Mitglieder-Einladungen in einen bestehenden Haushalt → Haushalt-Seite verwenden.</p>
+                </div>
+              </div>
               <button onClick={handleCreateInvite} className="btn-primary flex items-center gap-2">
-                <Plus size={16} /> Einladungscode erstellen
+                <Plus size={16} /> Code für neuen Haushalt erstellen
               </button>
               <div className="card overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-slate-700">
                     <tr>
-                      {['Code', 'Rolle', 'Genutzt', 'Max', 'Erstellt', 'Läuft ab'].map(h => (
+                      {['Code', 'Typ', 'Genutzt / Max', 'Erstellt', 'Läuft ab'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                     {inviteCodes.map(code => (
-                      <tr key={code.id} className="hover:bg-pink-50/50 dark:hover:bg-slate-700/50">
+                      <tr key={code.id} className={`hover:bg-pink-50/50 dark:hover:bg-slate-700/50 ${code.useCount >= code.maxUses ? 'opacity-50' : ''}`}>
                         <td className="px-4 py-3 font-mono text-sm font-bold text-[var(--primary)]">{code.code}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{code.role}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{code.useCount}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{code.maxUses}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${code.type === 'new_household' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {code.type === 'new_household' ? 'Neuer Haushalt' : 'Mitglied'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{code.useCount} / {code.maxUses}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{format(new Date(code.createdAt), 'dd.MM.yy')}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">
                           {code.expiresAt ? format(new Date(code.expiresAt), 'dd.MM.yy') : '∞'}

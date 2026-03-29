@@ -60,8 +60,12 @@ export default function RegisterScreen() {
               left={<TextInput.Icon icon="email" />} />
             <TextInput label="Passwort (min. 8 Zeichen)" value={password} onChangeText={setPassword}
               mode="outlined" secureTextEntry style={styles.input} left={<TextInput.Icon icon="lock" />} />
-            <TextInput label="Einladungscode (optional)" value={inviteCode} onChangeText={setInviteCode}
-              mode="outlined" style={styles.input} left={<TextInput.Icon icon="ticket" />} />
+            <TextInput label="Einladungscode" value={inviteCode} onChangeText={setInviteCode}
+              mode="outlined" style={styles.input} left={<TextInput.Icon icon="ticket" />}
+              autoCapitalize="characters" />
+            <Text style={{ fontSize: 11, color: '#9ca3af', marginTop: -8, marginBottom: 8, marginLeft: 4 }}>
+              Nur der allererste Benutzer benötigt keinen Code.
+            </Text>
 
             <Text style={[styles.label, { color: theme.colors.onSurface }]}>Design wählen:</Text>
             <SegmentedButtons
