@@ -31,6 +31,7 @@ jobs:
 
             docker-compose build --no-cache
             docker-compose up -d
-            sleep 5
+            sleep 8
+            docker-compose exec -T backend node src/utils/migrate.js
             docker-compose exec -T backend node -e "require('./src/utils/seedCategories').seedSystemCategories()" || true
             echo "✅ Deployment erfolgreich"

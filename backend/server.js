@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { sequelize } = require('./src/models');
+const { migrate } = require('./src/utils/migrate');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,6 +28,7 @@ app.use('/api/statistics', require('./src/routes/statistics'));
 app.use('/api/paperless', require('./src/routes/paperless'));
 app.use('/api/admin', require('./src/routes/admin'));
 app.use('/api/ocr', require('./src/routes/ocr'));
+app.use('/api/backup', require('./src/routes/backup'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -36,17 +38,20 @@ app.get('/api/health', (req, res) => {
 // Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error'
-  });
+  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
-// Start
-sequelize.sync({ alter: process.env.NODE_ENV !== 'production' }).then(() => {
-  app.listen(PORT, () => {
-    console.log(`Haushaltsbuch API running on port ${PORT}`);
+// Start: run migrations, then listen, then start cron
+migrate(sequelize)
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Haushaltsbuch API running on port ${PORT}`);
+    });
+    // Start backup cron job if configured
+    const { startCron } = require('./src/services/cronService');
+    startCron().catch(e => console.error('[cron]', e.message));
+  })
+  .catch(err => {
+    console.error('Startup failed:', err);
+    process.exit(1);
   });
-}).catch(err => {
-  console.error('Database connection failed:', err);
-  process.exit(1);
-});

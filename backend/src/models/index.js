@@ -123,6 +123,22 @@ const PaperlessTag = sequelize.define('PaperlessTag', {
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_tags', timestamps: true });
 
+// ── BackupConfig ──────────────────────────────────────────────────────────────
+const BackupConfig = sequelize.define('BackupConfig', {
+  id:              { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  sftpHost:        { type: DataTypes.STRING, allowNull: true },
+  sftpPort:        { type: DataTypes.INTEGER, defaultValue: 22 },
+  sftpUser:        { type: DataTypes.STRING, allowNull: true },
+  sftpPassword:    { type: DataTypes.STRING, allowNull: true },
+  sftpPath:        { type: DataTypes.STRING, defaultValue: '/backups' },
+  schedule:        { type: DataTypes.STRING, allowNull: true },
+  scheduleLabel:   { type: DataTypes.STRING, allowNull: true },
+  isActive:        { type: DataTypes.BOOLEAN, defaultValue: false },
+  lastRunAt:       { type: DataTypes.DATE, allowNull: true },
+  lastRunStatus:   { type: DataTypes.STRING, allowNull: true },
+  lastRunMessage:  { type: DataTypes.TEXT, allowNull: true },
+}, { tableName: 'backup_configs', timestamps: true });
+
 // ── GlobalSettings ────────────────────────────────────────────────────────────
 // Single-row table (id = 'global') for app-wide settings managed by superadmin
 const GlobalSettings = sequelize.define('GlobalSettings', {
@@ -179,4 +195,5 @@ module.exports = {
   PaperlessTag,
   GlobalSettings,
   InviteCode,
+  BackupConfig,
 };

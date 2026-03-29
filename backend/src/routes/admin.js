@@ -1,7 +1,7 @@
 const router = require('express').Router();
-const { User, Household, HouseholdMember, Transaction, InviteCode, GlobalSettings } = require('../models');
+const { User, Household, HouseholdMember, Transaction, InviteCode, GlobalSettings, BackupConfig } = require('../models');
 const { auth, adminGuard, superAdminGuard } = require('../middleware/auth');
-const { fn, col } = require('sequelize');
+const { fn, col, Op } = require('sequelize');
 
 // GET /api/admin/stats
 router.get('/stats', auth, superAdminGuard, async (req, res) => {
@@ -77,10 +77,15 @@ router.delete('/users/:id', auth, superAdminGuard, async (req, res) => {
   }
 });
 
-// GET /api/admin/households
+// GET /api/admin/households?search=
 router.get('/households', auth, superAdminGuard, async (req, res) => {
   try {
+    const { search } = req.query;
+    const where = {};
+    if (search) where.name = { [Op.iLike]: `%${search}%` };
+
     const households = await Household.findAll({
+      where,
       include: [{ model: HouseholdMember, include: [{ model: User, attributes: ['id', 'name', 'email'] }] }],
       order: [['createdAt', 'DESC']]
     });
@@ -181,6 +186,69 @@ router.get('/invite-codes', auth, superAdminGuard, async (req, res) => {
     res.json({ codes });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch invite codes' });
+  }
+});
+
+// ── Backup routes ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/backup/config
+router.get('/backup/config', auth, superAdminGuard, async (req, res) => {
+  try {
+    const config = await BackupConfig.findOne({ order: [['createdAt', 'DESC']] });
+    if (!config) return res.json({ hasConfig: false });
+    const { sftpPassword, ...safe } = config.toJSON();
+    res.json({ hasConfig: true, config: { ...safe, hasPassword: !!sftpPassword } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch backup config' });
+  }
+});
+
+// PUT /api/admin/backup/config
+router.put('/backup/config', auth, superAdminGuard, async (req, res) => {
+  try {
+    const { sftpHost, sftpPort, sftpUser, sftpPassword, sftpPath, schedule, scheduleLabel, isActive } = req.body;
+    const updates = { sftpHost, sftpPort: sftpPort || 22, sftpUser, sftpPath: sftpPath || '/backups', schedule, scheduleLabel, isActive: !!isActive };
+    if (sftpPassword && sftpPassword.trim()) updates.sftpPassword = sftpPassword.trim();
+
+    let config = await BackupConfig.findOne({ order: [['createdAt', 'DESC']] });
+    if (config) await config.update(updates);
+    else config = await BackupConfig.create(updates);
+
+    const { scheduleJob } = require('../services/cronService');
+    scheduleJob(isActive && schedule ? schedule : null);
+
+    const { sftpPassword: _, ...safe } = config.toJSON();
+    res.json({ config: { ...safe, hasPassword: !!config.sftpPassword } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save backup config' });
+  }
+});
+
+// POST /api/admin/backup/test
+router.post('/backup/test', auth, superAdminGuard, async (req, res) => {
+  try {
+    const { sftpHost, sftpPort, sftpUser, sftpPassword, sftpPath } = req.body;
+    const { uploadToSftp } = require('../services/backupService');
+    await uploadToSftp(
+      { sftpHost, sftpPort: sftpPort || 22, sftpUser, sftpPassword, sftpPath: sftpPath || '/backups' },
+      Buffer.from('haushaltsbuch connection test\n'), 'connection-test.txt'
+    );
+    res.json({ success: true, message: 'Verbindung erfolgreich!' });
+  } catch (err) {
+    res.status(400).json({ success: false, message: `Verbindung fehlgeschlagen: ${err.message}` });
+  }
+});
+
+// POST /api/admin/backup/run
+router.post('/backup/run', auth, superAdminGuard, async (req, res) => {
+  try {
+    const { runGlobalBackup } = require('../services/backupService');
+    const filename = await runGlobalBackup();
+    res.json({ success: true, message: `Backup gespeichert: ${filename}` });
+  } catch (err) {
+    console.error('Backup run error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

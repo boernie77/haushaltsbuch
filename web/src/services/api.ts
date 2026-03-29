@@ -85,10 +85,25 @@ export const adminAPI = {
   getUsers: (p?: any) => api.get('/admin/users', { params: p }),
   updateUser: (id: string, d: any) => api.put(`/admin/users/${id}`, d),
   deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
-  getHouseholds: () => api.get('/admin/households'),
+  getHouseholds: (p?: any) => api.get('/admin/households', { params: p }),
   createInviteCode: (d: any) => api.post('/admin/invite-codes', d),
   getInviteCodes: () => api.get('/admin/invite-codes'),
   getAiSettings: () => api.get('/admin/ai-settings'),
   saveAiSettings: (d: { apiKey: string; aiKeyPublic: boolean }) => api.put('/admin/ai-settings', d),
   toggleAiGrant: (id: string) => api.put(`/admin/users/${id}/ai-grant`),
+  getBackupConfig: () => api.get('/admin/backup/config'),
+  saveBackupConfig: (d: any) => api.put('/admin/backup/config', d),
+  testBackup: (d: any) => api.post('/admin/backup/test', d),
+  runBackup: () => api.post('/admin/backup/run'),
+};
+
+export const backupAPI = {
+  export: (householdId: string, format: 'json' | 'csv') =>
+    api.get('/backup/export', { params: { householdId, format }, responseType: 'blob' }),
+  import: (householdId: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('householdId', householdId);
+    return api.post('/backup/import', fd);
+  },
 };
