@@ -29,8 +29,8 @@ jobs:
             API_URL=https://haushalt.bernauer24.com/api
             ENVEOF
 
-            docker compose build --no-cache
-            docker compose up -d
+            docker-compose build --no-cache
+            docker-compose up -d
             sleep 5
-            docker compose exec -T backend node -e "require('./src/utils/seedCategories').seedSystemCategories()" || true
+            docker-compose exec -T backend node -e "require('./src/utils/seedCategories').seedSystemCategories()" || true
             echo "✅ Deployment erfolgreich"
