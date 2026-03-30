@@ -178,6 +178,8 @@ Category.hasMany(Transaction, { foreignKey: 'categoryId' });
 Transaction.belongsTo(Category, { foreignKey: 'categoryId' });
 
 Household.hasMany(Budget, { foreignKey: 'householdId' });
+Budget.belongsTo(Category, { foreignKey: 'categoryId' });
+Category.hasMany(Budget, { foreignKey: 'categoryId' });
 Household.hasOne(PaperlessConfig, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessDocumentType, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessCorrespondent, { foreignKey: 'householdId' });
