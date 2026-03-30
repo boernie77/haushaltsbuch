@@ -112,7 +112,7 @@ export default function PaperlessSettingsScreen() {
         value={search[searchKey]}
         onChangeText={v => setSearch(s => ({ ...s, [searchKey]: v }))}
         style={{ marginBottom: 8, elevation: 0, borderWidth: 1, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }}
-        inputStyle={{ fontSize: 14, color: theme.colors.onSurface }}
+        inputStyle={{ fontSize: 14, color: theme.colors.onSurface, paddingLeft: 8 }}
         iconColor={theme.colors.onSurface + '60'}
         placeholderTextColor={theme.colors.onSurface + '50'}
       />
@@ -256,7 +256,7 @@ export default function PaperlessSettingsScreen() {
                 value={search.user}
                 onChangeText={v => setSearch(s => ({ ...s, user: v }))}
                 style={{ marginBottom: 8, elevation: 0, borderWidth: 1, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }}
-                inputStyle={{ fontSize: 14, color: theme.colors.onSurface }}
+                inputStyle={{ fontSize: 14, color: theme.colors.onSurface, paddingLeft: 8 }}
                 iconColor={theme.colors.onSurface + '60'}
                 placeholderTextColor={theme.colors.onSurface + '50'}
               />

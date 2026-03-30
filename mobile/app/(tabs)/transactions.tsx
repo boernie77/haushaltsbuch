@@ -113,7 +113,7 @@ export default function TransactionsScreen() {
           onChangeText={setSearch}
           onSubmitEditing={() => load(true)}
           style={[styles.searchInput, { elevation: 0 }]}
-          inputStyle={{ color: '#fff', fontSize: 15 }}
+          inputStyle={{ color: '#fff', fontSize: 15, paddingLeft: 8 }}
           iconColor="rgba(255,255,255,0.7)"
           placeholderTextColor="rgba(255,255,255,0.6)"
         />
