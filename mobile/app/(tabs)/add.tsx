@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, ScrollView, StyleSheet, TouchableOpacity, Image, Alert, KeyboardAvoidingView, Platform
+  View, ScrollView, StyleSheet, TouchableOpacity, Image, Alert, KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native';
 import {
-  Text, TextInput, Button, useTheme, SegmentedButtons, Chip, Portal, Modal, List, ActivityIndicator
+  Text, TextInput, Button, useTheme, SegmentedButtons, Chip, Portal, Modal, List, ActivityIndicator, IconButton
 } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../../src/store/authStore';
-import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI } from '../../src/services/api';
+import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, IMAGE_BASE_URL } from '../../src/services/api';
 
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
@@ -30,7 +30,7 @@ export default function AddTransactionScreen() {
   const [showCategories, setShowCategories] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showPaperless, setShowPaperless] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [paperlessData, setPaperlessData] = useState<any>(null);
   const [paperlessDocType, setPaperlessDocType] = useState<any>(null);
   const [paperlessCorrespondent, setPaperlessCorrespondent] = useState<any>(null);
@@ -49,7 +49,7 @@ export default function AddTransactionScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8, base64: false, allowsEditing: true
+      quality: 0.8, base64: false, allowsEditing: false
     });
     if (!result.canceled) {
       setReceiptImage(result.assets[0].uri);
@@ -100,7 +100,12 @@ export default function AddTransactionScreen() {
     if (!currentHousehold || paperlessData) return;
     try {
       const { data } = await paperlessAPI.getData(currentHousehold.id);
-      setPaperlessData(data);
+      // Nur Favoriten anzeigen
+      setPaperlessData({
+        documentTypes: (data.documentTypes || []).filter((i: any) => i.isFavorite),
+        correspondents: (data.correspondents || []).filter((i: any) => i.isFavorite),
+        tags: (data.tags || []).filter((i: any) => i.isFavorite),
+      });
     } catch {}
   };
 
@@ -246,13 +251,19 @@ export default function AddTransactionScreen() {
             )}
             {receiptImage && (
               <>
-                <Image source={{ uri: receiptImage }} style={styles.receiptImage} />
+                <TouchableOpacity onPress={() => setFullscreenImage(receiptImage)} activeOpacity={0.85}>
+                  <Image source={{ uri: receiptImage }} style={styles.receiptImage} resizeMode="cover" />
+                  <View style={styles.fullscreenHint}>
+                    <MaterialCommunityIcons name="magnify-plus-outline" size={18} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Tippen zum Vergrößern</Text>
+                  </View>
+                </TouchableOpacity>
                 <Button
                   mode="outlined"
                   onPress={discardReceipt}
                   icon="close"
                   textColor={theme.colors.error}
-                  style={{ borderColor: theme.colors.error + '60', marginBottom: 8 }}
+                  style={{ borderColor: theme.colors.error + '60', marginBottom: 8, marginTop: 4 }}
                 >
                   Quittung verwerfen
                 </Button>
@@ -268,57 +279,47 @@ export default function AddTransactionScreen() {
             </View>
           </View>
 
-          {/* Paperless */}
-          {receiptImage && (
-            <TouchableOpacity
-              style={[styles.paperlessToggle, { borderColor: theme.colors.outline }]}
-              onPress={() => { setShowPaperless(!showPaperless); loadPaperlessData(); }}
-            >
-              <MaterialCommunityIcons name="file-document" color={theme.colors.primary} size={20} />
-              <Text style={{ color: theme.colors.primary, marginLeft: 8 }}>
-                Paperless-Einstellungen {showPaperless ? '▲' : '▼'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {showPaperless && paperlessData && (
+          {/* Paperless — auto-anzeigen wenn Bild vorhanden, nur Favoriten */}
+          {receiptImage && (() => { if (!paperlessData) loadPaperlessData(); return null; })()}
+          {receiptImage && paperlessData && (paperlessData.documentTypes.length > 0 || paperlessData.correspondents.length > 0 || paperlessData.tags.length > 0) && (
             <View style={[styles.paperlessSection, { backgroundColor: theme.colors.surfaceVariant, borderRadius: theme.roundness }]}>
-              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface }]}>Dokumententyp</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {paperlessData.documentTypes.map((dt: any) => (
-                  <Chip
-                    key={dt.id}
-                    selected={paperlessDocType?.id === dt.id}
-                    onPress={() => setPaperlessDocType(paperlessDocType?.id === dt.id ? null : dt)}
-                    style={styles.chip}
-                  >{dt.name}</Chip>
-                ))}
-              </ScrollView>
-              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface, marginTop: 8 }]}>Korrespondent</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {paperlessData.correspondents.map((c: any) => (
-                  <Chip
-                    key={c.id}
-                    selected={paperlessCorrespondent?.id === c.id}
-                    onPress={() => setPaperlessCorrespondent(paperlessCorrespondent?.id === c.id ? null : c)}
-                    style={styles.chip}
-                  >{c.name}</Chip>
-                ))}
-              </ScrollView>
-              <Text style={[styles.sectionLabel, { color: theme.colors.onSurface, marginTop: 8 }]}>Tags</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {paperlessData.tags.map((t: any) => (
-                  <Chip
-                    key={t.id}
-                    selected={paperlessTags.some((pt: any) => pt.id === t.id)}
-                    onPress={() => {
-                      const exists = paperlessTags.some((pt: any) => pt.id === t.id);
-                      setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
-                    }}
-                    style={styles.chip}
-                  >{t.name}</Chip>
-                ))}
-              </ScrollView>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <MaterialCommunityIcons name="file-document-outline" color={theme.colors.primary} size={18} />
+                <Text style={[styles.sectionLabel, { color: theme.colors.primary, marginBottom: 0, marginLeft: 6 }]}>Paperless</Text>
+              </View>
+              {paperlessData.documentTypes.length > 0 && <>
+                <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Dokumententyp</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {paperlessData.documentTypes.map((dt: any) => (
+                    <Chip key={dt.id} selected={paperlessDocType?.id === dt.id}
+                      onPress={() => setPaperlessDocType(paperlessDocType?.id === dt.id ? null : dt)}
+                      style={styles.chip}>{dt.name}</Chip>
+                  ))}
+                </ScrollView>
+              </>}
+              {paperlessData.correspondents.length > 0 && <>
+                <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Absender</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {paperlessData.correspondents.map((c: any) => (
+                    <Chip key={c.id} selected={paperlessCorrespondent?.id === c.id}
+                      onPress={() => setPaperlessCorrespondent(paperlessCorrespondent?.id === c.id ? null : c)}
+                      style={styles.chip}>{c.name}</Chip>
+                  ))}
+                </ScrollView>
+              </>}
+              {paperlessData.tags.length > 0 && <>
+                <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Tags</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {paperlessData.tags.map((t: any) => (
+                    <Chip key={t.id} selected={paperlessTags.some((pt: any) => pt.id === t.id)}
+                      onPress={() => {
+                        const exists = paperlessTags.some((pt: any) => pt.id === t.id);
+                        setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
+                      }}
+                      style={styles.chip}>{t.name}</Chip>
+                  ))}
+                </ScrollView>
+              </>}
             </View>
           )}
 
@@ -336,6 +337,21 @@ export default function AddTransactionScreen() {
           </Button>
         </View>
       </ScrollView>
+
+      {/* Vollbild-Bild Modal */}
+      <Portal>
+        <Modal visible={!!fullscreenImage} onDismiss={() => setFullscreenImage(null)}
+          contentContainerStyle={styles.fullscreenModal}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setFullscreenImage(null)} activeOpacity={1}>
+            {fullscreenImage && (
+              <Image source={{ uri: fullscreenImage }} style={styles.fullscreenImg} resizeMode="contain" />
+            )}
+            <IconButton icon="close" iconColor="#fff" size={28}
+              style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)' }}
+              onPress={() => setFullscreenImage(null)} />
+          </TouchableOpacity>
+        </Modal>
+      </Portal>
 
       {/* Category Modal */}
       <Portal>
@@ -370,11 +386,14 @@ const styles = StyleSheet.create({
   receiptSection: { marginBottom: 12 },
   sectionLabel: { fontSize: 13, fontWeight: '600', opacity: 0.7, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   ocrLoading: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, padding: 12 },
-  receiptImage: { width: '100%', height: 200, borderRadius: 12, marginBottom: 8 },
+  receiptImage: { width: '100%', height: 220, borderRadius: 12, marginBottom: 0 },
+  fullscreenHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 5, marginBottom: 8 },
+  fullscreenModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', margin: 0 },
+  fullscreenImg: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
   receiptButtons: { flexDirection: 'row', gap: 8 },
   receiptButton: { flex: 1 },
-  paperlessToggle: { flexDirection: 'row', alignItems: 'center', padding: 12, borderWidth: 1, borderRadius: 8, marginBottom: 8 },
   paperlessSection: { padding: 12, marginBottom: 12 },
+  chipLabel: { fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: '500' },
   chip: { marginRight: 8 },
   saveButton: { marginTop: 8, elevation: 2 },
   saveButtonContent: { paddingVertical: 8 },

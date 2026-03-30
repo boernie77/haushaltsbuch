@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Text, Button, useTheme, ActivityIndicator, Chip, TextInput } from 'react-native-paper';
+import { View, ScrollView, StyleSheet, Alert, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { Text, Button, useTheme, ActivityIndicator, Chip, TextInput, Portal, Modal, IconButton } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
-import { transactionAPI, categoryAPI } from '../src/services/api';
+import { transactionAPI, categoryAPI, paperlessAPI, IMAGE_BASE_URL } from '../src/services/api';
 import { useAuthStore } from '../src/store/authStore';
 import Toast from 'react-native-toast-message';
 
@@ -26,6 +27,13 @@ export default function TransactionDetailScreen() {
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [fullscreenImage, setFullscreenImage] = useState(false);
+  const [paperlessData, setPaperlessData] = useState<any>(null);
+  const [showPaperlessModal, setShowPaperlessModal] = useState(false);
+  const [paperlessDocType, setPaperlessDocType] = useState<any>(null);
+  const [paperlessCorrespondent, setPaperlessCorrespondent] = useState<any>(null);
+  const [paperlessTags, setPaperlessTags] = useState<any[]>([]);
+  const [uploadingPaperless, setUploadingPaperless] = useState(false);
 
   useEffect(() => {
     if (!id || !currentHousehold) return;
@@ -63,6 +71,41 @@ export default function TransactionDetailScreen() {
     }
   };
 
+  const openPaperlessModal = async () => {
+    if (!currentHousehold) return;
+    if (!paperlessData) {
+      try {
+        const { data } = await paperlessAPI.getData(currentHousehold.id);
+        setPaperlessData({
+          documentTypes: (data.documentTypes || []).filter((i: any) => i.isFavorite),
+          correspondents: (data.correspondents || []).filter((i: any) => i.isFavorite),
+          tags: (data.tags || []).filter((i: any) => i.isFavorite),
+        });
+      } catch {}
+    }
+    setShowPaperlessModal(true);
+  };
+
+  const handlePaperlessUpload = async () => {
+    if (!transaction) return;
+    setUploadingPaperless(true);
+    try {
+      await paperlessAPI.upload({
+        transactionId: transaction.id,
+        documentTypeId: paperlessDocType?.id,
+        correspondentId: paperlessCorrespondent?.id,
+        tagIds: JSON.stringify(paperlessTags.map((t: any) => t.id)),
+        title: transaction.description || transaction.merchant || `Quittung ${transaction.date}`,
+      });
+      Toast.show({ type: 'success', text1: '📄 An Paperless übertragen' });
+      setShowPaperlessModal(false);
+    } catch {
+      Toast.show({ type: 'error', text1: 'Paperless-Upload fehlgeschlagen' });
+    } finally {
+      setUploadingPaperless(false);
+    }
+  };
+
   const handleDelete = () => {
     Alert.alert('Buchung löschen', 'Diese Buchung wirklich löschen?', [
       { text: 'Abbrechen', style: 'cancel' },
@@ -95,6 +138,8 @@ export default function TransactionDetailScreen() {
 
   const selectedCategory = categories.find(c => c.id === categoryId);
 
+  const receiptUrl = transaction?.receiptImage ? IMAGE_BASE_URL + transaction.receiptImage : null;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 12 }]}>
@@ -108,6 +153,66 @@ export default function TransactionDetailScreen() {
           </Button>
         </View>
       </View>
+
+      {/* Vollbild-Modal */}
+      <Portal>
+        <Modal visible={fullscreenImage && !!receiptUrl} onDismiss={() => setFullscreenImage(false)}
+          contentContainerStyle={styles.fullscreenModal}>
+          <TouchableOpacity style={{ flex: 1 }} onPress={() => setFullscreenImage(false)} activeOpacity={1}>
+            {receiptUrl && <Image source={{ uri: receiptUrl }} style={styles.fullscreenImg} resizeMode="contain" />}
+            <IconButton icon="close" iconColor="#fff" size={28}
+              style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)' }}
+              onPress={() => setFullscreenImage(false)} />
+          </TouchableOpacity>
+        </Modal>
+      </Portal>
+
+      {/* Paperless-Upload Modal */}
+      <Portal>
+        <Modal visible={showPaperlessModal} onDismiss={() => setShowPaperlessModal(false)}
+          contentContainerStyle={[styles.paperlessModal, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>📄 Zu Paperless hochladen</Text>
+          {paperlessData ? (<>
+            {paperlessData.documentTypes.length > 0 && <>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Dokumententyp</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                {paperlessData.documentTypes.map((dt: any) => (
+                  <Chip key={dt.id} selected={paperlessDocType?.id === dt.id}
+                    onPress={() => setPaperlessDocType(paperlessDocType?.id === dt.id ? null : dt)}
+                    style={{ marginRight: 8 }}>{dt.name}</Chip>
+                ))}
+              </ScrollView>
+            </>}
+            {paperlessData.correspondents.length > 0 && <>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Absender</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                {paperlessData.correspondents.map((c: any) => (
+                  <Chip key={c.id} selected={paperlessCorrespondent?.id === c.id}
+                    onPress={() => setPaperlessCorrespondent(paperlessCorrespondent?.id === c.id ? null : c)}
+                    style={{ marginRight: 8 }}>{c.name}</Chip>
+                ))}
+              </ScrollView>
+            </>}
+            {paperlessData.tags.length > 0 && <>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Tags</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {paperlessData.tags.map((t: any) => (
+                  <Chip key={t.id} selected={paperlessTags.some((pt: any) => pt.id === t.id)}
+                    onPress={() => {
+                      const exists = paperlessTags.some((pt: any) => pt.id === t.id);
+                      setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
+                    }}
+                    style={{ marginRight: 8 }}>{t.name}</Chip>
+                ))}
+              </ScrollView>
+            </>}
+            <Button mode="contained" onPress={handlePaperlessUpload} loading={uploadingPaperless}
+              disabled={uploadingPaperless} buttonColor={theme.colors.primary} icon="upload">
+              Hochladen
+            </Button>
+          </>) : <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 20 }} />}
+        </Modal>
+      </Portal>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}>
         {!editing ? (
@@ -132,6 +237,35 @@ export default function TransactionDetailScreen() {
                 <Text style={[styles.rowValue, { color: theme.colors.onSurface }]}>{row.value}</Text>
               </View>
             ))}
+
+            {transaction.receiptImage && (
+              <View style={{ marginTop: 16 }}>
+                <Text style={[styles.rowLabel, { color: theme.colors.onSurface, marginBottom: 8 }]}>Quittung</Text>
+                <TouchableOpacity onPress={() => setFullscreenImage(true)} activeOpacity={0.85}>
+                  <Image
+                    source={{ uri: IMAGE_BASE_URL + transaction.receiptImage }}
+                    style={styles.receiptThumb}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.fullscreenHint}>
+                    <MaterialCommunityIcons name="magnify-plus-outline" size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Tippen zum Vergrößern</Text>
+                  </View>
+                </TouchableOpacity>
+                {!transaction.paperlessDocId && (
+                  <Button mode="outlined" icon="file-document-outline" onPress={openPaperlessModal}
+                    style={{ marginTop: 8, borderColor: theme.colors.primary + '60' }}
+                    textColor={theme.colors.primary}>
+                    Zu Paperless hochladen
+                  </Button>
+                )}
+                {transaction.paperlessDocId && (
+                  <Text style={{ color: theme.colors.primary, fontSize: 13, marginTop: 6, textAlign: 'center' }}>
+                    ✅ In Paperless gespeichert
+                  </Text>
+                )}
+              </View>
+            )}
 
             <Button
               mode="outlined"
@@ -222,4 +356,11 @@ const styles = StyleSheet.create({
   rowValue: { fontSize: 14, fontWeight: '500', maxWidth: '60%', textAlign: 'right' },
   deleteButton: { marginTop: 20 },
   input: { marginBottom: 12 },
+  receiptThumb: { width: '100%', height: 200, borderRadius: 12 },
+  fullscreenHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 5 },
+  fullscreenModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', margin: 0 },
+  fullscreenImg: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
+  paperlessModal: { margin: 20, padding: 20, borderRadius: 16 },
+  modalTitle: { fontSize: 17, fontWeight: '600', marginBottom: 14 },
+  chipLabel: { fontSize: 12, opacity: 0.6, marginBottom: 6, fontWeight: '500' },
 });

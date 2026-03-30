@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TextInput as RNTextInput, TouchableOpacity } from 'react-native';
-import { Text, Button, useTheme, ActivityIndicator, Switch } from 'react-native-paper';
+import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, Button, useTheme, ActivityIndicator, Switch, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -93,16 +93,15 @@ export default function PaperlessSettingsScreen() {
     const q = search[searchKey].toLowerCase();
     const filtered = q ? (items || []).filter((i: any) => i.name.toLowerCase().includes(q)) : (items || []);
     return (<View>
-      <View style={[styles.searchRow, { borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}>
-        <MaterialCommunityIcons name="magnify" size={18} color={theme.colors.onSurface + '60'} />
-        <RNTextInput
-          style={{ flex: 1, color: theme.colors.onSurface, fontSize: 14, marginLeft: 10, paddingLeft: 0 }}
-          placeholder="Suchen..."
-          placeholderTextColor={theme.colors.onSurface + '50'}
-          value={search[searchKey]}
-          onChangeText={v => setSearch(s => ({ ...s, [searchKey]: v }))}
-        />
-      </View>
+      <Searchbar
+        placeholder="Suchen..."
+        value={search[searchKey]}
+        onChangeText={v => setSearch(s => ({ ...s, [searchKey]: v }))}
+        style={{ marginBottom: 8, elevation: 0, borderWidth: 1, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }}
+        inputStyle={{ fontSize: 14, color: theme.colors.onSurface }}
+        iconColor={theme.colors.onSurface + '60'}
+        placeholderTextColor={theme.colors.onSurface + '50'}
+      />
       {filtered.length === 0 ? (
         <Text style={{ color: theme.colors.onSurface, opacity: 0.5, textAlign: 'center', marginTop: 32 }}>
           {q ? 'Keine Treffer' : 'Noch keine Daten — zuerst synchronisieren'}
@@ -246,7 +245,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '500', marginBottom: 6, marginTop: 8 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 4 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  searchRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 },
   listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
   starBtn: { padding: 4 },
   tagChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },

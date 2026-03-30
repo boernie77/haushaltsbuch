@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://37.27.193.27:3001/api';
+export const IMAGE_BASE_URL = BASE_URL.replace('/api', '');
 
 export const api = axios.create({
   baseURL: BASE_URL,

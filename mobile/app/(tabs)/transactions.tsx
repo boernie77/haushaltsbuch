@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
-import { Text, Card, useTheme, Chip, FAB, ActivityIndicator } from 'react-native-paper';
-import { TextInput } from 'react-native';
+import { Text, Card, useTheme, Chip, FAB, ActivityIndicator, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,14 +85,15 @@ export default function TransactionsScreen() {
       <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Buchungen</Text>
         <Text style={[styles.headerSub, { marginBottom: 12 }]}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
-        <TextInput
+        <Searchbar
           placeholder="Suchen..."
-          placeholderTextColor="rgba(255,255,255,0.6)"
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={() => load(true)}
-          returnKeyType="search"
-          style={styles.searchInput}
+          style={[styles.searchInput, { elevation: 0 }]}
+          inputStyle={{ color: '#fff', fontSize: 15 }}
+          iconColor="rgba(255,255,255,0.7)"
+          placeholderTextColor="rgba(255,255,255,0.6)"
         />
         <View style={styles.chips}>
           {['all', 'expense', 'income'].map(f => (
