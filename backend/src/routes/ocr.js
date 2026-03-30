@@ -69,8 +69,10 @@ router.post('/analyze', auth, upload.single('receipt'), async (req, res) => {
     const categories = await Category.findAll({ where: { isSystem: true } });
     const categoryList = categories.map(c => `${c.id}: ${c.nameDE || c.name}`).join(', ');
 
-    const base64Image = fs.readFileSync(req.file.path).toString('base64');
-    const mimeType = req.file.mimetype || 'image/jpeg';
+    const { processReceiptImage } = require('../utils/receiptProcessor');
+    const processedBuffer = await processReceiptImage(req.file.path);
+    const base64Image = processedBuffer.toString('base64');
+    const mimeType = 'image/jpeg';
 
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({

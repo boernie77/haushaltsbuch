@@ -115,6 +115,12 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
       }
     }
 
+    // Quittungsbild verarbeiten (Dokument-Scan-Filter)
+    if (req.file) {
+      const { processReceiptFile } = require('../utils/receiptProcessor');
+      await processReceiptFile(req.file.path);
+    }
+
     const transaction = await Transaction.create({
       amount: parseFloat(amount),
       description,
