@@ -36,12 +36,14 @@ export default function TransactionDetailScreen() {
   const [paperlessOwner, setPaperlessOwner] = useState<any>(null);
   const [paperlessViewUsers, setPaperlessViewUsers] = useState<any[]>([]);
   const [uploadingPaperless, setUploadingPaperless] = useState(false);
+  const [hasPaperless, setHasPaperless] = useState(false);
 
   useEffect(() => {
     if (!id || !currentHousehold) return;
     Promise.all([
       transactionAPI.getAll({ householdId: currentHousehold.id, page: 1, limit: 200 }),
       categoryAPI.getAll(currentHousehold.id),
+      paperlessAPI.getConfig(currentHousehold.id).then(r => setHasPaperless(!!r.data?.config?.isActive)).catch(() => {}),
     ]).then(([txRes, catRes]) => {
       const tx = txRes.data.transactions?.find((t: any) => t.id === id);
       if (tx) {
@@ -308,7 +310,7 @@ export default function TransactionDetailScreen() {
                     <Text style={{ color: '#fff', fontSize: 12, marginLeft: 4 }}>Tippen zum Vergrößern</Text>
                   </View>
                 </TouchableOpacity>
-                {!transaction.paperlessDocId && (
+                {hasPaperless && !transaction.paperlessDocId && (
                   <Button mode="outlined" icon="file-document-outline" onPress={openPaperlessModal}
                     style={{ marginTop: 8, borderColor: theme.colors.primary + '60' }}
                     textColor={theme.colors.primary}>
