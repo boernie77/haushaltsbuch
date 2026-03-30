@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, Image, TouchableOpacity, Dimensions, StatusBar } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Image, TouchableOpacity, Dimensions, StatusBar, Modal as RNModal } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator, Chip, TextInput, Portal, Modal, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -160,25 +160,25 @@ export default function TransactionDetailScreen() {
       </View>
 
       {/* Vollbild-Modal mit Zoom */}
-      <Portal>
-        <Modal visible={fullscreenImage && !!receiptUrl} onDismiss={() => setFullscreenImage(false)}
-          contentContainerStyle={styles.fullscreenModal}>
+      <RNModal visible={fullscreenImage && !!receiptUrl} transparent animationType="fade" onRequestClose={() => setFullscreenImage(false)}>
+        <View style={{ flex: 1, backgroundColor: '#fff' }}>
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
+            contentContainerStyle={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height }}
             maximumZoomScale={5}
             minimumZoomScale={1}
+            centerContent
+            bouncesZoom
             showsHorizontalScrollIndicator={false}
             showsVerticalScrollIndicator={false}
-            bouncesZoom
           >
-            {receiptUrl && <Image source={{ uri: receiptUrl }} style={styles.fullscreenImg} resizeMode="contain" />}
+            <Image source={{ uri: receiptUrl! }} style={{ width: Dimensions.get('window').width, height: Dimensions.get('window').height }} resizeMode="contain" />
           </ScrollView>
           <IconButton icon="close" iconColor="#000" size={28}
-            style={{ position: 'absolute', top: StatusBar.currentHeight ?? 44, right: 8, backgroundColor: 'rgba(0,0,0,0.12)' }}
+            style={{ position: 'absolute', top: (StatusBar.currentHeight ?? 44) + 8, right: 8, backgroundColor: 'rgba(0,0,0,0.12)' }}
             onPress={() => setFullscreenImage(false)} />
-        </Modal>
-      </Portal>
+        </View>
+      </RNModal>
 
       {/* Paperless-Upload Modal */}
       <Portal>
@@ -395,8 +395,6 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   receiptThumb: { width: '100%', height: 200, borderRadius: 12 },
   fullscreenHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 5 },
-  fullscreenModal: { flex: 1, backgroundColor: '#fff', margin: 0 },
-  fullscreenImg: { width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.9 },
   paperlessModal: { margin: 20, padding: 20, borderRadius: 16 },
   modalTitle: { fontSize: 17, fontWeight: '600', marginBottom: 14 },
   chipLabel: { fontSize: 12, opacity: 0.6, marginBottom: 6, fontWeight: '500' },
