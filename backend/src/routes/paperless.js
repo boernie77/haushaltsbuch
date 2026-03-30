@@ -336,6 +336,11 @@ router.post('/upload', auth, async (req, res) => {
 
     const taskId = response.data;
 
+    // Paperless-Auswahl auf der Transaktion speichern (für Vorauswahl beim nächsten Öffnen)
+    await transaction.update({
+      paperlessMetadata: JSON.stringify({ documentTypeId, correspondentId, tagIds, ownerPaperlessUserId, viewPaperlessUserIds })
+    });
+
     // Sofort antworten — paperlessDocId wird im Hintergrund gesetzt wenn Paperless fertig indexiert hat
     res.json({ taskId, message: 'Uploaded to Paperless' });
 

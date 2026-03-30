@@ -75,15 +75,34 @@ export default function TransactionDetailScreen() {
 
   const openPaperlessModal = async () => {
     if (!currentHousehold) return;
-    if (!paperlessData) {
+    let pd = paperlessData;
+    if (!pd) {
       try {
         const { data } = await paperlessAPI.getData(currentHousehold.id);
-        setPaperlessData({
+        pd = {
           documentTypes: (data.documentTypes || []).filter((i: any) => i.isFavorite),
           correspondents: (data.correspondents || []).filter((i: any) => i.isFavorite),
           tags: (data.tags || []).filter((i: any) => i.isFavorite),
           users: (data.users || []).filter((u: any) => u.isEnabled),
-        });
+        };
+        setPaperlessData(pd);
+      } catch {}
+    }
+    // Vorauswahl aus gespeicherter Metadata wiederherstellen
+    if (pd && transaction?.paperlessMetadata && !paperlessDocType && !paperlessCorrespondent && !paperlessTags.length) {
+      try {
+        const meta = JSON.parse(transaction.paperlessMetadata);
+        if (meta.documentTypeId) setPaperlessDocType(pd.documentTypes.find((x: any) => x.id === meta.documentTypeId) || null);
+        if (meta.correspondentId) setPaperlessCorrespondent(pd.correspondents.find((x: any) => x.id === meta.correspondentId) || null);
+        if (meta.tagIds) {
+          const ids = JSON.parse(meta.tagIds);
+          setPaperlessTags(pd.tags.filter((x: any) => ids.includes(x.id)));
+        }
+        if (meta.ownerPaperlessUserId) setPaperlessOwner(pd.users.find((u: any) => String(u.paperlessId) === meta.ownerPaperlessUserId) || null);
+        if (meta.viewPaperlessUserIds) {
+          const ids = JSON.parse(meta.viewPaperlessUserIds);
+          setPaperlessViewUsers(pd.users.filter((u: any) => ids.includes(String(u.paperlessId))));
+        }
       } catch {}
     }
     setShowPaperlessModal(true);
