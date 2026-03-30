@@ -56,7 +56,8 @@
           "icon": "./assets/notification-icon.png"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-font"
     ],
     "scheme": "haushaltsbuch",
     "extra": {
