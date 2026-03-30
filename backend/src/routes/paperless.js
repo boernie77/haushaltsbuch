@@ -19,6 +19,18 @@ async function getPaperlessClient(householdId) {
   };
 }
 
+// Holt alle Seiten einer paginierten Paperless-API-Ressource
+async function fetchAllPages(url, headers) {
+  const results = [];
+  let nextUrl = url;
+  while (nextUrl) {
+    const { data } = await axios.get(nextUrl, { headers });
+    results.push(...(data.results || []));
+    nextUrl = data.next || null;
+  }
+  return results;
+}
+
 // GET /api/paperless/config/:householdId
 router.get('/config/:householdId', auth, async (req, res) => {
   try {
@@ -59,26 +71,26 @@ router.post('/sync/:householdId', auth, async (req, res) => {
     const now = new Date();
 
     const [docTypes, correspondents, tags] = await Promise.all([
-      axios.get(`${client.baseURL}/api/document_types/?page_size=200`, { headers: client.headers }),
-      axios.get(`${client.baseURL}/api/correspondents/?page_size=200`, { headers: client.headers }),
-      axios.get(`${client.baseURL}/api/tags/?page_size=200`, { headers: client.headers })
+      fetchAllPages(`${client.baseURL}/api/document_types/`, client.headers),
+      fetchAllPages(`${client.baseURL}/api/correspondents/`, client.headers),
+      fetchAllPages(`${client.baseURL}/api/tags/`, client.headers),
     ]);
 
-    for (const dt of docTypes.data.results || []) {
+    for (const dt of docTypes) {
       await PaperlessDocumentType.upsert({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: now });
     }
-    for (const c of correspondents.data.results || []) {
+    for (const c of correspondents) {
       await PaperlessCorrespondent.upsert({ householdId, paperlessId: c.id, name: c.name, syncedAt: now });
     }
-    for (const t of tags.data.results || []) {
+    for (const t of tags) {
       await PaperlessTag.upsert({ householdId, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
     }
 
     res.json({
       synced: {
-        documentTypes: docTypes.data.results?.length || 0,
-        correspondents: correspondents.data.results?.length || 0,
-        tags: tags.data.results?.length || 0
+        documentTypes: docTypes.length,
+        correspondents: correspondents.length,
+        tags: tags.length,
       }
     });
   } catch (err) {
