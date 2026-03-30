@@ -240,9 +240,9 @@ router.post('/create-type', auth, async (req, res) => {
     const client = await getPaperlessClient(householdId);
 
     const existing = await axios.get(`${client.baseURL}/api/document_types/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
-    if (existing.data.results?.length > 0) {
-      const found = existing.data.results[0];
-      const docType = await findOrCreateLocal(PaperlessDocumentType, householdId, found.id, { name: found.name });
+    const exactMatch = existing.data.results?.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
+    if (exactMatch) {
+      const docType = await findOrCreateLocal(PaperlessDocumentType, householdId, exactMatch.id, { name: exactMatch.name });
       return res.status(200).json({ documentType: docType, existing: true });
     }
 
@@ -262,9 +262,9 @@ router.post('/create-correspondent', auth, async (req, res) => {
     const client = await getPaperlessClient(householdId);
 
     const existing = await axios.get(`${client.baseURL}/api/correspondents/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
-    if (existing.data.results?.length > 0) {
-      const found = existing.data.results[0];
-      const correspondent = await findOrCreateLocal(PaperlessCorrespondent, householdId, found.id, { name: found.name });
+    const exactMatch = existing.data.results?.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
+    if (exactMatch) {
+      const correspondent = await findOrCreateLocal(PaperlessCorrespondent, householdId, exactMatch.id, { name: exactMatch.name });
       return res.status(200).json({ correspondent, existing: true });
     }
 
@@ -284,9 +284,9 @@ router.post('/create-tag', auth, async (req, res) => {
     const client = await getPaperlessClient(householdId);
 
     const existing = await axios.get(`${client.baseURL}/api/tags/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
-    if (existing.data.results?.length > 0) {
-      const found = existing.data.results[0];
-      const tag = await findOrCreateLocal(PaperlessTag, householdId, found.id, { name: found.name, color: found.colour });
+    const exactMatch = existing.data.results?.find(r => r.name.toLowerCase() === name.trim().toLowerCase());
+    if (exactMatch) {
+      const tag = await findOrCreateLocal(PaperlessTag, householdId, exactMatch.id, { name: exactMatch.name, color: exactMatch.colour });
       return res.status(200).json({ tag, existing: true });
     }
 
