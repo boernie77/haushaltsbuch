@@ -86,11 +86,14 @@ async function syncAllPaperless() {
 
         const fetchAll = async (url) => {
           const results = [];
-          let next = url;
-          while (next) {
-            const { data } = await axios.get(next, { headers });
+          let nextUrl = url;
+          const origin = new URL(baseURL).origin;
+          while (nextUrl) {
+            const { data } = await axios.get(nextUrl, { headers, timeout: 30000 });
             results.push(...(data.results || []));
-            next = data.next || null;
+            if (data.next) {
+              try { const u = new URL(data.next); u.protocol = new URL(baseURL).protocol; u.host = new URL(baseURL).host; nextUrl = u.toString(); } catch { nextUrl = null; }
+            } else { nextUrl = null; }
           }
           return results;
         };
@@ -103,12 +106,17 @@ async function syncAllPaperless() {
         let users = [];
         try { users = await fetchAll(`${baseURL}/api/users/`); } catch {}
 
-        for (const dt of docTypes) await PaperlessDocumentType.upsert({ householdId: hid, paperlessId: dt.id, name: dt.name, syncedAt: now });
-        for (const c of correspondents) await PaperlessCorrespondent.upsert({ householdId: hid, paperlessId: c.id, name: c.name, syncedAt: now });
-        for (const t of tags) await PaperlessTag.upsert({ householdId: hid, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
+        const upsert = async (Model, paperlessId, fields) => {
+          const ex = await Model.findOne({ where: { householdId: hid, paperlessId } });
+          if (ex) await ex.update({ ...fields, syncedAt: now });
+          else await Model.create({ householdId: hid, paperlessId, ...fields, syncedAt: now });
+        };
+        for (const dt of docTypes) await upsert(PaperlessDocumentType, dt.id, { name: dt.name });
+        for (const c of correspondents) await upsert(PaperlessCorrespondent, c.id, { name: c.name });
+        for (const t of tags) await upsert(PaperlessTag, t.id, { name: t.name, color: t.colour });
         for (const u of users) {
           const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-          await PaperlessUser.upsert({ householdId: hid, paperlessId: u.id, username: u.username, fullName, syncedAt: now });
+          await upsert(PaperlessUser, u.id, { username: u.username, fullName });
         }
         console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
       } catch (err) {

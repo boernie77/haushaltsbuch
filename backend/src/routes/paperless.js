@@ -20,13 +20,25 @@ async function getPaperlessClient(householdId) {
 }
 
 // Holt alle Seiten einer paginierten Paperless-API-Ressource
-async function fetchAllPages(url, headers) {
+// Normalisiert data.next auf den konfigurierten Host (Paperless gibt oft interne URLs zurück)
+async function fetchAllPages(baseUrl, headers) {
   const results = [];
-  let nextUrl = url;
+  let nextUrl = baseUrl;
+  let configuredOrigin;
+  try { configuredOrigin = new URL(baseUrl).origin; } catch {}
   while (nextUrl) {
-    const { data } = await axios.get(nextUrl, { headers });
+    const { data } = await axios.get(nextUrl, { headers, timeout: 30000 });
     results.push(...(data.results || []));
-    nextUrl = data.next || null;
+    if (data.next && configuredOrigin) {
+      try {
+        const u = new URL(data.next);
+        u.protocol = new URL(baseUrl).protocol;
+        u.host = new URL(baseUrl).host;
+        nextUrl = u.toString();
+      } catch { nextUrl = null; }
+    } else {
+      nextUrl = null;
+    }
   }
   return results;
 }
@@ -48,17 +60,39 @@ router.get('/config/:householdId', auth, async (req, res) => {
 // POST /api/paperless/config
 router.post('/config', auth, async (req, res) => {
   try {
-    const { householdId, baseUrl, apiToken } = req.body;
+    const { householdId, baseUrl, apiToken, isActive } = req.body;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-    try {
-      await axios.get(`${baseUrl.replace(/\/$/, '')}/api/`, { headers: { Authorization: `Token ${apiToken}` } });
-    } catch {
-      return res.status(400).json({ error: 'Cannot connect to Paperless. Check URL and token.' });
+
+    // Nur testen wenn ein Token mitgegeben wurde
+    if (apiToken) {
+      try {
+        await axios.get(`${baseUrl.replace(/\/$/, '')}/api/document_types/?page_size=1`, {
+          headers: { Authorization: `Token ${apiToken}` },
+          timeout: 10000,
+        });
+      } catch (e) {
+        const msg = e.code === 'ECONNABORTED' ? 'Verbindung zu Paperless hat zu lange gedauert (Timeout).'
+          : e.response?.status === 401 ? 'Ungültiger API Token.'
+          : e.response?.status === 403 ? 'API Token hat keine Berechtigung.'
+          : 'Paperless nicht erreichbar. URL und Token prüfen.';
+        return res.status(400).json({ error: msg });
+      }
     }
-    const [config] = await PaperlessConfig.upsert({ householdId, baseUrl, apiToken, isActive: true });
-    res.json({ config: { id: config.id, householdId, baseUrl, isActive: true } });
-  } catch {
-    res.status(500).json({ error: 'Failed to save config' });
+
+    // Vorhandene Config laden — apiToken nur überschreiben wenn neu angegeben
+    const existing = await PaperlessConfig.findOne({ where: { householdId } });
+    const updateData = {
+      householdId,
+      baseUrl: baseUrl.replace(/\/$/, ''),
+      isActive: isActive !== undefined ? isActive : true,
+    };
+    if (apiToken) updateData.apiToken = apiToken;
+    else if (!existing) return res.status(400).json({ error: 'Bitte API Token eingeben' });
+
+    const [config] = await PaperlessConfig.upsert(updateData);
+    res.json({ config: { id: config.id, householdId, baseUrl: updateData.baseUrl, isActive: updateData.isActive } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save config: ' + err.message });
   }
 });
 
@@ -84,18 +118,24 @@ router.post('/sync/:householdId', auth, async (req, res) => {
       console.log('[paperless] /api/users/ nicht zugänglich (kein Admin-Token) — Benutzer übersprungen');
     }
 
+    const upsertByPaperlessId = async (Model, householdId, paperlessId, fields) => {
+      const existing = await Model.findOne({ where: { householdId, paperlessId } });
+      if (existing) await existing.update({ ...fields, syncedAt: now });
+      else await Model.create({ householdId, paperlessId, ...fields, syncedAt: now });
+    };
+
     for (const dt of docTypes) {
-      await PaperlessDocumentType.upsert({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: now });
+      await upsertByPaperlessId(PaperlessDocumentType, householdId, dt.id, { name: dt.name });
     }
     for (const c of correspondents) {
-      await PaperlessCorrespondent.upsert({ householdId, paperlessId: c.id, name: c.name, syncedAt: now });
+      await upsertByPaperlessId(PaperlessCorrespondent, householdId, c.id, { name: c.name });
     }
     for (const t of tags) {
-      await PaperlessTag.upsert({ householdId, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
+      await upsertByPaperlessId(PaperlessTag, householdId, t.id, { name: t.name, color: t.colour });
     }
     for (const u of users) {
       const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-      await PaperlessUser.upsert({ householdId, paperlessId: u.id, username: u.username, fullName, syncedAt: now });
+      await upsertByPaperlessId(PaperlessUser, householdId, u.id, { username: u.username, fullName });
     }
 
     res.json({
