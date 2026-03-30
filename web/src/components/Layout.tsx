@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Receipt, BarChart2, Wallet, Home, FileText, Shield, LogOut, Menu, X, ChevronDown, Settings, HardDrive
+  LayoutDashboard, Receipt, BarChart2, Wallet, Home, FileText, Shield, LogOut, Menu, X, ChevronDown, HardDrive, Sun, Moon
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '../store/authStore';
@@ -20,7 +20,7 @@ const navItems = [
 
 export default function Layout() {
   const navigate = useNavigate();
-  const { user, logout, currentHousehold, households, setHouseholds, setCurrentHousehold } = useAuthStore();
+  const { user, logout, currentHousehold, households, setHouseholds, setCurrentHousehold, updateUser } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [householdOpen, setHouseholdOpen] = useState(false);
 
@@ -32,6 +32,19 @@ export default function Layout() {
   }, []);
 
   const handleLogout = () => { logout(); navigate('/login'); };
+
+  const handleThemeToggle = async () => {
+    const newTheme = user?.theme === 'masculine' ? 'feminine' : 'masculine';
+    try {
+      await api.put('/auth/profile', { theme: newTheme });
+      updateUser({ theme: newTheme });
+      if (newTheme === 'masculine') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    } catch {}
+  };
 
   return (
     <div className="flex h-screen bg-pink-50 dark:bg-slate-900">
@@ -125,14 +138,22 @@ export default function Layout() {
                 <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{user?.name}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email}</p>
               </div>
+              <button onClick={handleThemeToggle} className="text-gray-400 hover:text-[var(--primary)]" title={user?.theme === 'masculine' ? 'Helles Design' : 'Dunkles Design'}>
+                {user?.theme === 'masculine' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
               <button onClick={handleLogout} className="text-gray-400 hover:text-red-500" title="Abmelden">
                 <LogOut size={16} />
               </button>
             </div>
           ) : (
-            <button onClick={handleLogout} className="w-full flex justify-center text-gray-400 hover:text-red-500">
-              <LogOut size={20} />
-            </button>
+            <div className="flex flex-col items-center gap-3">
+              <button onClick={handleThemeToggle} className="text-gray-400 hover:text-[var(--primary)]">
+                {user?.theme === 'masculine' ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500">
+                <LogOut size={20} />
+              </button>
+            </div>
           )}
         </div>
       </aside>

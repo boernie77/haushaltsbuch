@@ -223,7 +223,7 @@ export default function AdminPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-slate-700">
                   <tr>
-                    {['Name', 'E-Mail', 'Rolle', 'Status', 'KI-Zugriff', 'Registriert', ''].map(h => (
+                    {['Name', 'E-Mail', 'Haushalte', 'Rolle', 'Status', 'KI-Zugriff', ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -233,6 +233,9 @@ export default function AdminPage() {
                     <tr key={u.id} className="hover:bg-pink-50/50 dark:hover:bg-slate-700/50">
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{u.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{u.email}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        {(u.households || []).join(', ') || '—'}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.role === 'superadmin' ? 'bg-yellow-100 text-yellow-800' : u.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'}`}>
                           {u.role}
@@ -249,7 +252,6 @@ export default function AdminPage() {
                           <Bot size={11} /> {u.aiKeyGranted ? 'Gewährt' : 'Kein Zugriff'}
                         </button>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{format(new Date(u.createdAt), 'dd.MM.yyyy')}</td>
                       <td className="px-4 py-3 flex gap-2">
                         <button onClick={() => handleToggleUser(u)} className="text-gray-400 hover:text-blue-500">
                           {u.isActive ? <Ban size={16} /> : <CheckCircle size={16} />}
