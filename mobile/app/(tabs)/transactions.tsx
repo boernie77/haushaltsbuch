@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
 import { Text, Card, useTheme, Chip, FAB, ActivityIndicator, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -52,6 +52,7 @@ export default function TransactionsScreen() {
   }, [currentHousehold, typeFilter, search, page]);
 
   useEffect(() => { load(true); }, [currentHousehold, typeFilter]);
+  useFocusEffect(useCallback(() => { load(true); }, [currentHousehold]));
 
   const onRefresh = () => { setRefreshing(true); load(true); };
 

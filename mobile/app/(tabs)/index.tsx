@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { Text, Card, useTheme, ProgressBar, Chip, ActivityIndicator } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { useAuthStore } from '../../src/store/authStore';
 import { statsAPI, budgetAPI } from '../../src/services/api';
+import { useFocusEffect } from 'expo-router';
 
 export default function HomeScreen() {
   const theme = useTheme() as any;
@@ -34,7 +35,7 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => { load(); }, [currentHousehold]);
+  useFocusEffect(useCallback(() => { load(); }, [currentHousehold]));
 
   const onRefresh = () => { setRefreshing(true); load(); };
 
