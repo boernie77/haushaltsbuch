@@ -17,7 +17,10 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Um Quittungen zu fotografieren",
         "NSPhotoLibraryUsageDescription": "Um Quittungen aus der Galerie zu wählen",
+        "NSLocalNetworkUsageDescription": "Die App benötigt Zugriff auf das lokale Netzwerk, um eine Verbindung zum Entwicklungsserver herzustellen.",
+        "NSBonjourServices": ["_http._tcp", "_https._tcp"],
         "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
           "NSExceptionDomains": {
             "37.27.193.27": {
               "NSExceptionAllowsInsecureHTTPLoads": true,
