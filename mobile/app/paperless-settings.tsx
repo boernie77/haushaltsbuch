@@ -25,6 +25,9 @@ export default function PaperlessSettingsScreen() {
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<TabKey>('config');
   const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '', user: '' });
+  const [newName, setNewName] = useState({ doctype: '', correspondent: '', tag: '' });
+  const [creating, setCreating] = useState({ doctype: false, correspondent: false, tag: false });
+  const [tagColor, setTagColor] = useState('#6B7280');
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -68,6 +71,47 @@ export default function PaperlessSettingsScreen() {
       Toast.show({ type: 'error', text1: err.response?.data?.message || 'Synchronisierung fehlgeschlagen' });
     } finally { setSyncing(false); }
   };
+
+  const handleCreate = async (type: 'doctype' | 'correspondent' | 'tag') => {
+    if (!currentHousehold || !newName[type].trim()) return;
+    setCreating(c => ({ ...c, [type]: true }));
+    try {
+      if (type === 'doctype') await paperlessAPI.createDocType({ householdId: currentHousehold.id, name: newName[type].trim() });
+      else if (type === 'correspondent') await paperlessAPI.createCorrespondent({ householdId: currentHousehold.id, name: newName[type].trim() });
+      else await paperlessAPI.createTag({ householdId: currentHousehold.id, name: newName[type].trim(), color: tagColor });
+      setNewName(n => ({ ...n, [type]: '' }));
+      await loadData(currentHousehold.id);
+      Toast.show({ type: 'success', text1: 'Erstellt!' });
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.response?.data?.error || 'Fehler beim Erstellen' });
+    } finally {
+      setCreating(c => ({ ...c, [type]: false }));
+    }
+  };
+
+  const renderCreateRow = (type: 'doctype' | 'correspondent' | 'tag') => (
+    <View style={styles.createRow}>
+      <RNTextInput
+        style={[styles.createInput, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
+        value={newName[type]}
+        onChangeText={v => setNewName(n => ({ ...n, [type]: v }))}
+        placeholder="Neu erstellen..."
+        placeholderTextColor={theme.colors.onSurface + '50'}
+        autoCapitalize="words"
+        returnKeyType="done"
+        onSubmitEditing={() => handleCreate(type)}
+      />
+      <TouchableOpacity
+        onPress={() => handleCreate(type)}
+        disabled={creating[type] || !newName[type].trim()}
+        style={[styles.createBtn, { backgroundColor: theme.colors.primary, opacity: creating[type] || !newName[type].trim() ? 0.4 : 1 }]}
+      >
+        {creating[type]
+          ? <ActivityIndicator size={14} color="#fff" />
+          : <MaterialCommunityIcons name="plus" size={18} color="#fff" />}
+      </TouchableOpacity>
+    </View>
+  );
 
   const toggleUserEnabled = async (id: string, current: boolean) => {
     if (!currentHousehold) return;
@@ -216,6 +260,7 @@ export default function PaperlessSettingsScreen() {
               {renderList(data?.documentTypes || [], 'doctype', 'doctype', (item) => (
                 <Text style={{ color: theme.colors.onSurface, fontSize: 15 }}>{item.name}</Text>
               ))}
+              {hasConfig && renderCreateRow('doctype')}
             </View>
           )}
 
@@ -227,6 +272,7 @@ export default function PaperlessSettingsScreen() {
               {renderList(data?.correspondents || [], 'correspondent', 'correspondent', (item) => (
                 <Text style={{ color: theme.colors.onSurface, fontSize: 15 }}>{item.name}</Text>
               ))}
+              {hasConfig && renderCreateRow('correspondent')}
             </View>
           )}
 
@@ -240,6 +286,7 @@ export default function PaperlessSettingsScreen() {
                   <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{item.name}</Text>
                 </View>
               ))}
+              {hasConfig && renderCreateRow('tag')}
             </View>
           )}
 
@@ -312,4 +359,7 @@ const styles = StyleSheet.create({
   listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
   starBtn: { padding: 4 },
   tagChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  createRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
+  createInput: { flex: 1, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
+  createBtn: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
 });

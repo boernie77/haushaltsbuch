@@ -225,6 +225,13 @@ router.get('/check', auth, async (req, res) => {
   }
 });
 
+// Hilfsfunktion: findOrCreate in lokaler DB (verhindert Unique-Constraint-Fehler)
+const findOrCreateLocal = async (Model, householdId, paperlessId, fields) => {
+  const ex = await Model.findOne({ where: { householdId, paperlessId } });
+  if (ex) { await ex.update({ ...fields, syncedAt: new Date() }); return ex; }
+  return Model.create({ householdId, paperlessId, ...fields, syncedAt: new Date() });
+};
+
 // POST /api/paperless/create-type — prüft auf Duplikate
 router.post('/create-type', auth, async (req, res) => {
   try {
@@ -232,19 +239,18 @@ router.post('/create-type', auth, async (req, res) => {
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
     const client = await getPaperlessClient(householdId);
 
-    // Auf Duplikat in Paperless prüfen
-    const existing = await axios.get(`${client.baseURL}/api/document_types/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    const existing = await axios.get(`${client.baseURL}/api/document_types/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
     if (existing.data.results?.length > 0) {
       const found = existing.data.results[0];
-      const [docType] = await PaperlessDocumentType.upsert({ householdId, paperlessId: found.id, name: found.name, syncedAt: new Date() });
+      const docType = await findOrCreateLocal(PaperlessDocumentType, householdId, found.id, { name: found.name });
       return res.status(200).json({ documentType: docType, existing: true });
     }
 
-    const response = await axios.post(`${client.baseURL}/api/document_types/`, { name }, { headers: client.headers });
-    const docType = await PaperlessDocumentType.create({ householdId, paperlessId: response.data.id, name, syncedAt: new Date() });
+    const response = await axios.post(`${client.baseURL}/api/document_types/`, { name }, { headers: client.headers, timeout: 15000 });
+    const docType = await findOrCreateLocal(PaperlessDocumentType, householdId, response.data.id, { name });
     res.status(201).json({ documentType: docType });
-  } catch {
-    res.status(500).json({ error: 'Failed to create document type' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create document type: ' + err.message });
   }
 });
 
@@ -255,18 +261,18 @@ router.post('/create-correspondent', auth, async (req, res) => {
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
     const client = await getPaperlessClient(householdId);
 
-    const existing = await axios.get(`${client.baseURL}/api/correspondents/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    const existing = await axios.get(`${client.baseURL}/api/correspondents/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
     if (existing.data.results?.length > 0) {
       const found = existing.data.results[0];
-      const [correspondent] = await PaperlessCorrespondent.upsert({ householdId, paperlessId: found.id, name: found.name, syncedAt: new Date() });
+      const correspondent = await findOrCreateLocal(PaperlessCorrespondent, householdId, found.id, { name: found.name });
       return res.status(200).json({ correspondent, existing: true });
     }
 
-    const response = await axios.post(`${client.baseURL}/api/correspondents/`, { name }, { headers: client.headers });
-    const correspondent = await PaperlessCorrespondent.create({ householdId, paperlessId: response.data.id, name, syncedAt: new Date() });
+    const response = await axios.post(`${client.baseURL}/api/correspondents/`, { name }, { headers: client.headers, timeout: 15000 });
+    const correspondent = await findOrCreateLocal(PaperlessCorrespondent, householdId, response.data.id, { name });
     res.status(201).json({ correspondent });
-  } catch {
-    res.status(500).json({ error: 'Failed to create correspondent' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create correspondent: ' + err.message });
   }
 });
 
@@ -277,18 +283,18 @@ router.post('/create-tag', auth, async (req, res) => {
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
     const client = await getPaperlessClient(householdId);
 
-    const existing = await axios.get(`${client.baseURL}/api/tags/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    const existing = await axios.get(`${client.baseURL}/api/tags/?name=${encodeURIComponent(name)}`, { headers: client.headers, timeout: 15000 });
     if (existing.data.results?.length > 0) {
       const found = existing.data.results[0];
-      const [tag] = await PaperlessTag.upsert({ householdId, paperlessId: found.id, name: found.name, color: found.colour, syncedAt: new Date() });
+      const tag = await findOrCreateLocal(PaperlessTag, householdId, found.id, { name: found.name, color: found.colour });
       return res.status(200).json({ tag, existing: true });
     }
 
-    const response = await axios.post(`${client.baseURL}/api/tags/`, { name, colour: color }, { headers: client.headers });
-    const tag = await PaperlessTag.create({ householdId, paperlessId: response.data.id, name, color, syncedAt: new Date() });
+    const response = await axios.post(`${client.baseURL}/api/tags/`, { name, colour: color }, { headers: client.headers, timeout: 15000 });
+    const tag = await findOrCreateLocal(PaperlessTag, householdId, response.data.id, { name, color });
     res.status(201).json({ tag });
-  } catch {
-    res.status(500).json({ error: 'Failed to create tag' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create tag: ' + err.message });
   }
 });
 
