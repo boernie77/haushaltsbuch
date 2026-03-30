@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const { randomUUID } = require('crypto');
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
@@ -138,19 +139,19 @@ router.post('/sync/:householdId', auth, async (req, res) => {
 
     const nowIso = now.toISOString();
     if (docTypes.length) await bulkUpsert('paperless_document_types',
-      docTypes.map(dt => ({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      docTypes.map(dt => ({ id: randomUUID(), householdId, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
       ['householdId', 'paperlessId'], ['name', 'syncedAt', 'updatedAt']);
 
     if (correspondents.length) await bulkUpsert('paperless_correspondents',
-      correspondents.map(c => ({ householdId, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      correspondents.map(c => ({ id: randomUUID(), householdId, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
       ['householdId', 'paperlessId'], ['name', 'syncedAt', 'updatedAt']);
 
     if (tags.length) await bulkUpsert('paperless_tags',
-      tags.map(t => ({ householdId, paperlessId: t.id, name: t.name, color: t.colour || null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      tags.map(t => ({ id: randomUUID(), householdId, paperlessId: t.id, name: t.name, color: t.colour || null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
       ['householdId', 'paperlessId'], ['name', 'color', 'syncedAt', 'updatedAt']);
 
     if (users.length) await bulkUpsert('paperless_users',
-      users.map(u => ({ householdId, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim() || u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      users.map(u => ({ id: randomUUID(), householdId, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim() || u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
       ['householdId', 'paperlessId'], ['username', 'fullName', 'syncedAt', 'updatedAt']);
 
     res.json({

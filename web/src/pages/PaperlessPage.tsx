@@ -117,7 +117,7 @@ export default function PaperlessPage() {
     }
   };
 
-  const CreateForm = ({ type, placeholder, extra }: { type: 'doctype' | 'correspondent' | 'tag'; placeholder: string; extra?: React.ReactNode }) => {
+  const renderCreateForm = (type: 'doctype' | 'correspondent' | 'tag', placeholder: string, extra?: React.ReactNode) => {
     const cr = checkResult[type];
     const val = newItem[type];
     return (
@@ -159,7 +159,7 @@ export default function PaperlessPage() {
     );
   };
 
-  const FavoriteList = ({ items, type, searchKey, renderItem }: { items: any[], type: string, searchKey: keyof typeof search, renderItem: (item: any) => React.ReactNode }) => {
+  const renderFavoriteList = (items: any[], type: string, searchKey: keyof typeof search, renderItem: (item: any) => React.ReactNode) => {
     const q = search[searchKey].toLowerCase();
     const filtered = q ? items.filter((i: any) => i.name.toLowerCase().includes(q)) : items;
     return (<>
@@ -275,15 +275,10 @@ export default function PaperlessPage() {
               <FileText size={16} className="text-[var(--primary)]" /> Dokumententypen
               <span className="text-xs text-gray-400 font-normal">({data.documentTypes.length})</span>
             </h3>
-            <FavoriteList
-              items={data.documentTypes}
-              type="doctype"
-              searchKey="doctype"
-              renderItem={(item) => (
-                <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
-              )}
-            />
-            {connected && <CreateForm type="doctype" placeholder="Neuer Dokumententyp..." />}
+            {renderFavoriteList(data.documentTypes, 'doctype', 'doctype', (item) => (
+              <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
+            ))}
+            {connected && renderCreateForm('doctype', 'Neuer Dokumententyp...')}
           </div>
 
           <div className="card p-5">
@@ -291,15 +286,10 @@ export default function PaperlessPage() {
               <Users size={16} className="text-[var(--primary)]" /> Korrespondenten
               <span className="text-xs text-gray-400 font-normal">({data.correspondents.length})</span>
             </h3>
-            <FavoriteList
-              items={data.correspondents}
-              type="correspondent"
-              searchKey="correspondent"
-              renderItem={(item) => (
-                <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
-              )}
-            />
-            {connected && <CreateForm type="correspondent" placeholder="Neuer Absender..." />}
+            {renderFavoriteList(data.correspondents, 'correspondent', 'correspondent', (item) => (
+              <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
+            ))}
+            {connected && renderCreateForm('correspondent', 'Neuer Absender...')}
           </div>
 
           <div className="card p-5">
@@ -307,22 +297,15 @@ export default function PaperlessPage() {
               <Tag size={16} className="text-[var(--primary)]" /> Tags
               <span className="text-xs text-gray-400 font-normal">({data.tags.length})</span>
             </h3>
-            <FavoriteList
-              items={data.tags}
-              type="tag"
-              searchKey="tag"
-              renderItem={(item) => (
-                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                  style={{ background: item.color || '#9CA3AF' }}>
-                  {item.name}
-                </span>
-              )}
-            />
-            {connected && (
-              <CreateForm type="tag" placeholder="Neuer Tag..." extra={
-                <input type="color" value={newItem.tagColor} onChange={e => setNewItem(n => ({ ...n, tagColor: e.target.value }))}
-                  className="w-8 h-8 rounded cursor-pointer border border-gray-200 dark:border-slate-600 shrink-0" title="Farbe wählen" />
-              } />
+            {renderFavoriteList(data.tags, 'tag', 'tag', (item) => (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                style={{ background: item.color || '#9CA3AF' }}>
+                {item.name}
+              </span>
+            ))}
+            {connected && renderCreateForm('tag', 'Neuer Tag...',
+              <input type="color" value={newItem.tagColor} onChange={e => setNewItem(n => ({ ...n, tagColor: e.target.value }))}
+                className="w-8 h-8 rounded cursor-pointer border border-gray-200 dark:border-slate-600 shrink-0" title="Farbe wählen" />
             )}
           </div>
         </div>

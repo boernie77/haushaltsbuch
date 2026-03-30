@@ -1,4 +1,5 @@
 const cron = require('node-cron');
+const { randomUUID } = require('crypto');
 let activeBackupJob = null;
 let recurringJob = null;
 
@@ -117,16 +118,16 @@ async function syncAllPaperless() {
           await sequelize.query(`INSERT INTO ${table} (${cols.map(c=>`"${c}"`).join(',')}) VALUES ${ph} ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`, { bind: vals });
         };
         if (docTypes.length) await bulkUpsert('paperless_document_types',
-          docTypes.map(dt => ({ householdId: hid, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          docTypes.map(dt => ({ id: randomUUID(), householdId: hid, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
           ['householdId','paperlessId'], ['name','syncedAt','updatedAt']);
         if (correspondents.length) await bulkUpsert('paperless_correspondents',
-          correspondents.map(c => ({ householdId: hid, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          correspondents.map(c => ({ id: randomUUID(), householdId: hid, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
           ['householdId','paperlessId'], ['name','syncedAt','updatedAt']);
         if (tags.length) await bulkUpsert('paperless_tags',
-          tags.map(t => ({ householdId: hid, paperlessId: t.id, name: t.name, color: t.colour||null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          tags.map(t => ({ id: randomUUID(), householdId: hid, paperlessId: t.id, name: t.name, color: t.colour||null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
           ['householdId','paperlessId'], ['name','color','syncedAt','updatedAt']);
         if (users.length) await bulkUpsert('paperless_users',
-          users.map(u => ({ householdId: hid, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim()||u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          users.map(u => ({ id: randomUUID(), householdId: hid, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim()||u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
           ['householdId','paperlessId'], ['username','fullName','syncedAt','updatedAt']);
         console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
       } catch (err) {
