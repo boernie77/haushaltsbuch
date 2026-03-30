@@ -84,11 +84,11 @@ router.post('/analyze', auth, upload.single('receipt'), async (req, res) => {
           { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
           {
             type: 'text',
-            text: `Analysiere diesen Kassenbon/diese Quittung und extrahiere folgende Informationen als JSON:
+            text: `Heute ist der ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}. Analysiere diesen Kassenbon/diese Quittung und extrahiere folgende Informationen als JSON:
 {
   "amount": <Gesamtbetrag als Zahl, z.B. 12.50>,
   "merchant": "<Name des Händlers/Geschäfts>",
-  "date": "<Datum im Format YYYY-MM-DD, oder null>",
+  "date": "<Datum im Format YYYY-MM-DD — nutze das heutige Jahr wenn das Jahr auf dem Bon fehlt oder unklar ist, oder null>",
   "description": "<1-3 Wörter, Oberbegriff des Kaufs, z.B. 'Lebensmitteleinkauf', 'Restaurantbesuch', 'Tankfüllung', 'Apotheke' — KEINE Artikelliste>",
   "categoryId": "<passende Kategorie-ID aus dieser Liste: ${categoryList}>",
   "confidence": <0-100, wie sicher bist du>
