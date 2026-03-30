@@ -353,8 +353,8 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <button onClick={() => setAiSettings(s => ({ ...s, aiKeyPublic: !s.aiKeyPublic }))}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${aiSettings.aiKeyPublic ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}>
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiKeyPublic ? 'translate-x-7' : 'translate-x-1'}`} />
+                    className={`relative w-12 h-6 rounded-full transition-colors overflow-hidden ${aiSettings.aiKeyPublic ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}>
+                    <span className={`absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiKeyPublic ? 'translate-x-7' : 'translate-x-1'}`} />
                   </button>
                 </div>
 

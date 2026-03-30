@@ -249,9 +249,9 @@ export default function HouseholdPage() {
               </div>
               <button
                 onClick={() => setAiSettings(s => ({ ...s, aiEnabled: !s.aiEnabled }))}
-                className={`relative w-12 h-6 rounded-full transition-colors ${aiSettings.aiEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}
+                className={`relative w-12 h-6 rounded-full transition-colors overflow-hidden ${aiSettings.aiEnabled ? 'bg-[var(--primary)]' : 'bg-gray-300 dark:bg-slate-500'}`}
               >
-                <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                <span className={`absolute top-1 left-0 w-4 h-4 bg-white rounded-full shadow transition-transform ${aiSettings.aiEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
               </button>
             </div>
 
