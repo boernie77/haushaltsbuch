@@ -295,7 +295,7 @@ export default function TransactionsPage() {
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-32 truncate">{t.merchant || '—'}</td>
                   <td className={`px-4 py-3 text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-[var(--expense)]'}`}>
                     {t.type === 'income' ? '+' : '-'}{parseFloat(t.amount).toFixed(2)} €
-                    {t.isRecurring && <Repeat size={11} className="inline ml-1 opacity-40" title="Wiederkehrend" />}
+                    {t.isRecurring && <span title="Wiederkehrend"><Repeat size={11} className="inline ml-1 opacity-40" /></span>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
