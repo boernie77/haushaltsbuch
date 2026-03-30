@@ -129,6 +129,15 @@ async function syncAllPaperless() {
         if (users.length) await bulkUpsert('paperless_users',
           users.map(u => ({ id: randomUUID(), householdId: hid, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim()||u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
           ['householdId','paperlessId'], ['username','fullName','syncedAt','updatedAt']);
+
+        // In Paperless gelöschte Einträge auch lokal entfernen
+        const { Op } = require('sequelize');
+        await Promise.all([
+          PaperlessDocumentType.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: docTypes.map(d => d.id) } } }),
+          PaperlessCorrespondent.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: correspondents.map(c => c.id) } } }),
+          PaperlessTag.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: tags.map(t => t.id) } } }),
+          ...(users.length ? [PaperlessUser.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: users.map(u => u.id) } } })] : []),
+        ]);
         console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
       } catch (err) {
         console.error(`[paperless-sync] Haushalt ${config.householdId}: ${err.message}`);

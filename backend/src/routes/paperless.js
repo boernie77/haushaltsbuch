@@ -154,6 +154,15 @@ router.post('/sync/:householdId', auth, async (req, res) => {
       users.map(u => ({ id: randomUUID(), householdId, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim() || u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
       ['householdId', 'paperlessId'], ['username', 'fullName', 'syncedAt', 'updatedAt']);
 
+    // In Paperless gelöschte Einträge auch lokal entfernen
+    const { Op } = require('sequelize');
+    await Promise.all([
+      PaperlessDocumentType.destroy({ where: { householdId, paperlessId: { [Op.notIn]: docTypes.map(d => d.id) } } }),
+      PaperlessCorrespondent.destroy({ where: { householdId, paperlessId: { [Op.notIn]: correspondents.map(c => c.id) } } }),
+      PaperlessTag.destroy({ where: { householdId, paperlessId: { [Op.notIn]: tags.map(t => t.id) } } }),
+      ...(users.length ? [PaperlessUser.destroy({ where: { householdId, paperlessId: { [Op.notIn]: users.map(u => u.id) } } })] : []),
+    ]);
+
     res.json({
       synced: {
         documentTypes: docTypes.length,
