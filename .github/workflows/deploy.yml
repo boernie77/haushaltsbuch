@@ -1,8 +1,9 @@
 name: Deploy to Hetzner VPS
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    # Manuell auslösen: GitHub → Actions → "Deploy to Hetzner VPS" → Run workflow
 
 jobs:
   deploy:
