@@ -11,7 +11,7 @@ import { offlineQueue } from '../src/services/offlineStore';
 import { transactionAPI } from '../src/services/api';
 
 async function flushOfflineQueue() {
-  const queue = offlineQueue.getAll();
+  const queue = await offlineQueue.getAll();
   if (queue.length === 0) return;
   let synced = 0;
   for (const tx of queue) {
@@ -25,7 +25,7 @@ async function flushOfflineQueue() {
       form.append('householdId', tx.householdId);
       if (tx.categoryId) form.append('categoryId', tx.categoryId);
       await transactionAPI.create(form);
-      offlineQueue.remove(tx._offlineId);
+      await offlineQueue.remove(tx._offlineId);
       synced++;
     } catch {
       break; // Noch offline — aufhören

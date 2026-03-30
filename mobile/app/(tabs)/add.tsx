@@ -172,7 +172,7 @@ export default function AddTransactionScreen() {
     } catch (err: any) {
       if (isNetworkError(err) && !receiptImage) {
         // Offline: nur ohne Foto in Queue speichern
-        offlineQueue.add({
+        await offlineQueue.add({
           amount,
           description,
           merchant,

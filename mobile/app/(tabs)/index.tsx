@@ -31,13 +31,13 @@ export default function HomeScreen() {
       ]);
       setOverview(overviewRes.data);
       setBudgets(budgetRes.data.budgets);
-      cache.set(cacheKey, overviewRes.data);
-      cache.set(budgetCacheKey, budgetRes.data.budgets);
+      await cache.set(cacheKey, overviewRes.data);
+      await cache.set(budgetCacheKey, budgetRes.data.budgets);
       setOffline(false);
     } catch (err: any) {
       if (isNetworkError(err)) {
-        const cachedOverview = cache.get(cacheKey);
-        const cachedBudgets = cache.get<any[]>(budgetCacheKey);
+        const cachedOverview = await cache.get(cacheKey);
+        const cachedBudgets = await cache.get<any[]>(budgetCacheKey);
         if (cachedOverview) setOverview(cachedOverview);
         if (cachedBudgets) setBudgets(cachedBudgets);
         setOffline(true);

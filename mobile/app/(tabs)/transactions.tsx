@@ -42,7 +42,7 @@ export default function TransactionsScreen() {
       if (reset) {
         setTransactions(fetched);
         setPage(2);
-        if (!search && typeFilter === 'all') cache.set(cacheKey, fetched);
+        if (!search && typeFilter === 'all') await cache.set(cacheKey, fetched);
       } else {
         setTransactions(prev => [...prev, ...fetched]);
         setPage(p + 1);
@@ -51,10 +51,10 @@ export default function TransactionsScreen() {
       setOffline(false);
     } catch (err: any) {
       if (isNetworkError(err) && reset) {
-        const pending = offlineQueue.getAll().map(t => ({
+        const pending = (await offlineQueue.getAll()).map(t => ({
           ...t, id: t._offlineId, Category: null, _offline: true,
         }));
-        const cached = cache.get<any[]>(cacheKey) || [];
+        const cached = (await cache.get<any[]>(cacheKey)) || [];
         setTransactions([...pending.reverse(), ...cached]);
         setOffline(true);
       } else {
