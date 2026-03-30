@@ -29,6 +29,8 @@ export const transactionAPI = {
   create: (data: FormData) => api.post('/transactions', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
+  getRecurring: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  stopRecurring: (id: string) => api.delete(`/transactions/recurring/${id}`),
 };
 
 export const statsAPI = {
@@ -61,6 +63,11 @@ export const householdAPI = {
   saveAiSettings: (id: string, d: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, d),
 };
 
+export const recurringAPI = {
+  getAll: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  stop: (id: string) => api.delete(`/transactions/recurring/${id}`),
+};
+
 export const ocrAPI = {
   status: () => api.get('/ocr/status'),
   analyze: (file: File) => {
@@ -80,6 +87,7 @@ export const paperlessAPI = {
   createTag: (d: any) => api.post('/paperless/create-tag', d),
   toggleFavorite: (d: { type: string; id: string; isFavorite: boolean }) => api.put('/paperless/favorite', d),
   upload: (d: any) => api.post('/paperless/upload', d),
+  getUsers: (householdId: string) => api.get(`/paperless/users/${householdId}`),
 };
 
 export const adminAPI = {

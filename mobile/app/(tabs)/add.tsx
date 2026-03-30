@@ -3,7 +3,7 @@ import {
   View, ScrollView, StyleSheet, TouchableOpacity, Image, Alert, KeyboardAvoidingView, Platform, Dimensions
 } from 'react-native';
 import {
-  Text, TextInput, Button, useTheme, SegmentedButtons, Chip, Portal, Modal, List, ActivityIndicator, IconButton
+  Text, TextInput, Button, useTheme, SegmentedButtons, Chip, Portal, Modal, List, ActivityIndicator, IconButton, Switch
 } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../../src/store/authStore';
-import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, IMAGE_BASE_URL } from '../../src/services/api';
+import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI, IMAGE_BASE_URL } from '../../src/services/api';
 
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
@@ -31,6 +31,11 @@ export default function AddTransactionScreen() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringInterval, setRecurringInterval] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
+  const [paperlessUsers, setPaperlessUsers] = useState<any[]>([]);
+  const [ownerPaperlessUserId, setOwnerPaperlessUserId] = useState<string | null>(null);
+  const [viewPaperlessUserIds, setViewPaperlessUserIds] = useState<string[]>([]);
   const [paperlessData, setPaperlessData] = useState<any>(null);
   const [paperlessDocType, setPaperlessDocType] = useState<any>(null);
   const [paperlessCorrespondent, setPaperlessCorrespondent] = useState<any>(null);
@@ -96,6 +101,14 @@ export default function AddTransactionScreen() {
     }
   };
 
+  useEffect(() => {
+    if (currentHousehold && paperlessUsers.length === 0) {
+      paperlessAPI.getUsers(currentHousehold.id)
+        .then(({ data }) => setPaperlessUsers(data.users || []))
+        .catch(() => {});
+    }
+  }, [currentHousehold]);
+
   const loadPaperlessData = async () => {
     if (!currentHousehold || paperlessData) return;
     try {
@@ -127,6 +140,10 @@ export default function AddTransactionScreen() {
       if (receiptImage) {
         form.append('receipt', { uri: receiptImage, type: 'image/jpeg', name: 'receipt.jpg' } as any);
       }
+      if (isRecurring) {
+        form.append('isRecurring', 'true');
+        form.append('recurringInterval', recurringInterval);
+      }
 
       const { data } = await transactionAPI.create(form);
 
@@ -138,7 +155,9 @@ export default function AddTransactionScreen() {
             documentTypeId: paperlessDocType?.id,
             correspondentId: paperlessCorrespondent?.id,
             tagIds: JSON.stringify(paperlessTags.map((t: any) => t.id)),
-            title: description || merchant || `Quittung ${date}`
+            title: description || merchant || `Quittung ${date}`,
+            ownerPaperlessUserId: ownerPaperlessUserId || undefined,
+            viewPaperlessUserIds: viewPaperlessUserIds.length ? JSON.stringify(viewPaperlessUserIds) : undefined,
           });
           Toast.show({ type: 'success', text1: '📄 An Paperless übertragen' });
         } catch {}
@@ -229,6 +248,25 @@ export default function AddTransactionScreen() {
             left={<TextInput.Icon icon="calendar" />}
           />
 
+          {/* Wiederkehrende Buchung */}
+          <View style={styles.recurringRow}>
+            <MaterialCommunityIcons name="repeat" size={18} color={theme.colors.primary} />
+            <Text style={[styles.label, { color: theme.colors.onSurface, marginTop: 0, marginBottom: 0, marginLeft: 8, flex: 1 }]}>
+              Wiederkehrende Buchung
+            </Text>
+            <Switch value={isRecurring} onValueChange={setIsRecurring} color={theme.colors.primary} />
+          </View>
+          {isRecurring && (
+            <View style={styles.chipRow}>
+              {(['weekly', 'monthly', 'yearly'] as const).map(iv => (
+                <Chip key={iv} selected={recurringInterval === iv} onPress={() => setRecurringInterval(iv)}
+                  style={{ marginRight: 8 }} selectedColor={theme.colors.primary}>
+                  {iv === 'weekly' ? 'Wöchentlich' : iv === 'monthly' ? 'Monatlich' : 'Jährlich'}
+                </Chip>
+              ))}
+            </View>
+          )}
+
           {/* Category */}
           <TouchableOpacity
             style={[styles.categoryPicker, { borderColor: theme.colors.outline, borderRadius: theme.roundness }]}
@@ -309,7 +347,7 @@ export default function AddTransactionScreen() {
               </>}
               {paperlessData.tags.length > 0 && <>
                 <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Tags</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                   {paperlessData.tags.map((t: any) => (
                     <Chip key={t.id} selected={paperlessTags.some((pt: any) => pt.id === t.id)}
                       onPress={() => {
@@ -317,6 +355,30 @@ export default function AddTransactionScreen() {
                         setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
                       }}
                       style={styles.chip}>{t.name}</Chip>
+                  ))}
+                </ScrollView>
+              </>}
+              {paperlessUsers.length > 0 && <>
+                <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Eigentümer</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  <Chip selected={!ownerPaperlessUserId} onPress={() => setOwnerPaperlessUserId(null)} style={styles.chip}>Standard</Chip>
+                  {paperlessUsers.map((u: any) => (
+                    <Chip key={u.id} selected={ownerPaperlessUserId === String(u.id)}
+                      onPress={() => setOwnerPaperlessUserId(ownerPaperlessUserId === String(u.id) ? null : String(u.id))}
+                      style={styles.chip}>{u.fullName || u.username}</Chip>
+                  ))}
+                </ScrollView>
+              </>}
+              {paperlessUsers.length > 1 && <>
+                <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Sichtbar für</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {paperlessUsers.map((u: any) => (
+                    <Chip key={u.id} selected={viewPaperlessUserIds.includes(String(u.id))}
+                      onPress={() => {
+                        const id = String(u.id);
+                        setViewPaperlessUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+                      }}
+                      style={styles.chip}>{u.fullName || u.username}</Chip>
                   ))}
                 </ScrollView>
               </>}
@@ -394,6 +456,8 @@ const styles = StyleSheet.create({
   receiptButton: { flex: 1 },
   paperlessSection: { padding: 12, marginBottom: 12 },
   chipLabel: { fontSize: 12, opacity: 0.6, marginBottom: 4, fontWeight: '500' },
+  recurringRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginTop: 4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
   chip: { marginRight: 8 },
   saveButton: { marginTop: 8, elevation: 2 },
   saveButtonContent: { paddingVertical: 8 },

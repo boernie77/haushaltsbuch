@@ -73,6 +73,10 @@ const Transaction = sequelize.define('Transaction', {
   isConfirmed:     { type: DataTypes.BOOLEAN, defaultValue: true, comment: 'False = OCR suggestion pending review' },
   merchant:        { type: DataTypes.STRING, allowNull: true },
   tags:            { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
+  isRecurring:        { type: DataTypes.BOOLEAN, defaultValue: false },
+  recurringInterval:  { type: DataTypes.STRING(20), allowNull: true, comment: 'weekly | monthly | yearly' },
+  recurringDay:       { type: DataTypes.INTEGER, allowNull: true, comment: 'Day of month (1-28) for monthly' },
+  recurringNextDate:  { type: DataTypes.DATEONLY, allowNull: true },
 }, { tableName: 'transactions', timestamps: true });
 
 // ── Budget ────────────────────────────────────────────────────────────────────

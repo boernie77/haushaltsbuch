@@ -59,13 +59,61 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// GET /api/transactions/recurring?householdId=
+router.get('/recurring', auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    if (!householdId) return res.status(400).json({ error: 'householdId required' });
+    const access = await checkHouseholdAccess(req.user.id, householdId);
+    if (!access) return res.status(403).json({ error: 'Access denied' });
+
+    const rows = await Transaction.findAll({
+      where: { householdId, isRecurring: true },
+      include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }],
+      order: [['recurringNextDate', 'ASC']]
+    });
+    res.json({ recurring: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch recurring' });
+  }
+});
+
+// DELETE /api/transactions/recurring/:id — Wiederkehrende Buchung beenden
+router.delete('/recurring/:id', auth, async (req, res) => {
+  try {
+    const t = await Transaction.findByPk(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Not found' });
+    const access = await checkHouseholdAccess(req.user.id, t.householdId);
+    if (!access) return res.status(403).json({ error: 'Access denied' });
+    await t.update({ isRecurring: false, recurringNextDate: null });
+    res.json({ message: 'Recurring stopped' });
+  } catch {
+    res.status(500).json({ error: 'Failed' });
+  }
+});
+
 // POST /api/transactions
 router.post('/', auth, upload.single('receipt'), async (req, res) => {
   try {
-    const { amount, description, note, date, type, categoryId, householdId, merchant, tags, isConfirmed } = req.body;
+    const { amount, description, note, date, type, categoryId, householdId, merchant, tags, isConfirmed,
+            isRecurring, recurringInterval, recurringDay } = req.body;
 
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
+
+    // Erstes Fälligkeitsdatum berechnen
+    let recurringNextDate = null;
+    if (isRecurring === 'true' && recurringInterval && date) {
+      const { processRecurringTransactions: _, ...cronUtils } = require('../services/cronService');
+      const txDate = new Date(date);
+      if (recurringInterval === 'weekly') {
+        recurringNextDate = new Date(txDate); recurringNextDate.setDate(txDate.getDate() + 7);
+      } else if (recurringInterval === 'monthly') {
+        recurringNextDate = new Date(txDate); recurringNextDate.setMonth(txDate.getMonth() + 1);
+      } else if (recurringInterval === 'yearly') {
+        recurringNextDate = new Date(txDate); recurringNextDate.setFullYear(txDate.getFullYear() + 1);
+      }
+    }
 
     const transaction = await Transaction.create({
       amount: parseFloat(amount),
@@ -80,6 +128,10 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
       tags: tags ? JSON.parse(tags) : [],
       receiptImage: req.file ? `/uploads/${req.file.filename}` : null,
       isConfirmed: isConfirmed !== 'false',
+      isRecurring: isRecurring === 'true',
+      recurringInterval: isRecurring === 'true' ? recurringInterval : null,
+      recurringDay: recurringDay ? parseInt(recurringDay) : null,
+      recurringNextDate,
     });
 
     const full = await Transaction.findByPk(transaction.id, {

@@ -93,4 +93,10 @@ export const paperlessAPI = {
   createTag: (data: any) => api.post('/paperless/create-tag', data),
   toggleFavorite: (data: { type: string; id: string; isFavorite: boolean }) => api.put('/paperless/favorite', data),
   upload: (data: any) => api.post('/paperless/upload', data),
+  getUsers: (householdId: string) => api.get(`/paperless/users/${householdId}`),
+};
+
+export const recurringAPI = {
+  getAll: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  stop: (id: string) => api.delete(`/transactions/recurring/${id}`),
 };

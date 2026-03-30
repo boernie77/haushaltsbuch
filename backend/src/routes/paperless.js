@@ -199,10 +199,22 @@ router.post('/create-tag', auth, async (req, res) => {
   }
 });
 
+// GET /api/paperless/users/:householdId — Benutzer aus Paperless laden
+router.get('/users/:householdId', auth, async (req, res) => {
+  try {
+    if (!await checkAccess(req.user.id, req.params.householdId)) return res.status(403).json({ error: 'Access denied' });
+    const client = await getPaperlessClient(req.params.householdId);
+    const users = await fetchAllPages(`${client.baseURL}/api/users/`, client.headers);
+    res.json({ users: users.map(u => ({ id: u.id, username: u.username, fullName: `${u.first_name} ${u.last_name}`.trim() || u.username })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch Paperless users: ' + err.message });
+  }
+});
+
 // POST /api/paperless/upload
 router.post('/upload', auth, async (req, res) => {
   try {
-    const { transactionId, documentTypeId, correspondentId, tagIds, title } = req.body;
+    const { transactionId, documentTypeId, correspondentId, tagIds, title, ownerPaperlessUserId, viewPaperlessUserIds } = req.body;
     const transaction = await Transaction.findByPk(transactionId);
     if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
     if (!await checkAccess(req.user.id, transaction.householdId)) return res.status(403).json({ error: 'Access denied' });
@@ -223,13 +235,45 @@ router.post('/upload', auth, async (req, res) => {
     if (docType?.paperlessId) form.append('document_type', docType.paperlessId);
     if (correspondent?.paperlessId) form.append('correspondent', correspondent.paperlessId);
     tags.forEach(t => { if (t.paperlessId) form.append('tags', t.paperlessId); });
+    if (ownerPaperlessUserId) form.append('owner', ownerPaperlessUserId);
 
     const response = await axios.post(`${client.baseURL}/api/documents/post_document/`, form, {
       headers: { ...client.headers, ...form.getHeaders(), 'Content-Type': undefined }
     });
 
-    await transaction.update({ paperlessDocId: response.data });
-    res.json({ paperlessDocId: response.data, message: 'Uploaded to Paperless' });
+    // Dokument-ID aus Task-Response — Paperless gibt Task-UUID zurück, nicht direkt die Doc-ID
+    // Wir speichern die Task-UUID vorerst und versuchen nach kurzer Wartezeit die Doc-ID zu holen
+    const taskId = response.data;
+    let paperlessDocId = null;
+
+    // Bis zu 10s warten bis das Dokument indexiert ist
+    for (let i = 0; i < 5; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const taskRes = await axios.get(`${client.baseURL}/api/tasks/?task_id=${taskId}`, { headers: client.headers });
+        const task = taskRes.data?.results?.[0] || taskRes.data?.[0];
+        if (task?.status === 'SUCCESS' && task?.related_document) {
+          paperlessDocId = task.related_document;
+          break;
+        }
+      } catch {}
+    }
+
+    // Berechtigungen setzen falls Benutzer ausgewählt
+    if (paperlessDocId && viewPaperlessUserIds) {
+      const viewIds = JSON.parse(viewPaperlessUserIds);
+      if (viewIds.length > 0) {
+        try {
+          await axios.patch(`${client.baseURL}/api/documents/${paperlessDocId}/`,
+            { set_permissions: { view: { users: viewIds, groups: [] }, change: { users: [], groups: [] } } },
+            { headers: client.headers }
+          );
+        } catch {}
+      }
+    }
+
+    await transaction.update({ paperlessDocId: paperlessDocId || taskId });
+    res.json({ paperlessDocId: paperlessDocId || taskId, message: 'Uploaded to Paperless' });
   } catch (err) {
     res.status(500).json({ error: 'Upload failed: ' + err.message });
   }

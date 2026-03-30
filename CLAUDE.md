@@ -4,14 +4,14 @@
 Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanalyse.
 - **GitHub:** https://github.com/boernie77/haushaltsbuch (privat)
 - **Produktion:** https://haushalt.bernauer24.com (Hetzner VPS 37.27.193.27)
-- **Deployment:** Docker Compose, manueller Deploy via GitHub Actions (`workflow_dispatch`)
+- **Deployment:** Docker Compose, **automatischer Deploy bei jedem Push auf `main`** via GitHub Actions
 
 ## Stack
 | Bereich | Technologie |
 |---------|-------------|
 | Backend | Node.js/Express, Sequelize ORM, PostgreSQL |
 | Web | React + Vite + Tailwind CSS, React Router v6, Recharts |
-| Mobile | React Native + Expo, expo-router, react-native-paper, Zustand |
+| Mobile | React Native + Expo SDK 52, expo-router, react-native-paper, Zustand |
 | Auth | JWT (30 Tage), bcryptjs |
 | KI/OCR | Anthropic Claude API (`claude-opus-4-6`) |
 | SFTP-Backup | ssh2-sftp-client |
@@ -25,8 +25,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             Migrationsfiles (001-initial, 002-backup, 003-invite-type)
-│       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, …)
+│       ├── migrations/             Migrationsfiles (001-initial, 002-backup, 003-invite-type, 004-paperless-favorites)
+│       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
 │       │   └── cronService.js      Cron-Job für automatische Backups
@@ -37,18 +37,19 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 ├── web/
 │   └── src/
 │       ├── pages/                  Alle Seiten
-│       ├── services/api.ts         Axios-Wrapper (transactionAPI, householdAPI, adminAPI, backupAPI, ocrAPI, …)
+│       ├── services/api.ts         Axios-Wrapper (transactionAPI, householdAPI, adminAPI, backupAPI, ocrAPI, paperlessAPI…)
 │       ├── store/authStore.ts      Zustand Store
 │       └── components/Layout.tsx  Sidebar + Household-Switcher
 ├── mobile/
 │   ├── app/                        expo-router Screens
+│   ├── ios/                        Natives iOS-Projekt (nach expo prebuild generiert)
 │   └── src/
 │       ├── services/api.ts         Mobile Axios-Wrapper
 │       ├── store/authStore.ts      Zustand + SecureStore
 │       └── themes/index.ts         Feminine/Masculine Themes
 ├── docker-compose.yml
 ├── CLAUDE.md
-└── .github/workflows/deploy.yml   Manueller SSH-Deploy (workflow_dispatch)
+└── .github/workflows/deploy.yml   Auto-Deploy bei push auf main + workflow_dispatch
 ```
 
 ## Datenmodelle
@@ -61,7 +62,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - **GlobalSettings**: id='global', anthropicApiKey, aiKeyPublic (single-row)
 - **InviteCode**: code, **type** (new_household|add_member), householdId, role, useCount, maxUses, expiresAt
 - **BackupConfig**: sftpHost, sftpPort, sftpUser, sftpPassword, sftpPath, schedule, scheduleLabel, isActive, lastRunAt, lastRunStatus
-- **PaperlessConfig/DocumentType/Correspondent/Tag**: householdId-basiert
+- **PaperlessConfig/DocumentType/Correspondent/Tag**: householdId-basiert, jeweils mit `isFavorite`-Feld
 
 ## Einladungs- und Registrierungslogik
 Zwei Arten von Einladungscodes:
@@ -82,6 +83,22 @@ Eigener leichtgewichtiger Runner (`src/utils/migrate.js`):
 - Alle Migrations-SQL verwenden `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` → sicher auf bestehenden DBs
 - Wird automatisch bei Server-Start ausgeführt (vor `app.listen`)
 - Für neue DB-Änderungen: neues File in `src/migrations/` anlegen, niemals `sync()` verwenden
+
+### ⚠️ KRITISCH: Migrations-Signatur
+Der Runner übergibt `sequelize` (die Instanz) direkt — **NICHT** `queryInterface`!
+```js
+// RICHTIG:
+module.exports = {
+  up: async (sequelize) => {
+    await sequelize.query(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`);
+  }
+};
+
+// FALSCH (crasht den Server!):
+module.exports = {
+  async up(queryInterface, Sequelize) { ... }
+};
+```
 
 ## Backup-System
 **Haushalt-Backup** (jeder Nutzer für seinen Haushalt):
@@ -104,9 +121,25 @@ Eigener leichtgewichtiger Runner (`src/utils/migrate.js`):
 
 API-Key-Validierung: Beim Speichern wird gegen `claude-haiku-4-5-20251001` getestet (max_tokens: 5).
 
+## Paperless-Integration
+- **Sync:** Vollständige Paginierung via `fetchAllPages()` (kein Item-Limit!)
+- **Favoriten:** `isFavorite`-Flag auf DocumentType, Correspondent, Tag (Migration 004)
+- **Upload-Dialog:** Zeigt nur Favoriten (im Web: TransactionsPage, in der App)
+- **Duplikatschutz:** Vor dem Erstellen wird Paperless-API auf vorhandenen Namen geprüft
+- **Suche:** Suchfelder in allen Listen (Web: PaperlessPage, Mobile: paperless-settings.tsx)
+- API: `PUT /api/paperless/favorite` — togglet `isFavorite` für type+id
+- Neue Routen: `/paperless/create-type`, `/paperless/create-correspondent`, `/paperless/create-tag`
+
+## Haushalt löschen
+- `DELETE /api/households/:id` — nur Admin, mindestens 1 anderer Haushalt muss verbleiben
+- Kaskadiert: Transactions, Budgets, Categories (non-system), InviteCodes, alle Paperless-Daten, HouseholdMembers
+- Web (HouseholdPage) + Mobile (household.tsx): Löschen-Button nur sichtbar wenn `households.length > 1`
+
 ## Deployment
 ```bash
-# Manuell via GitHub Actions (Actions → Deploy to Hetzner VPS → Run workflow)
+# Automatisch bei push auf main (GitHub Actions)
+# Oder manuell: Actions → Deploy to Hetzner VPS → Run workflow
+
 # Deploy-Script führt automatisch aus:
 #   1. git pull
 #   2. docker-compose build --no-cache
@@ -119,6 +152,40 @@ ssh -i ~/.ssh/emailrelay_vps root@37.27.193.27
 cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 ```
 
+## iOS Mobile App
+- **Expo SDK 52**, expo-router
+- **Bundle ID:** `de.bernauer24.haushaltsbuch`
+- **Apple Development Team:** APPLE-TEAM-ID (Persönliches Team)
+- **Signing:** Automatic (Xcode verwaltet Provisioning Profile)
+- **Testgerät:** Physisches iPhone, App läuft als **Release-Build** (kein Metro!)
+- **Push Notifications:** NICHT aktiviert (persönliche Teams unterstützen das nicht)
+  - `aps-environment` muss aus `.entitlements`-Datei entfernt bleiben
+  - `expo-notifications` Plugin darf nicht in `app.json` stehen
+
+### iOS neu bauen (nach JS-Änderungen):
+Da die App als Release-Build läuft, muss bei jeder Änderung neu gebaut werden:
+1. **⇧⌘K** — Clean Build Folder
+2. **⌘R** — Build & Run
+
+### Metro (Debug-Build) für Entwicklung:
+Wenn Debug-Build gewünscht, muss Metro-URL in `AppDelegate.mm` auf Mac-LAN-IP zeigen:
+```objc
+- (NSURL *)bundleURL {
+#if DEBUG
+  return [NSURL URLWithString:@"http://192.168.2.229:8081/.expo/.virtual-metro-entry.bundle?platform=ios&dev=true&hot=false&lazy=true"];
+#else
+  return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+#endif
+}
+```
+**Achtung:** Die IP 192.168.2.229 ist die Mac-LAN-IP — kann sich ändern!
+
+### iOS Rebuild nach nativen Änderungen (app.json, neue native Module):
+```bash
+cd mobile && expo prebuild --clean
+# Danach in Xcode: Team + Bundle ID prüfen, dann bauen
+```
+
 ## Wichtige Konventionen
 - VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
 - SSH-Key für VPS: `~/.ssh/emailrelay_vps`
@@ -129,3 +196,4 @@ cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 - Themes: `feminine` = rosa/hell, `masculine` = dunkelblau
 - API-Routes unter `/api/...` (Caddy → Port 8081 → nginx → Backend Port 3001)
 - **Niemals** `sequelize.sync()` in Produktion — nur Migrations-Runner verwenden
+- **Migrations-Parameter:** `sequelize` (Instanz), nicht `queryInterface`!
