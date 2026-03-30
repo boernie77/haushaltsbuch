@@ -335,10 +335,9 @@ router.post('/upload', auth, async (req, res) => {
     });
 
     const taskId = response.data;
-    await transaction.update({ paperlessDocId: taskId });
 
-    // Sofort antworten — Polling + Berechtigungen im Hintergrund
-    res.json({ paperlessDocId: taskId, message: 'Uploaded to Paperless' });
+    // Sofort antworten — paperlessDocId wird im Hintergrund gesetzt wenn Paperless fertig indexiert hat
+    res.json({ taskId, message: 'Uploaded to Paperless' });
 
     // Hintergrund: auf Indexierung warten und Berechtigungen setzen
     (async () => {
