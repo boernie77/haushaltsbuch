@@ -73,9 +73,10 @@ export const householdAPI = {
 
 // ── OCR API ───────────────────────────────────────────────────────────────────
 export const ocrAPI = {
-  analyze: (imageUri: string) => {
+  analyze: (imageUri: string, householdId?: string) => {
     const form = new FormData();
     form.append('receipt', { uri: imageUri, type: 'image/jpeg', name: 'receipt.jpg' } as any);
+    if (householdId) form.append('householdId', householdId);
     return api.post('/ocr/analyze', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   }
 };

@@ -67,10 +67,18 @@ export default function AddTransactionScreen() {
     }
   };
 
+  const discardReceipt = () => {
+    setReceiptImage(null);
+    setShowPaperless(false);
+    setPaperlessDocType(null);
+    setPaperlessCorrespondent(null);
+    setPaperlessTags([]);
+  };
+
   const analyzeReceipt = async (uri: string) => {
     setOcrLoading(true);
     try {
-      const { data } = await ocrAPI.analyze(uri);
+      const { data } = await ocrAPI.analyze(uri, currentHousehold?.id);
       const r = data.result;
       if (r.amount) setAmount(r.amount.toString());
       if (r.merchant) setMerchant(r.merchant);
@@ -237,7 +245,18 @@ export default function AddTransactionScreen() {
               </View>
             )}
             {receiptImage && (
-              <Image source={{ uri: receiptImage }} style={styles.receiptImage} />
+              <>
+                <Image source={{ uri: receiptImage }} style={styles.receiptImage} />
+                <Button
+                  mode="outlined"
+                  onPress={discardReceipt}
+                  icon="close"
+                  textColor={theme.colors.error}
+                  style={{ borderColor: theme.colors.error + '60', marginBottom: 8 }}
+                >
+                  Quittung verwerfen
+                </Button>
+              </>
             )}
             <View style={styles.receiptButtons}>
               <Button mode="outlined" onPress={takePhoto} icon="camera" style={styles.receiptButton}>
