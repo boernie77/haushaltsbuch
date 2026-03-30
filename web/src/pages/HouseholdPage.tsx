@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Pencil, Check, X } from 'lucide-react';
+import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Pencil, Check, X, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
@@ -15,6 +15,20 @@ export default function HouseholdPage() {
   // Rename state
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState('');
+
+  const handleDelete = async () => {
+    if (!currentHousehold) return;
+    if (!confirm(`Haushaltsbuch „${currentHousehold.name}" wirklich löschen?\n\nAlle Buchungen, Budgets und Einstellungen werden unwiderruflich gelöscht!`)) return;
+    try {
+      await householdAPI.remove(currentHousehold.id);
+      const remaining = households.filter(h => h.id !== currentHousehold.id);
+      setHouseholds(remaining);
+      setCurrentHousehold(remaining[0] || null);
+      toast.success('Haushaltsbuch gelöscht');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Fehler beim Löschen');
+    }
+  };
 
   const handleRename = async () => {
     if (!currentHousehold || !newName.trim()) return;
@@ -178,6 +192,14 @@ export default function HouseholdPage() {
                 <div><span className="text-gray-500">Monatsbudget:</span> <span className="font-medium">{currentHousehold.monthlyBudget} €</span></div>
               )}
             </div>
+            {households.length > 1 && (
+              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
+                <button onClick={handleDelete}
+                  className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 hover:underline">
+                  <Trash2 size={14} /> Haushaltsbuch löschen
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Members */}

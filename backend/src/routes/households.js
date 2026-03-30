@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Household, HouseholdMember, User, InviteCode } = require('../models');
+const { Household, HouseholdMember, User, InviteCode, Transaction, Budget, Category, PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag } = require('../models');
 const { auth } = require('../middleware/auth');
 const crypto = require('crypto');
 
@@ -159,6 +159,42 @@ router.put('/:id/ai-settings', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to save AI settings' });
+  }
+});
+
+// DELETE /api/households/:id — Haushalt löschen (nur Admin)
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const household = await Household.findByPk(id);
+    if (!household) return res.status(404).json({ error: 'Haushalt nicht gefunden' });
+
+    // Nur der Haushalt-Admin darf löschen
+    const membership = await HouseholdMember.findOne({ where: { householdId: id, userId: req.user.id, role: 'admin' } });
+    if (!membership) return res.status(403).json({ error: 'Nur der Haushalt-Admin kann löschen' });
+
+    // Sicherstellen, dass der Nutzer noch mindestens einen anderen Haushalt hat
+    const otherHouseholds = await HouseholdMember.count({ where: { userId: req.user.id, householdId: { [require('sequelize').Op.ne]: id } } });
+    if (otherHouseholds === 0) return res.status(400).json({ error: 'Das letzte Haushaltsbuch kann nicht gelöscht werden' });
+
+    // Alle abhängigen Daten löschen
+    await Promise.all([
+      Transaction.destroy({ where: { householdId: id } }),
+      Budget.destroy({ where: { householdId: id } }),
+      Category.destroy({ where: { householdId: id, isSystem: false } }),
+      InviteCode.destroy({ where: { householdId: id } }),
+      PaperlessDocumentType.destroy({ where: { householdId: id } }),
+      PaperlessCorrespondent.destroy({ where: { householdId: id } }),
+      PaperlessTag.destroy({ where: { householdId: id } }),
+      PaperlessConfig.destroy({ where: { householdId: id } }),
+      HouseholdMember.destroy({ where: { householdId: id } }),
+    ]);
+    await household.destroy();
+
+    res.json({ message: 'Haushalt gelöscht' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Fehler beim Löschen' });
   }
 });
 

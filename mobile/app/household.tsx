@@ -72,6 +72,31 @@ export default function HouseholdScreen() {
     ]);
   };
 
+  const handleDelete = () => {
+    if (!currentHousehold || households.length <= 1) return;
+    Alert.alert(
+      'Haushaltsbuch löschen',
+      `„${currentHousehold.name}" wirklich löschen?\n\nAlle Buchungen, Budgets und Einstellungen werden unwiderruflich gelöscht!`,
+      [
+        { text: 'Abbrechen', style: 'cancel' },
+        {
+          text: 'Löschen', style: 'destructive', onPress: async () => {
+            try {
+              await householdAPI.remove(currentHousehold.id);
+              const remaining = households.filter(h => h.id !== currentHousehold.id);
+              setHouseholds(remaining);
+              setCurrentHousehold(remaining[0] || null);
+              Toast.show({ type: 'success', text1: 'Haushaltsbuch gelöscht' });
+              router.back();
+            } catch (err: any) {
+              Toast.show({ type: 'error', text1: err.response?.data?.error || 'Fehler beim Löschen' });
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
 
   return (
@@ -184,6 +209,19 @@ export default function HouseholdScreen() {
             ))
           )}
         </View>
+
+        {/* Haushalt löschen */}
+        {households.length > 1 && (
+          <Button
+            mode="outlined"
+            icon="delete"
+            textColor={theme.colors.error}
+            style={{ marginHorizontal: 16, marginTop: 8, borderColor: theme.colors.error + '60' }}
+            onPress={handleDelete}
+          >
+            Haushaltsbuch löschen
+          </Button>
+        )}
       </ScrollView>
     </View>
   );

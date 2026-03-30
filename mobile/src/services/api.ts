@@ -65,6 +65,7 @@ export const householdAPI = {
   update: (id: string, data: any) => api.put(`/households/${id}`, data),
   getMembers: (id: string) => api.get(`/households/${id}/members`),
   createInvite: (id: string, data: any) => api.post(`/households/${id}/invite`, data),
+  remove: (id: string) => api.delete(`/households/${id}`),
   removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
   getAiSettings: (id: string) => api.get(`/households/${id}/ai-settings`),
   saveAiSettings: (id: string, data: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, data),
