@@ -24,6 +24,7 @@ export default function PaperlessSettingsScreen() {
   const [hasConfig, setHasConfig] = useState(false);
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<TabKey>('config');
+  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '' });
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -88,14 +89,26 @@ export default function PaperlessSettingsScreen() {
     { key: 'tags', label: 'Tags', icon: 'tag-multiple' },
   ];
 
-  const renderList = (items: any[], type: string, renderLabel: (item: any) => React.ReactNode) => (
-    <View>
-      {(!items || items.length === 0) ? (
+  const renderList = (items: any[], type: string, searchKey: keyof typeof search, renderLabel: (item: any) => React.ReactNode) => {
+    const q = search[searchKey].toLowerCase();
+    const filtered = q ? (items || []).filter((i: any) => i.name.toLowerCase().includes(q)) : (items || []);
+    return (<View>
+      <View style={[styles.searchRow, { borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}>
+        <MaterialCommunityIcons name="magnify" size={16} color={theme.colors.onSurface + '60'} />
+        <RNTextInput
+          style={{ flex: 1, color: theme.colors.onSurface, fontSize: 14, marginLeft: 6 }}
+          placeholder="Suchen..."
+          placeholderTextColor={theme.colors.onSurface + '50'}
+          value={search[searchKey]}
+          onChangeText={v => setSearch(s => ({ ...s, [searchKey]: v }))}
+        />
+      </View>
+      {filtered.length === 0 ? (
         <Text style={{ color: theme.colors.onSurface, opacity: 0.5, textAlign: 'center', marginTop: 32 }}>
-          Noch keine Daten — zuerst synchronisieren
+          {q ? 'Keine Treffer' : 'Noch keine Daten — zuerst synchronisieren'}
         </Text>
       ) : (
-        items.map((item: any) => (
+        filtered.map((item: any) => (
           <View key={item.id} style={[styles.listRow, { borderBottomColor: theme.colors.onSurface + '15' }]}>
             <View style={{ flex: 1 }}>{renderLabel(item)}</View>
             <TouchableOpacity onPress={() => toggleFavorite(type, item.id, item.isFavorite)} style={styles.starBtn}>
@@ -108,8 +121,8 @@ export default function PaperlessSettingsScreen() {
           </View>
         ))
       )}
-    </View>
-  );
+    </View>);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -187,7 +200,7 @@ export default function PaperlessSettingsScreen() {
               <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
                 Dokumententypen ({data?.documentTypes?.length || 0})
               </Text>
-              {renderList(data?.documentTypes || [], 'doctype', (item) => (
+              {renderList(data?.documentTypes || [], 'doctype', 'doctype', (item) => (
                 <Text style={{ color: theme.colors.onSurface, fontSize: 15 }}>{item.name}</Text>
               ))}
             </View>
@@ -198,7 +211,7 @@ export default function PaperlessSettingsScreen() {
               <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
                 Korrespondenten ({data?.correspondents?.length || 0})
               </Text>
-              {renderList(data?.correspondents || [], 'correspondent', (item) => (
+              {renderList(data?.correspondents || [], 'correspondent', 'correspondent', (item) => (
                 <Text style={{ color: theme.colors.onSurface, fontSize: 15 }}>{item.name}</Text>
               ))}
             </View>
@@ -209,7 +222,7 @@ export default function PaperlessSettingsScreen() {
               <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
                 Tags ({data?.tags?.length || 0})
               </Text>
-              {renderList(data?.tags || [], 'tag', (item) => (
+              {renderList(data?.tags || [], 'tag', 'tag', (item) => (
                 <View style={[styles.tagChip, { backgroundColor: item.color || '#9CA3AF' }]}>
                   <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{item.name}</Text>
                 </View>
@@ -233,6 +246,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '500', marginBottom: 6, marginTop: 8 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 4 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 8 },
   listRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
   starBtn: { padding: 4 },
   tagChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },

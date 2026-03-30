@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, FileText, Users, Tag, Star } from 'lucide-react';
+import { Save, RefreshCw, FileText, Users, Tag, Star, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { paperlessAPI } from '../services/api';
@@ -11,6 +11,7 @@ export default function PaperlessPage() {
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '' });
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -62,12 +63,25 @@ export default function PaperlessPage() {
     }
   };
 
-  const FavoriteList = ({ items, type, renderItem }: { items: any[], type: string, renderItem: (item: any) => React.ReactNode }) => (
-    <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-      {items.length === 0 && (
-        <p className="text-sm text-gray-400 text-center py-4">Noch keine Daten — zuerst synchronisieren</p>
+  const FavoriteList = ({ items, type, searchKey, renderItem }: { items: any[], type: string, searchKey: keyof typeof search, renderItem: (item: any) => React.ReactNode }) => {
+    const q = search[searchKey].toLowerCase();
+    const filtered = q ? items.filter((i: any) => i.name.toLowerCase().includes(q)) : items;
+    return (<>
+      <div className="relative mb-2">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          className="input pl-7 py-1.5 text-sm"
+          placeholder="Suchen..."
+          value={search[searchKey]}
+          onChange={e => setSearch(s => ({ ...s, [searchKey]: e.target.value }))}
+        />
+      </div>
+      <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+      {filtered.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-4">{q ? 'Keine Treffer' : 'Noch keine Daten — zuerst synchronisieren'}</p>
       )}
-      {items.map((item: any) => (
+      {filtered.map((item: any) => (
         <div key={item.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 group">
           <div className="flex-1 min-w-0">{renderItem(item)}</div>
           <button
@@ -79,8 +93,9 @@ export default function PaperlessPage() {
           </button>
         </div>
       ))}
-    </div>
-  );
+      </div>
+    </>);
+  };
 
   const favorites = data ? {
     documentTypes: data.documentTypes.filter((x: any) => x.isFavorite),
@@ -167,6 +182,7 @@ export default function PaperlessPage() {
             <FavoriteList
               items={data.documentTypes}
               type="doctype"
+              searchKey="doctype"
               renderItem={(item) => (
                 <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
               )}
@@ -181,6 +197,7 @@ export default function PaperlessPage() {
             <FavoriteList
               items={data.correspondents}
               type="correspondent"
+              searchKey="correspondent"
               renderItem={(item) => (
                 <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
               )}
@@ -195,6 +212,7 @@ export default function PaperlessPage() {
             <FavoriteList
               items={data.tags}
               type="tag"
+              searchKey="tag"
               renderItem={(item) => (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
                   style={{ background: item.color || '#9CA3AF' }}>
