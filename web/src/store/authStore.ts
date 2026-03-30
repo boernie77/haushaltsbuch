@@ -69,6 +69,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       const { data } = await api.get('/auth/me');
       set({ token, user: data.user, isAuthenticated: true });
+      // Also load households so page-refresh works without re-login
+      const { data: hd } = await api.get('/households');
+      if (hd.households?.length > 0) {
+        set(state => ({
+          households: hd.households,
+          currentHousehold: state.currentHousehold ?? hd.households[0],
+        }));
+      }
     } catch {
       localStorage.removeItem('auth_token');
     }

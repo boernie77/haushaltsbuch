@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
-import { Text, Card, useTheme, Searchbar, Chip, FAB, ActivityIndicator } from 'react-native-paper';
+import { Text, Card, useTheme, Chip, FAB, ActivityIndicator } from 'react-native-paper';
+import { TextInput } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { format } from 'date-fns';
@@ -83,16 +84,14 @@ export default function TransactionsScreen() {
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <Text style={styles.headerTitle}>Buchungen</Text>
         <Text style={[styles.headerSub, { marginBottom: 12 }]}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
-        <Searchbar
-          placeholder="Suchen..."
+        <TextInput
+          placeholder="🔍  Suchen..."
+          placeholderTextColor="rgba(255,255,255,0.6)"
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={() => load(true)}
-          style={[styles.searchbar, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
-          inputStyle={{ color: '#fff' }}
-          iconColor="rgba(255,255,255,0.7)"
-          placeholderTextColor="rgba(255,255,255,0.6)"
-          elevation={0}
+          returnKeyType="search"
+          style={styles.searchInput}
         />
         <View style={styles.chips}>
           {['all', 'expense', 'income'].map(f => (
@@ -144,7 +143,15 @@ const styles = StyleSheet.create({
   header: { padding: 20, paddingTop: 52, paddingBottom: 16 },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
-  searchbar: { marginBottom: 10, borderRadius: 12 },
+  searchInput: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#fff',
+    marginBottom: 10,
+  },
   chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   filterChip: {},
   list: { padding: 12 },

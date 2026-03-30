@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Download, Upload, Database, Pencil, Check, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Pencil, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
-import { householdAPI, backupAPI } from '../services/api';
+import { householdAPI } from '../services/api';
 
 export default function HouseholdPage() {
   const { currentHousehold, user, setCurrentHousehold, households, setHouseholds } = useAuthStore();
@@ -25,39 +25,6 @@ export default function HouseholdPage() {
       setEditingName(false);
       toast.success('Name geändert');
     } catch { toast.error('Fehler beim Umbenennen'); }
-  };
-
-  // Backup state
-  const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
-  const [importing, setImporting] = useState(false);
-  const importRef = useRef<HTMLInputElement>(null);
-
-  const handleExport = async () => {
-    if (!currentHousehold) return;
-    try {
-      const { data } = await backupAPI.export(currentHousehold.id, exportFormat);
-      const date = new Date().toISOString().split('T')[0];
-      const filename = `haushalt-export-${date}.${exportFormat}`;
-      const url = URL.createObjectURL(new Blob([data], { type: exportFormat === 'csv' ? 'text/csv' : 'application/json' }));
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-      toast.success(`Export gestartet: ${filename}`);
-    } catch { toast.error('Export fehlgeschlagen'); }
-  };
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentHousehold) return;
-    setImporting(true);
-    try {
-      const { data } = await backupAPI.import(currentHousehold.id, file);
-      toast.success(`Import: ${data.imported} neu, ${data.skipped} bereits vorhanden${data.errors?.length ? `, ${data.errors.length} Fehler` : ''}`);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Import fehlgeschlagen');
-    } finally {
-      setImporting(false);
-      if (importRef.current) importRef.current.value = '';
-    }
   };
 
   // AI Settings state
@@ -336,43 +303,6 @@ export default function HouseholdPage() {
               >
                 {aiSaving ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : <Bot size={16} />}
                 Einstellungen speichern
-              </button>
-            </div>
-          </div>
-          {/* Backup */}
-          <div className="card p-6">
-            <h2 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-              <Database size={18} className="text-[var(--primary)]" /> Datensicherung
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-              Exportiere alle Transaktionen als JSON oder CSV. JSON-Exporte können vollständig wiederhergestellt werden.
-            </p>
-
-            {/* Export */}
-            <div className="flex items-center gap-3 mb-4">
-              <select value={exportFormat} onChange={e => setExportFormat(e.target.value as 'json' | 'csv')}
-                className="input flex-none w-28 text-sm">
-                <option value="json">JSON</option>
-                <option value="csv">CSV</option>
-              </select>
-              <button onClick={handleExport} className="btn-primary flex items-center gap-2 text-sm">
-                <Download size={15} /> Exportieren
-              </button>
-            </div>
-
-            {/* Import */}
-            <div className="border-t border-gray-100 dark:border-slate-700 pt-4">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Wiederherstellen</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Bereits vorhandene Transaktionen werden nicht überschrieben (Duplikaterkennung aktiv).
-              </p>
-              <input ref={importRef} type="file" accept=".json,.csv" className="hidden" onChange={handleImport} />
-              <button onClick={() => importRef.current?.click()} disabled={importing}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50">
-                {importing
-                  ? <div className="animate-spin h-4 w-4 border-2 border-[var(--primary)] border-t-transparent rounded-full" />
-                  : <Upload size={15} />}
-                {importing ? 'Importiere…' : 'Datei wählen & importieren'}
               </button>
             </div>
           </div>

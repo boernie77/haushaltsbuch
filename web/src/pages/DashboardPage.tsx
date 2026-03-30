@@ -32,6 +32,16 @@ export default function DashboardPage() {
     }).finally(() => setLoading(false));
   }, [currentHousehold]);
 
+  if (!currentHousehold) return (
+    <div className="flex items-center justify-center h-full text-gray-400">
+      <div className="text-center">
+        <div className="text-5xl mb-4">🏠</div>
+        <p>Kein Haushalt ausgewählt.</p>
+        <p className="text-sm mt-1">Bitte einen Haushalt in der Sidebar auswählen oder erstellen.</p>
+      </div>
+    </div>
+  );
+
   if (loading) return (
     <div className="flex items-center justify-center h-full">
       <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[var(--primary)]" />

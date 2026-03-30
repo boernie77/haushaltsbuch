@@ -213,7 +213,7 @@ export default function TransactionsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-slate-700">
               <tr>
-                {['Datum', 'Kategorie', 'Beschreibung', 'Betrag', ''].map(h => (
+                {['Datum', 'Kategorie', 'Beschreibung', 'Händler', 'Betrag', ''].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                 ))}
               </tr>
@@ -230,8 +230,11 @@ export default function TransactionsPage() {
                       <span className="text-gray-700 dark:text-gray-300">{t.Category?.nameDE || t.Category?.name || '—'}</span>
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-48 truncate">
-                    {t.description || t.merchant || '—'}
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-40 truncate">
+                    {t.description || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-32 truncate">
+                    {t.merchant || '—'}
                   </td>
                   <td className={`px-4 py-3 text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-[var(--expense)]'}`}>
                     {t.type === 'income' ? '+' : '-'}{parseFloat(t.amount).toFixed(2)} €
