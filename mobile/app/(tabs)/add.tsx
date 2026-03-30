@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../../src/store/authStore';
 import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI, IMAGE_BASE_URL } from '../../src/services/api';
+import { offlineQueue, isNetworkError } from '../../src/services/offlineStore';
 
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
@@ -166,10 +167,25 @@ export default function AddTransactionScreen() {
         });
       }
 
-      Toast.show({ type: 'success', text1: 'Ausgabe gespeichert' });
+      Toast.show({ type: 'success', text1: 'Buchung gespeichert' });
       router.replace('/(tabs)');
     } catch (err: any) {
-      Toast.show({ type: 'error', text1: 'Fehler beim Speichern', text2: err.message });
+      if (isNetworkError(err) && !receiptImage) {
+        // Offline: nur ohne Foto in Queue speichern
+        offlineQueue.add({
+          amount,
+          description,
+          merchant,
+          date,
+          type,
+          categoryId: selectedCategory?.id || null,
+          householdId: currentHousehold.id,
+        });
+        Toast.show({ type: 'info', text1: 'Offline gespeichert', text2: 'Wird synchronisiert wenn du wieder online bist' });
+        router.replace('/(tabs)');
+      } else {
+        Toast.show({ type: 'error', text1: 'Fehler beim Speichern', text2: err.message });
+      }
     } finally {
       setSaving(false);
     }

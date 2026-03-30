@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { useAuthStore } from '../../src/store/authStore';
 import { transactionAPI } from '../../src/services/api';
+import { cache, offlineQueue, isNetworkError } from '../../src/services/offlineStore';
 
 export default function TransactionsScreen() {
   const theme = useTheme() as any;
@@ -20,10 +21,12 @@ export default function TransactionsScreen() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [offline, setOffline] = useState(false);
   const now = new Date();
 
   const load = useCallback(async (reset = false) => {
     if (!currentHousehold) return;
+    const cacheKey = `transactions_${currentHousehold.id}`;
     try {
       const p = reset ? 1 : page;
       const { data } = await transactionAPI.getAll({
@@ -35,16 +38,28 @@ export default function TransactionsScreen() {
         page: p,
         limit: 30
       });
+      const fetched = data.transactions;
       if (reset) {
-        setTransactions(data.transactions);
+        setTransactions(fetched);
         setPage(2);
+        if (!search && typeFilter === 'all') cache.set(cacheKey, fetched);
       } else {
-        setTransactions(prev => [...prev, ...data.transactions]);
+        setTransactions(prev => [...prev, ...fetched]);
         setPage(p + 1);
       }
-      setHasMore(data.transactions.length === 30);
-    } catch (err) {
-      console.error(err);
+      setHasMore(fetched.length === 30);
+      setOffline(false);
+    } catch (err: any) {
+      if (isNetworkError(err) && reset) {
+        const pending = offlineQueue.getAll().map(t => ({
+          ...t, id: t._offlineId, Category: null, _offline: true,
+        }));
+        const cached = cache.get<any[]>(cacheKey) || [];
+        setTransactions([...pending.reverse(), ...cached]);
+        setOffline(true);
+      } else {
+        console.error(err);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,22 +72,28 @@ export default function TransactionsScreen() {
   const onRefresh = () => { setRefreshing(true); load(true); };
 
   const renderItem = ({ item }: { item: any }) => (
-    <TouchableOpacity onPress={() => router.push({ pathname: '/transaction-detail', params: { id: item.id } })}>
-      <Card style={[styles.transactionCard, { backgroundColor: theme.colors.cardBackground }]}>
+    <TouchableOpacity
+      onPress={() => !item._offline && router.push({ pathname: '/transaction-detail', params: { id: item.id } })}
+      activeOpacity={item._offline ? 1 : 0.7}
+    >
+      <Card style={[styles.transactionCard, { backgroundColor: item._offline ? theme.colors.cardBackground + 'aa' : theme.colors.cardBackground }]}>
         <Card.Content style={styles.cardContent}>
-          <View style={[styles.iconContainer, { backgroundColor: item.Category?.color + '20' || '#eee' }]}>
-            <Text style={styles.categoryIcon}>{item.Category?.icon || '📦'}</Text>
+          <View style={[styles.iconContainer, { backgroundColor: item.Category?.color ? item.Category.color + '20' : '#eee' }]}>
+            {item._offline
+              ? <MaterialCommunityIcons name="clock-outline" size={22} color={theme.colors.onSurface + '60'} />
+              : <Text style={styles.categoryIcon}>{item.Category?.icon || '📦'}</Text>}
           </View>
           <View style={styles.transactionInfo}>
-            <Text style={[styles.transactionDescription, { color: theme.colors.onSurface }]} numberOfLines={1}>
-              {item.description || item.merchant || (item.Category?.nameDE || item.Category?.name) || 'Ausgabe'}
+            <Text style={[styles.transactionDescription, { color: item._offline ? theme.colors.onSurface + '80' : theme.colors.onSurface }]} numberOfLines={1}>
+              {item.description || item.merchant || 'Ausgabe'}
+              {item._offline ? '  (ausstehend)' : ''}
             </Text>
             <Text style={{ color: theme.colors.onSurface, opacity: 0.5, fontSize: 12 }}>
               {format(new Date(item.date), 'dd. MMM yyyy', { locale: de })}
               {item.merchant ? ` · ${item.merchant}` : ''}
             </Text>
           </View>
-          <Text style={[styles.amount, { color: item.type === 'income' ? theme.colors.incomeColor : theme.colors.expenseColor }]}>
+          <Text style={[styles.amount, { color: item.type === 'income' ? theme.colors.incomeColor : theme.colors.expenseColor, opacity: item._offline ? 0.6 : 1 }]}>
             {item.type === 'income' ? '+' : '-'}{parseFloat(item.amount).toFixed(2)} €
           </Text>
         </Card.Content>
@@ -110,6 +131,15 @@ export default function TransactionsScreen() {
           ))}
         </View>
       </View>
+
+      {offline && (
+        <View style={[styles.offlineBanner, { backgroundColor: theme.colors.error + '22' }]}>
+          <MaterialCommunityIcons name="wifi-off" size={14} color={theme.colors.error} />
+          <Text style={{ color: theme.colors.error, fontSize: 12, marginLeft: 6 }}>
+            Offline — gespeicherte Daten · ausstehende Buchungen werden synchronisiert wenn du wieder online bist
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.centered}><ActivityIndicator color={theme.colors.primary} /></View>
@@ -166,6 +196,7 @@ const styles = StyleSheet.create({
   transactionDescription: { fontSize: 15, fontWeight: '500' },
   amount: { fontSize: 16, fontWeight: '700' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', padding: 10, paddingHorizontal: 16 },
   empty: { alignItems: 'center', paddingTop: 60 },
   fab: { position: 'absolute', right: 16, bottom: 16 },
 });

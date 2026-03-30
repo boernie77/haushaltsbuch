@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, FileText, Users, Tag, Star, Search, UserCheck, UserX } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Save, RefreshCw, FileText, Users, Tag, Star, Search, UserCheck, UserX, Plus, Check, AlertCircle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { paperlessAPI } from '../services/api';
@@ -12,6 +12,14 @@ export default function PaperlessPage() {
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '', user: '' });
+  const [newItem, setNewItem] = useState({ doctype: '', correspondent: '', tag: '', tagColor: '#6B7280' });
+  const [checkResult, setCheckResult] = useState<Record<string, { exists: boolean; checking: boolean }>>({
+    doctype: { exists: false, checking: false },
+    correspondent: { exists: false, checking: false },
+    tag: { exists: false, checking: false },
+  });
+  const checkTimers = useRef<Record<string, any>>({});
+  const [creating, setCreating] = useState<Record<string, boolean>>({});
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -74,6 +82,81 @@ export default function PaperlessPage() {
     } catch {
       toast.error('Fehler beim Speichern');
     }
+  };
+
+  const handleNameChange = (type: 'doctype' | 'correspondent' | 'tag', value: string) => {
+    setNewItem(n => ({ ...n, [type]: value }));
+    setCheckResult(r => ({ ...r, [type]: { exists: false, checking: !!value.trim() } }));
+    clearTimeout(checkTimers.current[type]);
+    if (!value.trim() || !currentHousehold) return;
+    checkTimers.current[type] = setTimeout(async () => {
+      try {
+        const { data: d } = await paperlessAPI.check(currentHousehold.id, type, value.trim());
+        setCheckResult(r => ({ ...r, [type]: { exists: d.exists, checking: false } }));
+      } catch {
+        setCheckResult(r => ({ ...r, [type]: { exists: false, checking: false } }));
+      }
+    }, 350);
+  };
+
+  const handleCreate = async (type: 'doctype' | 'correspondent' | 'tag') => {
+    if (!currentHousehold || !newItem[type].trim()) return;
+    setCreating(c => ({ ...c, [type]: true }));
+    try {
+      if (type === 'doctype') await paperlessAPI.createDocType({ householdId: currentHousehold.id, name: newItem[type].trim() });
+      else if (type === 'correspondent') await paperlessAPI.createCorrespondent({ householdId: currentHousehold.id, name: newItem[type].trim() });
+      else await paperlessAPI.createTag({ householdId: currentHousehold.id, name: newItem[type].trim(), color: newItem.tagColor });
+      setNewItem(n => ({ ...n, [type]: '' }));
+      setCheckResult(r => ({ ...r, [type]: { exists: false, checking: false } }));
+      await loadData(currentHousehold.id);
+      toast.success('Erstellt!');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Fehler beim Erstellen');
+    } finally {
+      setCreating(c => ({ ...c, [type]: false }));
+    }
+  };
+
+  const CreateForm = ({ type, placeholder, extra }: { type: 'doctype' | 'correspondent' | 'tag'; placeholder: string; extra?: React.ReactNode }) => {
+    const cr = checkResult[type];
+    const val = newItem[type];
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700">
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              className="input py-1.5 text-sm pr-8"
+              placeholder={placeholder}
+              value={val}
+              onChange={e => handleNameChange(type, e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !cr.exists && val.trim() && handleCreate(type)}
+            />
+            {val.trim() && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                {cr.checking ? <Loader size={13} className="animate-spin text-gray-400" /> :
+                  cr.exists ? <AlertCircle size={13} className="text-amber-500" /> :
+                  <Check size={13} className="text-green-500" />}
+              </span>
+            )}
+          </div>
+          {extra}
+          <button
+            onClick={() => handleCreate(type)}
+            disabled={!val.trim() || cr.exists || cr.checking || creating[type]}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--primary)] text-white text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0"
+          >
+            {creating[type] ? <Loader size={12} className="animate-spin" /> : <Plus size={12} />}
+            {cr.exists ? 'Existiert' : 'Erstellen'}
+          </button>
+        </div>
+        {val.trim() && cr.exists && (
+          <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+            <AlertCircle size={11} /> Bereits vorhanden — wird beim Speichern verknüpft statt neu angelegt.
+          </p>
+        )}
+      </div>
+    );
   };
 
   const FavoriteList = ({ items, type, searchKey, renderItem }: { items: any[], type: string, searchKey: keyof typeof search, renderItem: (item: any) => React.ReactNode }) => {
@@ -200,6 +283,7 @@ export default function PaperlessPage() {
                 <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
               )}
             />
+            {connected && <CreateForm type="doctype" placeholder="Neuer Dokumententyp..." />}
           </div>
 
           <div className="card p-5">
@@ -215,6 +299,7 @@ export default function PaperlessPage() {
                 <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
               )}
             />
+            {connected && <CreateForm type="correspondent" placeholder="Neuer Absender..." />}
           </div>
 
           <div className="card p-5">
@@ -233,6 +318,12 @@ export default function PaperlessPage() {
                 </span>
               )}
             />
+            {connected && (
+              <CreateForm type="tag" placeholder="Neuer Tag..." extra={
+                <input type="color" value={newItem.tagColor} onChange={e => setNewItem(n => ({ ...n, tagColor: e.target.value }))}
+                  className="w-8 h-8 rounded cursor-pointer border border-gray-200 dark:border-slate-600 shrink-0" title="Farbe wählen" />
+              } />
+            )}
           </div>
         </div>
       )}

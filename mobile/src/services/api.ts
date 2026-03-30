@@ -84,6 +84,7 @@ export const ocrAPI = {
 
 // ── Paperless API ─────────────────────────────────────────────────────────────
 export const paperlessAPI = {
+  check: (householdId: string, type: string, name: string) => api.get('/paperless/check', { params: { householdId, type, name } }),
   getConfig: (householdId: string) => api.get(`/paperless/config/${householdId}`),
   saveConfig: (data: any) => api.post('/paperless/config', data),
   sync: (householdId: string) => api.post(`/paperless/sync/${householdId}`),

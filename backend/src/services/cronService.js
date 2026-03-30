@@ -66,10 +66,68 @@ async function processRecurringTransactions() {
 
 // ── Backup Cron ───────────────────────────────────────────────────────────────
 
+// ── Paperless Auto-Sync ───────────────────────────────────────────────────────
+
+async function syncAllPaperless() {
+  try {
+    const { PaperlessConfig } = require('../models');
+    const configs = await PaperlessConfig.findAll({ where: { isActive: true } });
+    if (configs.length === 0) return;
+    console.log(`[paperless-sync] Synchronisiere ${configs.length} Haushalt(e)...`);
+    const axios = require('axios');
+    const { PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser } = require('../models');
+
+    for (const config of configs) {
+      try {
+        const baseURL = config.baseUrl.replace(/\/$/, '');
+        const headers = { Authorization: `Token ${config.apiToken}`, 'Content-Type': 'application/json' };
+        const hid = config.householdId;
+        const now = new Date();
+
+        const fetchAll = async (url) => {
+          const results = [];
+          let next = url;
+          while (next) {
+            const { data } = await axios.get(next, { headers });
+            results.push(...(data.results || []));
+            next = data.next || null;
+          }
+          return results;
+        };
+
+        const [docTypes, correspondents, tags] = await Promise.all([
+          fetchAll(`${baseURL}/api/document_types/`),
+          fetchAll(`${baseURL}/api/correspondents/`),
+          fetchAll(`${baseURL}/api/tags/`),
+        ]);
+        let users = [];
+        try { users = await fetchAll(`${baseURL}/api/users/`); } catch {}
+
+        for (const dt of docTypes) await PaperlessDocumentType.upsert({ householdId: hid, paperlessId: dt.id, name: dt.name, syncedAt: now });
+        for (const c of correspondents) await PaperlessCorrespondent.upsert({ householdId: hid, paperlessId: c.id, name: c.name, syncedAt: now });
+        for (const t of tags) await PaperlessTag.upsert({ householdId: hid, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
+        for (const u of users) {
+          const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+          await PaperlessUser.upsert({ householdId: hid, paperlessId: u.id, username: u.username, fullName, syncedAt: now });
+        }
+        console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
+      } catch (err) {
+        console.error(`[paperless-sync] Haushalt ${config.householdId}: ${err.message}`);
+      }
+    }
+  } catch (err) {
+    console.error('[paperless-sync] Fehler:', err.message);
+  }
+}
+
 async function startCron() {
   // Recurring: täglich um 06:00
   recurringJob = cron.schedule('0 6 * * *', processRecurringTransactions);
   console.log('[cron] Wiederkehrende Buchungen: täglich 06:00');
+
+  // Paperless Auto-Sync: alle 6 Stunden
+  cron.schedule('0 */6 * * *', syncAllPaperless);
+  console.log('[cron] Paperless-Sync: alle 6 Stunden');
 
   // Backup: aus Konfiguration
   try {

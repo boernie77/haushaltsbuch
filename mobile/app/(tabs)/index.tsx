@@ -8,6 +8,7 @@ import { de } from 'date-fns/locale';
 import { useAuthStore } from '../../src/store/authStore';
 import { statsAPI, budgetAPI } from '../../src/services/api';
 import { useFocusEffect } from 'expo-router';
+import { cache, isNetworkError } from '../../src/services/offlineStore';
 
 export default function HomeScreen() {
   const theme = useTheme() as any;
@@ -16,9 +17,12 @@ export default function HomeScreen() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [offline, setOffline] = useState(false);
 
   const load = async () => {
     if (!currentHousehold) return;
+    const cacheKey = `overview_${currentHousehold.id}`;
+    const budgetCacheKey = `budgets_${currentHousehold.id}`;
     try {
       const now = new Date();
       const [overviewRes, budgetRes] = await Promise.all([
@@ -27,8 +31,19 @@ export default function HomeScreen() {
       ]);
       setOverview(overviewRes.data);
       setBudgets(budgetRes.data.budgets);
-    } catch (err) {
-      console.error(err);
+      cache.set(cacheKey, overviewRes.data);
+      cache.set(budgetCacheKey, budgetRes.data.budgets);
+      setOffline(false);
+    } catch (err: any) {
+      if (isNetworkError(err)) {
+        const cachedOverview = cache.get(cacheKey);
+        const cachedBudgets = cache.get<any[]>(budgetCacheKey);
+        if (cachedOverview) setOverview(cachedOverview);
+        if (cachedBudgets) setBudgets(cachedBudgets);
+        setOffline(true);
+      } else {
+        console.error(err);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -53,6 +68,16 @@ export default function HomeScreen() {
       style={{ backgroundColor: theme.colors.background }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* Offline-Banner */}
+      {offline && (
+        <View style={[styles.offlineBanner, { backgroundColor: theme.colors.error + '22' }]}>
+          <MaterialCommunityIcons name="wifi-off" size={14} color={theme.colors.error} />
+          <Text style={{ color: theme.colors.error, fontSize: 12, marginLeft: 6 }}>
+            Offline — gespeicherte Daten werden angezeigt
+          </Text>
+        </View>
+      )}
+
       {/* Header */}
       <LinearGradient colors={[theme.colors.gradientStart, theme.colors.gradientEnd]} style={styles.header}>
         <Text style={styles.greeting}>Hallo, {user?.name?.split(' ')[0]} 👋</Text>
@@ -188,6 +213,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 16 },
   header: { padding: 24, paddingTop: 56, paddingBottom: 32 },
   greeting: { fontSize: 26, fontWeight: 'bold', color: '#fff' },
   headerDate: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },

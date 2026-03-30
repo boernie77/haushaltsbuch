@@ -5,10 +5,52 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../src/store/authStore';
 import { getTheme } from '../src/themes';
+import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
+import { offlineQueue } from '../src/services/offlineStore';
+import { transactionAPI } from '../src/services/api';
+
+async function flushOfflineQueue() {
+  const queue = offlineQueue.getAll();
+  if (queue.length === 0) return;
+  let synced = 0;
+  for (const tx of queue) {
+    try {
+      const form = new FormData();
+      form.append('amount', tx.amount);
+      form.append('description', tx.description || '');
+      form.append('merchant', tx.merchant || '');
+      form.append('date', tx.date);
+      form.append('type', tx.type);
+      form.append('householdId', tx.householdId);
+      if (tx.categoryId) form.append('categoryId', tx.categoryId);
+      await transactionAPI.create(form);
+      offlineQueue.remove(tx._offlineId);
+      synced++;
+    } catch {
+      break; // Noch offline — aufhören
+    }
+  }
+  if (synced > 0) {
+    Toast.show({ type: 'success', text1: `${synced} offline Buchung(en) synchronisiert` });
+  }
+}
 
 export default function RootLayout() {
   const { user } = useAuthStore();
   const theme = getTheme(user?.theme || 'feminine');
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    flushOfflineQueue();
+    const sub = AppState.addEventListener('change', next => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        flushOfflineQueue();
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

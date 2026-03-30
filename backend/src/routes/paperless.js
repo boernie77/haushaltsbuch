@@ -70,12 +70,19 @@ router.post('/sync/:householdId', auth, async (req, res) => {
     const client = await getPaperlessClient(householdId);
     const now = new Date();
 
-    const [docTypes, correspondents, tags, users] = await Promise.all([
+    const [docTypes, correspondents, tags] = await Promise.all([
       fetchAllPages(`${client.baseURL}/api/document_types/`, client.headers),
       fetchAllPages(`${client.baseURL}/api/correspondents/`, client.headers),
       fetchAllPages(`${client.baseURL}/api/tags/`, client.headers),
-      fetchAllPages(`${client.baseURL}/api/users/`, client.headers),
     ]);
+
+    // Users: optional — erfordert Admin-Rechte in Paperless, Fehler ignorieren
+    let users = [];
+    try {
+      users = await fetchAllPages(`${client.baseURL}/api/users/`, client.headers);
+    } catch {
+      console.log('[paperless] /api/users/ nicht zugänglich (kein Admin-Token) — Benutzer übersprungen');
+    }
 
     for (const dt of docTypes) {
       await PaperlessDocumentType.upsert({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: now });
@@ -142,6 +149,23 @@ router.put('/favorite', auth, async (req, res) => {
     res.json({ id, isFavorite });
   } catch {
     res.status(500).json({ error: 'Failed to update' });
+  }
+});
+
+// GET /api/paperless/check — prüft ob Name in lokaler DB existiert
+router.get('/check', auth, async (req, res) => {
+  try {
+    const { householdId, type, name } = req.query;
+    if (!householdId || !type || !name) return res.json({ exists: false });
+    if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
+    const { Op } = require('sequelize');
+    const Model = type === 'doctype' ? PaperlessDocumentType
+                : type === 'correspondent' ? PaperlessCorrespondent
+                : PaperlessTag;
+    const item = await Model.findOne({ where: { householdId, name: { [Op.iLike]: name.trim() } } });
+    res.json({ exists: !!item, item: item || null });
+  } catch {
+    res.json({ exists: false });
   }
 });
 
