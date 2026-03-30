@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert, TextInput } from 'react-native';
 import { Text, List, Switch, useTheme, Avatar, Divider, Button, ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { api, householdAPI } from '../../src/services/api';
 import Toast from 'react-native-toast-message';
 
 export default function SettingsScreen() {
   const theme = useTheme() as any;
+  const insets = useSafeAreaInsets();
   const { user, logout, updateTheme, currentHousehold } = useAuthStore();
   const [isDark, setIsDark] = useState(user?.theme === 'masculine');
 
@@ -56,9 +58,12 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+    >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Einstellungen</Text>
       </View>
 
@@ -83,7 +88,7 @@ export default function SettingsScreen() {
           descriptionStyle={{ color: theme.colors.onSurface, opacity: 0.6 }}
           left={() => <List.Icon icon={isDark ? 'weather-night' : 'weather-sunny'} color={theme.colors.primary} />}
           right={() => <Switch value={isDark} onValueChange={handleThemeChange} color={theme.colors.primary} />}
-          style={{ backgroundColor: theme.colors.cardBackground }}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
         />
       </List.Section>
 
@@ -99,7 +104,7 @@ export default function SettingsScreen() {
           left={() => <List.Icon icon="home" color={theme.colors.primary} />}
           right={() => <List.Icon icon="chevron-right" />}
           onPress={() => router.push('/household')}
-          style={{ backgroundColor: theme.colors.cardBackground }}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
         />
         <List.Item
           title="Budget festlegen"
@@ -107,7 +112,7 @@ export default function SettingsScreen() {
           left={() => <List.Icon icon="wallet" color={theme.colors.primary} />}
           right={() => <List.Icon icon="chevron-right" />}
           onPress={() => router.push('/budget')}
-          style={{ backgroundColor: theme.colors.cardBackground }}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
         />
         <List.Item
           title="Mitglieder einladen"
@@ -115,7 +120,7 @@ export default function SettingsScreen() {
           left={() => <List.Icon icon="account-plus" color={theme.colors.primary} />}
           right={() => <List.Icon icon="chevron-right" />}
           onPress={() => router.push('/invite')}
-          style={{ backgroundColor: theme.colors.cardBackground }}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
         />
       </List.Section>
 
@@ -166,7 +171,7 @@ export default function SettingsScreen() {
           left={() => <List.Icon icon="file-document-multiple" color={theme.colors.primary} />}
           right={() => <List.Icon icon="chevron-right" />}
           onPress={() => router.push('/paperless-settings')}
-          style={{ backgroundColor: theme.colors.cardBackground }}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
         />
       </List.Section>
 
@@ -183,7 +188,7 @@ export default function SettingsScreen() {
               left={() => <List.Icon icon="shield-crown" color={theme.colors.primary} />}
               right={() => <List.Icon icon="chevron-right" />}
               onPress={() => router.push('/admin')}
-              style={{ backgroundColor: theme.colors.cardBackground }}
+              style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
             />
           </List.Section>
         </>
@@ -201,7 +206,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 24, paddingTop: 52 },
+  header: { padding: 24 },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   profileCard: { flexDirection: 'row', alignItems: 'center', padding: 20, margin: 16, borderRadius: 16, elevation: 2 },
   profileInfo: { marginLeft: 16, flex: 1 },

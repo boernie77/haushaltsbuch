@@ -10,7 +10,7 @@ import { statsAPI, budgetAPI } from '../../src/services/api';
 
 export default function HomeScreen() {
   const theme = useTheme() as any;
-  const { user, currentHousehold } = useAuthStore();
+  const { user, currentHousehold, households, setCurrentHousehold } = useAuthStore();
   const [overview, setOverview] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,11 +56,27 @@ export default function HomeScreen() {
       <LinearGradient colors={[theme.colors.gradientStart, theme.colors.gradientEnd]} style={styles.header}>
         <Text style={styles.greeting}>Hallo, {user?.name?.split(' ')[0]} 👋</Text>
         <Text style={styles.headerDate}>{format(new Date(), 'EEEE, d. MMMM yyyy', { locale: de })}</Text>
-        {currentHousehold && (
+        {households.length > 1 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+            {households.map(h => (
+              <Chip
+                key={h.id}
+                selected={h.id === currentHousehold?.id}
+                onPress={() => { setCurrentHousehold(h); setLoading(true); }}
+                icon="home"
+                style={[styles.householdChip, { backgroundColor: h.id === currentHousehold?.id ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)' }]}
+                textStyle={{ color: '#fff' }}
+                selectedColor="#fff"
+              >
+                {h.name}
+              </Chip>
+            ))}
+          </ScrollView>
+        ) : currentHousehold ? (
           <Chip icon="home" style={styles.householdChip} textStyle={{ color: '#fff' }}>
             {currentHousehold.name}
           </Chip>
-        )}
+        ) : null}
       </LinearGradient>
 
       <View style={styles.content}>

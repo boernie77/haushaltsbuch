@@ -186,6 +186,9 @@ Household.hasMany(PaperlessCorrespondent, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessTag, { foreignKey: 'householdId' });
 Household.hasMany(Category, { foreignKey: 'householdId' });
 
+InviteCode.belongsTo(User, { foreignKey: 'createdById', as: 'creator' });
+InviteCode.belongsTo(User, { foreignKey: 'usedById', as: 'usedBy' });
+
 module.exports = {
   sequelize,
   User,

@@ -47,6 +47,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('auth_token', data.token);
     api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
     set({ token: data.token, user: data.user, isAuthenticated: true });
+    const { data: hd } = await api.get('/households');
+    if (hd.households?.length > 0) {
+      set({ households: hd.households, currentHousehold: hd.households[0] });
+    }
   },
 
   register: async (name, email, password, inviteCode) => {
@@ -54,6 +58,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('auth_token', data.token);
     api.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
     set({ token: data.token, user: data.user, isAuthenticated: true });
+    const { data: hd } = await api.get('/households');
+    if (hd.households?.length > 0) {
+      set({ households: hd.households, currentHousehold: hd.households[0] });
+    }
   },
 
   logout: () => {

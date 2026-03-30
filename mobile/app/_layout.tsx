@@ -18,6 +18,11 @@ export default function RootLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="household" />
+            <Stack.Screen name="budget" />
+            <Stack.Screen name="invite" />
+            <Stack.Screen name="admin" />
+            <Stack.Screen name="paperless-settings" />
           </Stack>
           <Toast />
         </PaperProvider>
