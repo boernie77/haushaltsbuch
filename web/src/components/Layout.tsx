@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '../store/authStore';
-import { householdAPI } from '../services/api';
+import { api, householdAPI } from '../services/api';
 import { useEffect } from 'react';
 
 const navItems = [
