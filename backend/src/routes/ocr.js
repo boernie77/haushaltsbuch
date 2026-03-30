@@ -89,7 +89,7 @@ router.post('/analyze', auth, upload.single('receipt'), async (req, res) => {
   "amount": <Gesamtbetrag als Zahl, z.B. 12.50>,
   "merchant": "<Name des Händlers/Geschäfts>",
   "date": "<Datum im Format YYYY-MM-DD, oder null>",
-  "description": "<kurze Beschreibung des Einkaufs>",
+  "description": "<1-3 Wörter, Oberbegriff des Kaufs, z.B. 'Lebensmitteleinkauf', 'Restaurantbesuch', 'Tankfüllung', 'Apotheke' — KEINE Artikelliste>",
   "categoryId": "<passende Kategorie-ID aus dieser Liste: ${categoryList}>",
   "confidence": <0-100, wie sicher bist du>
 }
