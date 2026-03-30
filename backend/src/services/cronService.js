@@ -75,7 +75,7 @@ async function syncAllPaperless() {
     if (configs.length === 0) return;
     console.log(`[paperless-sync] Synchronisiere ${configs.length} Haushalt(e)...`);
     const axios = require('axios');
-    const { PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser } = require('../models');
+    const { sequelize, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser } = require('../models');
 
     for (const config of configs) {
       try {
@@ -106,18 +106,28 @@ async function syncAllPaperless() {
         let users = [];
         try { users = await fetchAll(`${baseURL}/api/users/`); } catch {}
 
-        const upsert = async (Model, paperlessId, fields) => {
-          const ex = await Model.findOne({ where: { householdId: hid, paperlessId } });
-          if (ex) await ex.update({ ...fields, syncedAt: now });
-          else await Model.create({ householdId: hid, paperlessId, ...fields, syncedAt: now });
+        const nowIso = now.toISOString();
+        const bulkUpsert = async (table, rows, conflictCols, updateCols) => {
+          if (!rows.length) return;
+          const cols = Object.keys(rows[0]);
+          const ph = rows.map((_, ri) => `(${cols.map((_, ci) => `$${ri*cols.length+ci+1}`).join(',')})`).join(',');
+          const vals = rows.flatMap(r => cols.map(c => r[c]));
+          const conflict = conflictCols.map(c => `"${c}"`).join(',');
+          const updates = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(',');
+          await sequelize.query(`INSERT INTO ${table} (${cols.map(c=>`"${c}"`).join(',')}) VALUES ${ph} ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`, { bind: vals });
         };
-        for (const dt of docTypes) await upsert(PaperlessDocumentType, dt.id, { name: dt.name });
-        for (const c of correspondents) await upsert(PaperlessCorrespondent, c.id, { name: c.name });
-        for (const t of tags) await upsert(PaperlessTag, t.id, { name: t.name, color: t.colour });
-        for (const u of users) {
-          const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-          await upsert(PaperlessUser, u.id, { username: u.username, fullName });
-        }
+        if (docTypes.length) await bulkUpsert('paperless_document_types',
+          docTypes.map(dt => ({ householdId: hid, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          ['householdId','paperlessId'], ['name','syncedAt','updatedAt']);
+        if (correspondents.length) await bulkUpsert('paperless_correspondents',
+          correspondents.map(c => ({ householdId: hid, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          ['householdId','paperlessId'], ['name','syncedAt','updatedAt']);
+        if (tags.length) await bulkUpsert('paperless_tags',
+          tags.map(t => ({ householdId: hid, paperlessId: t.id, name: t.name, color: t.colour||null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          ['householdId','paperlessId'], ['name','color','syncedAt','updatedAt']);
+        if (users.length) await bulkUpsert('paperless_users',
+          users.map(u => ({ householdId: hid, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim()||u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+          ['householdId','paperlessId'], ['username','fullName','syncedAt','updatedAt']);
         console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
       } catch (err) {
         console.error(`[paperless-sync] Haushalt ${config.householdId}: ${err.message}`);

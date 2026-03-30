@@ -3,7 +3,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
-const { PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser, HouseholdMember, Transaction } = require('../models');
+const { sequelize, PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser, HouseholdMember, Transaction } = require('../models');
 const { auth } = require('../middleware/auth');
 
 async function checkAccess(userId, householdId) {
@@ -118,25 +118,40 @@ router.post('/sync/:householdId', auth, async (req, res) => {
       console.log('[paperless] /api/users/ nicht zugänglich (kein Admin-Token) — Benutzer übersprungen');
     }
 
-    const upsertByPaperlessId = async (Model, householdId, paperlessId, fields) => {
-      const existing = await Model.findOne({ where: { householdId, paperlessId } });
-      if (existing) await existing.update({ ...fields, syncedAt: now });
-      else await Model.create({ householdId, paperlessId, ...fields, syncedAt: now });
+    // Bulk-Upsert via raw SQL (ON CONFLICT) — viel schneller als N einzelne Queries
+    const bulkUpsert = async (table, rows, conflictCols, updateCols) => {
+      if (!rows.length) return;
+      const colNames = Object.keys(rows[0]);
+      const placeholders = rows.map((_, ri) =>
+        `(${colNames.map((_, ci) => `$${ri * colNames.length + ci + 1}`).join(',')})`
+      ).join(',');
+      const values = rows.flatMap(r => colNames.map(c => r[c]));
+      const conflict = conflictCols.map(c => `"${c}"`).join(',');
+      const updates = updateCols.map(c => `"${c}" = EXCLUDED."${c}"`).join(',');
+      await sequelize.query(
+        `INSERT INTO ${table} (${colNames.map(c => `"${c}"`).join(',')})
+         VALUES ${placeholders}
+         ON CONFLICT (${conflict}) DO UPDATE SET ${updates}`,
+        { bind: values }
+      );
     };
 
-    for (const dt of docTypes) {
-      await upsertByPaperlessId(PaperlessDocumentType, householdId, dt.id, { name: dt.name });
-    }
-    for (const c of correspondents) {
-      await upsertByPaperlessId(PaperlessCorrespondent, householdId, c.id, { name: c.name });
-    }
-    for (const t of tags) {
-      await upsertByPaperlessId(PaperlessTag, householdId, t.id, { name: t.name, color: t.colour });
-    }
-    for (const u of users) {
-      const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
-      await upsertByPaperlessId(PaperlessUser, householdId, u.id, { username: u.username, fullName });
-    }
+    const nowIso = now.toISOString();
+    if (docTypes.length) await bulkUpsert('paperless_document_types',
+      docTypes.map(dt => ({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      ['householdId', 'paperlessId'], ['name', 'syncedAt', 'updatedAt']);
+
+    if (correspondents.length) await bulkUpsert('paperless_correspondents',
+      correspondents.map(c => ({ householdId, paperlessId: c.id, name: c.name, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      ['householdId', 'paperlessId'], ['name', 'syncedAt', 'updatedAt']);
+
+    if (tags.length) await bulkUpsert('paperless_tags',
+      tags.map(t => ({ householdId, paperlessId: t.id, name: t.name, color: t.colour || null, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      ['householdId', 'paperlessId'], ['name', 'color', 'syncedAt', 'updatedAt']);
+
+    if (users.length) await bulkUpsert('paperless_users',
+      users.map(u => ({ householdId, paperlessId: u.id, username: u.username, fullName: (`${u.first_name||''} ${u.last_name||''}`).trim() || u.username, syncedAt: nowIso, createdAt: nowIso, updatedAt: nowIso })),
+      ['householdId', 'paperlessId'], ['username', 'fullName', 'syncedAt', 'updatedAt']);
 
     res.json({
       synced: {
@@ -314,42 +329,42 @@ router.post('/upload', auth, async (req, res) => {
     if (ownerPaperlessUserId) form.append('owner', ownerPaperlessUserId);
 
     const response = await axios.post(`${client.baseURL}/api/documents/post_document/`, form, {
-      headers: { Authorization: client.headers.Authorization, ...form.getHeaders() }
+      headers: { Authorization: client.headers.Authorization, ...form.getHeaders() },
+      timeout: 30000,
     });
 
-    // Dokument-ID aus Task-Response — Paperless gibt Task-UUID zurück, nicht direkt die Doc-ID
-    // Wir speichern die Task-UUID vorerst und versuchen nach kurzer Wartezeit die Doc-ID zu holen
     const taskId = response.data;
-    let paperlessDocId = null;
+    await transaction.update({ paperlessDocId: taskId });
 
-    // Bis zu 10s warten bis das Dokument indexiert ist
-    for (let i = 0; i < 5; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      try {
-        const taskRes = await axios.get(`${client.baseURL}/api/tasks/?task_id=${taskId}`, { headers: client.headers });
-        const task = taskRes.data?.results?.[0] || taskRes.data?.[0];
-        if (task?.status === 'SUCCESS' && task?.related_document) {
-          paperlessDocId = task.related_document;
-          break;
-        }
-      } catch {}
-    }
+    // Sofort antworten — Polling + Berechtigungen im Hintergrund
+    res.json({ paperlessDocId: taskId, message: 'Uploaded to Paperless' });
 
-    // Berechtigungen setzen falls Benutzer ausgewählt
-    if (paperlessDocId && viewPaperlessUserIds) {
-      const viewIds = JSON.parse(viewPaperlessUserIds);
-      if (viewIds.length > 0) {
+    // Hintergrund: auf Indexierung warten und Berechtigungen setzen
+    (async () => {
+      let paperlessDocId = null;
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 3000));
         try {
+          const taskRes = await axios.get(`${client.baseURL}/api/tasks/?task_id=${taskId}`, { headers: client.headers });
+          const task = taskRes.data?.results?.[0] || taskRes.data?.[0];
+          if (task?.status === 'SUCCESS' && task?.related_document) {
+            paperlessDocId = task.related_document;
+            break;
+          }
+        } catch {}
+      }
+      if (!paperlessDocId) return;
+      await transaction.update({ paperlessDocId }).catch(() => {});
+      if (viewPaperlessUserIds) {
+        const viewIds = JSON.parse(viewPaperlessUserIds);
+        if (viewIds.length > 0) {
           await axios.patch(`${client.baseURL}/api/documents/${paperlessDocId}/`,
             { set_permissions: { view: { users: viewIds, groups: [] }, change: { users: [], groups: [] } } },
             { headers: client.headers }
-          );
-        } catch {}
+          ).catch(() => {});
+        }
       }
-    }
-
-    await transaction.update({ paperlessDocId: paperlessDocId || taskId });
-    res.json({ paperlessDocId: paperlessDocId || taskId, message: 'Uploaded to Paperless' });
+    })();
   } catch (err) {
     res.status(500).json({ error: 'Upload failed: ' + err.message });
   }

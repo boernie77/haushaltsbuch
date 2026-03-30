@@ -167,7 +167,7 @@ export default function PaperlessPage() {
         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
-          className="input pl-9 py-1.5 text-sm"
+          className="input py-1.5 text-sm" style={{ paddingLeft: '2rem' }}
           placeholder="Suchen..."
           value={search[searchKey]}
           onChange={e => setSearch(s => ({ ...s, [searchKey]: e.target.value }))}
@@ -338,7 +338,7 @@ export default function PaperlessPage() {
           <p className="text-xs text-gray-400 mb-3">Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl (z.B. Admin-Konten).</p>
           <div className="relative mb-2">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" className="input pl-9 py-1.5 text-sm" placeholder="Suchen..."
+            <input type="text" className="input py-1.5 text-sm" style={{ paddingLeft: '2rem' }} placeholder="Suchen..."
               value={search.user} onChange={e => setSearch(s => ({ ...s, user: e.target.value }))} />
           </div>
           <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
