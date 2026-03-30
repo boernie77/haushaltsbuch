@@ -6,46 +6,55 @@ const { fn, col, Op } = require('sequelize');
 // GET /api/admin/stats
 router.get('/stats', auth, superAdminGuard, async (req, res) => {
   try {
-    const [userCount, householdCount, transactionCount] = await Promise.all([
-      User.count(),
-      Household.count(),
+    const { sequelize } = require('../models');
+    const [householdAdminCount, transactionCount] = await Promise.all([
+      // Count distinct household admins (= number of "top-level households")
+      Household.count({ distinct: true, col: 'adminUserId' }),
       Transaction.count()
     ]);
 
-    const recentUsers = await User.findAll({
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']],
-      limit: 10
+    // Count users who own at least one household
+    const adminUserIds = await Household.findAll({
+      attributes: [[sequelize.fn('DISTINCT', sequelize.col('adminUserId')), 'adminUserId']],
+      raw: true
     });
+    const userCount = adminUserIds.length;
 
-    res.json({ userCount, householdCount, transactionCount, recentUsers });
+    res.json({ userCount, householdCount: householdAdminCount, transactionCount });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 
-// GET /api/admin/users
+// GET /api/admin/users — only users who own at least one household
 router.get('/users', auth, superAdminGuard, async (req, res) => {
   try {
-    const { page = 1, limit = 50, search } = req.query;
-    const where = {};
-    if (search) {
-      const { Op } = require('sequelize');
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } }
-      ];
-    }
-
-    const { count, rows } = await User.findAndCountAll({
-      where,
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: (parseInt(page) - 1) * parseInt(limit)
+    // Find all distinct adminUserIds from households
+    const adminHouseholds = await Household.findAll({
+      attributes: ['adminUserId', 'id', 'name'],
+      raw: true
     });
 
-    res.json({ users: rows, total: count });
+    // Group by adminUserId to get their household names
+    const grouped = {};
+    adminHouseholds.forEach(h => {
+      if (!grouped[h.adminUserId]) grouped[h.adminUserId] = [];
+      grouped[h.adminUserId].push(h.name);
+    });
+
+    const adminUserIds = Object.keys(grouped);
+    const users = await User.findAll({
+      where: { id: adminUserIds },
+      attributes: { exclude: ['password'] },
+      order: [['createdAt', 'ASC']]
+    });
+
+    const usersWithHouseholds = users.map(u => ({
+      ...u.toJSON(),
+      households: grouped[u.id] || []
+    }));
+
+    res.json({ users: usersWithHouseholds, total: usersWithHouseholds.length });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch users' });
   }

@@ -120,7 +120,7 @@ export default function DashboardPage() {
             {budgetPercent >= 80 && <AlertTriangle className="text-orange-500" size={18} />}
           </div>
           <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-            <span>{overview?.thisMonth?.toFixed(2)} € von {currentHousehold.monthlyBudget.toFixed(2)} €</span>
+            <span>{overview?.thisMonth?.toFixed(2)} € von {parseFloat(String(currentHousehold.monthlyBudget)).toFixed(2)} €</span>
             <span className={`font-bold ${budgetPercent >= 100 ? 'text-red-500' : budgetPercent >= 80 ? 'text-orange-500' : 'text-green-600'}`}>
               {Math.round(budgetPercent)}%
             </span>

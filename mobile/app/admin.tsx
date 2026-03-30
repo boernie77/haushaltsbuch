@@ -117,12 +117,13 @@ export default function AdminScreen() {
                 <List.Item
                   key={user.id}
                   title={user.name}
-                  description={`${user.email} · ${user.role}`}
+                  description={`${user.email}\n🏠 ${(user.households || []).join(', ') || '–'}`}
                   titleStyle={{ color: theme.colors.onSurface }}
-                  descriptionStyle={{ color: theme.colors.onSurface, opacity: 0.6 }}
+                  descriptionStyle={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 12 }}
+                  descriptionNumberOfLines={2}
                   left={() => (
                     <List.Icon
-                      icon={user.role === 'superadmin' ? 'crown' : user.role === 'admin' ? 'shield-account' : 'account'}
+                      icon={user.role === 'superadmin' ? 'crown' : 'home-account'}
                       color={user.isActive ? theme.colors.primary : theme.colors.error}
                     />
                   )}

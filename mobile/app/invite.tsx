@@ -13,7 +13,7 @@ export default function InviteScreen() {
   const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
 
-  const [role, setRole] = useState<'member' | 'viewer'>('member');
+  const role = 'member';
   const [generating, setGenerating] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
 
@@ -68,25 +68,6 @@ export default function InviteScreen() {
           <Text style={[styles.cardDesc, { color: theme.colors.onSurface }]}>
             Erstelle einen Einladungscode für {currentHousehold?.name}. Das neue Mitglied gibt diesen Code bei der Registrierung ein.
           </Text>
-
-          <Text style={[styles.label, { color: theme.colors.onSurface }]}>Rolle</Text>
-          <View style={styles.chipRow}>
-            <Chip
-              selected={role === 'member'}
-              onPress={() => setRole('member')}
-              selectedColor={theme.colors.primary}
-              style={{ marginRight: 8 }}
-            >
-              👤 Mitglied
-            </Chip>
-            <Chip
-              selected={role === 'viewer'}
-              onPress={() => setRole('viewer')}
-              selectedColor={theme.colors.primary}
-            >
-              👁 Betrachter
-            </Chip>
-          </View>
 
           <Button
             mode="contained"
