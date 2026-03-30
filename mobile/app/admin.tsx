@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator, List, Chip, Divider } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../src/services/api';
@@ -95,13 +96,13 @@ export default function AdminScreen() {
           {activeTab === 'overview' && stats && (
             <>
               <View style={styles.statsGrid}>
-                {[
-                  { label: 'Benutzer', value: stats.userCount, icon: '👤' },
-                  { label: 'Haushalte', value: stats.householdCount, icon: '🏠' },
-                  { label: 'Buchungen', value: stats.transactionCount, icon: '🧾' },
-                ].map(s => (
+                {([
+                  { label: 'Benutzer', value: stats.userCount, icon: 'account-group' },
+                  { label: 'Haushalte', value: stats.householdCount, icon: 'home-group' },
+                  { label: 'Buchungen', value: stats.transactionCount, icon: 'receipt' },
+                ] as const).map(s => (
                   <View key={s.label} style={[styles.statCard, { backgroundColor: theme.colors.cardBackground }]}>
-                    <Text style={styles.statIcon}>{s.icon}</Text>
+                    <MaterialCommunityIcons name={s.icon} size={32} color={theme.colors.primary} style={{ marginBottom: 6 }} />
                     <Text style={[styles.statValue, { color: theme.colors.primary }]}>{s.value}</Text>
                     <Text style={[styles.statLabel, { color: theme.colors.onSurface }]}>{s.label}</Text>
                   </View>
@@ -180,7 +181,6 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 8, marginBottom: 4 },
   statsGrid: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   statCard: { flex: 1, padding: 16, borderRadius: 16, alignItems: 'center', elevation: 2 },
-  statIcon: { fontSize: 28, marginBottom: 4 },
   statValue: { fontSize: 28, fontWeight: 'bold' },
   statLabel: { fontSize: 12, opacity: 0.7, marginTop: 2 },
   listItem: { borderRadius: 10, marginBottom: 4, elevation: 1 },
