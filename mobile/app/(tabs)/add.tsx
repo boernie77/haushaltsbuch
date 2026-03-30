@@ -8,6 +8,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
 import { useAuthStore } from '../../src/store/authStore';
@@ -15,6 +16,7 @@ import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI } from '../../src/ser
 
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
+  const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
 
   const [type, setType] = useState('expense');
@@ -153,7 +155,7 @@ export default function AddTransactionScreen() {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header */}
-        <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 12 }]}>
           <TouchableOpacity onPress={() => router.back()}>
             <MaterialCommunityIcons name="arrow-left" color="#fff" size={24} />
           </TouchableOpacity>
@@ -340,7 +342,7 @@ export default function AddTransactionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingTop: 52 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
   content: { padding: 16 },
   segmented: { marginBottom: 16 },

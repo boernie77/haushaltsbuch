@@ -4,6 +4,7 @@ import { Text, Card, useTheme, SegmentedButtons, ActivityIndicator } from 'react
 import { BarChart, PieChart, LineChart } from 'react-native-chart-kit';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/store/authStore';
 import { statsAPI } from '../../src/services/api';
 
@@ -12,6 +13,7 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'S
 
 export default function StatisticsScreen() {
   const theme = useTheme() as any;
+  const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
   const [view, setView] = useState('monthly');
   const [monthlyData, setMonthlyData] = useState<any>(null);
@@ -58,7 +60,7 @@ export default function StatisticsScreen() {
   return (
     <ScrollView style={{ backgroundColor: theme.colors.background }}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Statistiken</Text>
         <Text style={styles.headerSub}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
       </View>
@@ -206,7 +208,7 @@ export default function StatisticsScreen() {
 
 const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 24, paddingTop: 52 },
+  header: { padding: 24 },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 2 },
   content: { padding: 16 },

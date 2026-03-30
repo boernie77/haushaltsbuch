@@ -4,6 +4,7 @@ import { Text, Card, useTheme, Chip, FAB, ActivityIndicator } from 'react-native
 import { TextInput } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { useAuthStore } from '../../src/store/authStore';
@@ -11,6 +12,7 @@ import { transactionAPI } from '../../src/services/api';
 
 export default function TransactionsScreen() {
   const theme = useTheme() as any;
+  const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +83,7 @@ export default function TransactionsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header + Filters (ein Block) */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Buchungen</Text>
         <Text style={[styles.headerSub, { marginBottom: 12 }]}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
         <TextInput
@@ -140,7 +142,7 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 20, paddingTop: 52, paddingBottom: 16 },
+  header: { padding: 20, paddingBottom: 16 },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
   searchInput: {

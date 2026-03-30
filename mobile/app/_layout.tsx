@@ -23,6 +23,7 @@ export default function RootLayout() {
             <Stack.Screen name="invite" />
             <Stack.Screen name="admin" />
             <Stack.Screen name="paperless-settings" />
+            <Stack.Screen name="transaction-detail" />
           </Stack>
           <Toast />
         </PaperProvider>
