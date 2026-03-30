@@ -11,6 +11,8 @@ import BudgetPage from './pages/BudgetPage';
 import HouseholdPage from './pages/HouseholdPage';
 import PaperlessPage from './pages/PaperlessPage';
 import AdminPage from './pages/AdminPage';
+import JoinPage from './pages/JoinPage';
+import BackupPage from './pages/BackupPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -38,6 +40,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/join/:code" element={<JoinPage />} />
       <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<DashboardPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
@@ -46,6 +49,7 @@ export default function App() {
         <Route path="household" element={<HouseholdPage />} />
         <Route path="paperless" element={<PaperlessPage />} />
         <Route path="admin" element={<AdminPage />} />
+        <Route path="backup" element={<BackupPage />} />
       </Route>
     </Routes>
   );

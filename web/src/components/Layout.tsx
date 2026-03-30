@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Receipt, BarChart2, Wallet, Home, FileText, Shield, LogOut, Menu, X, ChevronDown, Settings
+  LayoutDashboard, Receipt, BarChart2, Wallet, Home, FileText, Shield, LogOut, Menu, X, ChevronDown, Settings, HardDrive
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useAuthStore } from '../store/authStore';
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/statistics', icon: BarChart2, label: 'Statistiken' },
   { to: '/budget', icon: Wallet, label: 'Budget' },
   { to: '/household', icon: Home, label: 'Haushalt' },
+  { to: '/backup', icon: HardDrive, label: 'Datensicherung' },
   { to: '/paperless', icon: FileText, label: 'Paperless' },
 ];
 

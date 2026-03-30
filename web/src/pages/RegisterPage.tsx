@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
@@ -9,9 +9,12 @@ interface RegisterForm { name: string; email: string; password: string; inviteCo
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register: registerUser, setHouseholds, setCurrentHousehold, updateUser } = useAuthStore();
   const [loading, setLoading] = useState(false);
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<RegisterForm>({ defaultValues: { theme: 'feminine' } });
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<RegisterForm>({
+    defaultValues: { theme: 'feminine', inviteCode: searchParams.get('code') || '' }
+  });
   const selectedTheme = watch('theme');
 
   const onSubmit = async (data: RegisterForm) => {

@@ -114,7 +114,7 @@ export default function HouseholdPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Haushalt verwalten</h1>
         <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreateForm(true)}>
-          <Plus size={18} /> Neuer Haushalt
+          <Plus size={18} /> Neues Haushaltsbuch
         </button>
       </div>
 

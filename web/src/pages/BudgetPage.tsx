@@ -72,10 +72,10 @@ export default function BudgetPage() {
                 onChange={e => setForm(f => ({ ...f, warningAt: e.target.value }))} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monat (leer = jährlich)</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gültig für Monat</label>
               <select className="input" value={form.month} onChange={e => setForm(f => ({ ...f, month: e.target.value }))}>
-                <option value="">Jährlich</option>
-                {['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'].map((m, i) => (
+                <option value="">Ganzes Jahr (alle Monate)</option>
+                {['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'].map((m, i) => (
                   <option key={i} value={String(i+1)}>{m}</option>
                 ))}
               </select>

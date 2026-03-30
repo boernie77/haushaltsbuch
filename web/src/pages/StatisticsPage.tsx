@@ -8,7 +8,7 @@ import { de } from 'date-fns/locale';
 import { useAuthStore } from '../store/authStore';
 import { statsAPI } from '../services/api';
 
-const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const COLORS = ['#E91E8C', '#9C27B0', '#F06292', '#CE93D8', '#F48FB1', '#AB47BC', '#2196F3', '#00BCD4'];
 
 export default function StatisticsPage() {
@@ -16,8 +16,9 @@ export default function StatisticsPage() {
   const [view, setView] = useState<'monthly' | 'yearly'>('monthly');
   const [monthly, setMonthly] = useState<any>(null);
   const [yearly, setYearly] = useState<any>(null);
+  const currentYear = new Date().getFullYear();
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(Math.max(currentYear, 2026));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function StatisticsPage() {
   })) || [];
 
   const yearlyChartData = yearly?.monthly?.map((m: any, i: number) => ({
-    name: MONTHS[i],
+    name: MONTHS[i].slice(0, 3),
     Ausgaben: m.expenses,
     Einnahmen: m.income
   })) || [];
@@ -70,7 +71,9 @@ export default function StatisticsPage() {
           </select>
         )}
         <select className="input w-auto" value={selectedYear} onChange={e => setSelectedYear(+e.target.value)}>
-          {[2023, 2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+          {Array.from({ length: Math.max(currentYear, 2026) - 2026 + 2 }, (_, i) => 2026 + i).map(y => (
+            <option key={y} value={y}>{y}</option>
+          ))}
         </select>
       </div>
 
