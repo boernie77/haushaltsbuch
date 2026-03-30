@@ -33,7 +33,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "de.haushaltsbuch.app",
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,12 +44,25 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      ["expo-camera", { "cameraPermission": "Um Quittungen zu fotografieren" }],
-      ["expo-notifications", { "icon": "./assets/notification-icon.png" }]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Um Quittungen zu fotografieren"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png"
+        }
+      ],
+      "expo-asset"
     ],
     "scheme": "haushaltsbuch",
     "extra": {
-      "eas": { "projectId": "your-eas-project-id" }
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
     }
   }
 }
