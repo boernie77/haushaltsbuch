@@ -86,7 +86,7 @@ export default function AddTransactionScreen() {
     try {
       const { data } = await ocrAPI.analyze(uri, currentHousehold?.id);
       const r = data.result;
-      if (r.amount) setAmount(r.amount.toString());
+      if (r.amount) setAmount(parseFloat(r.amount).toFixed(2));
       if (r.merchant) setMerchant(r.merchant);
       if (r.description) setDescription(r.description);
       if (r.date) setDate(r.date);
