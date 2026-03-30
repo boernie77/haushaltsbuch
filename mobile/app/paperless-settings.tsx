@@ -94,9 +94,9 @@ export default function PaperlessSettingsScreen() {
     const filtered = q ? (items || []).filter((i: any) => i.name.toLowerCase().includes(q)) : (items || []);
     return (<View>
       <View style={[styles.searchRow, { borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}>
-        <MaterialCommunityIcons name="magnify" size={16} color={theme.colors.onSurface + '60'} />
+        <MaterialCommunityIcons name="magnify" size={18} color={theme.colors.onSurface + '60'} />
         <RNTextInput
-          style={{ flex: 1, color: theme.colors.onSurface, fontSize: 14, marginLeft: 6 }}
+          style={{ flex: 1, color: theme.colors.onSurface, fontSize: 14, marginLeft: 10, paddingLeft: 0 }}
           placeholder="Suchen..."
           placeholderTextColor={theme.colors.onSurface + '50'}
           value={search[searchKey]}

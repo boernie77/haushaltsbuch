@@ -41,9 +41,44 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
+async function checkConfig() {
+  try {
+    const { Household, PaperlessConfig, GlobalSettings, HouseholdMember } = require('./src/models');
+    const households = await Household.findAll();
+    const paperlessConfigs = await PaperlessConfig.findAll({ where: { isActive: true } });
+    const configuredIds = new Set(paperlessConfigs.map(c => c.householdId));
+
+    console.log('[config] ── Konfigurationscheck ──────────────────────');
+    console.log(`[config] Haushalte gesamt: ${households.length}`);
+
+    for (const h of households) {
+      const hasPaperless = configuredIds.has(h.id);
+      const hasAI = h.aiEnabled && !!h.anthropicApiKey;
+      const memberCount = await HouseholdMember.count({ where: { householdId: h.id } });
+      const flags = [
+        hasPaperless ? '✅ Paperless' : '⚠️  Paperless fehlt',
+        hasAI ? '✅ KI-Key' : (h.aiEnabled ? '⚠️  KI aktiv aber kein Key' : '—  KI deaktiviert'),
+        `👥 ${memberCount} Mitglied(er)`,
+      ];
+      console.log(`[config]   "${h.name}": ${flags.join('  |  ')}`);
+    }
+
+    const global = await GlobalSettings.findOne({ where: { id: 'global' } });
+    if (global?.anthropicApiKey) {
+      console.log(`[config] Globaler KI-Key: ✅ vorhanden (öffentlich: ${global.aiKeyPublic ? 'ja' : 'nein'})`);
+    } else {
+      console.log('[config] Globaler KI-Key: ⚠️  nicht gesetzt');
+    }
+    console.log('[config] ───────────────────────────────────────────');
+  } catch (e) {
+    console.warn('[config] Konfigurationscheck fehlgeschlagen:', e.message);
+  }
+}
+
 // Start: run migrations, then listen, then start cron
 migrate(sequelize)
-  .then(() => {
+  .then(async () => {
+    await checkConfig();
     app.listen(PORT, () => {
       console.log(`Haushaltsbuch API running on port ${PORT}`);
     });

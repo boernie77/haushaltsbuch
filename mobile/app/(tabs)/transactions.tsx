@@ -87,7 +87,7 @@ export default function TransactionsScreen() {
         <Text style={styles.headerTitle}>Buchungen</Text>
         <Text style={[styles.headerSub, { marginBottom: 12 }]}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
         <TextInput
-          placeholder="🔍  Suchen..."
+          placeholder="Suchen..."
           placeholderTextColor="rgba(255,255,255,0.6)"
           value={search}
           onChangeText={setSearch}
