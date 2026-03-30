@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Download, Upload, Database } from 'lucide-react';
+import { Plus, UserMinus, Copy, Bot, Eye, EyeOff, ExternalLink, Download, Upload, Database, Pencil, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
@@ -11,6 +11,21 @@ export default function HouseholdPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', description: '', currency: 'EUR', monthlyBudget: '', budgetWarningAt: '80' });
+
+  // Rename state
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const handleRename = async () => {
+    if (!currentHousehold || !newName.trim()) return;
+    try {
+      const { data } = await householdAPI.update(currentHousehold.id, { name: newName.trim() });
+      setCurrentHousehold({ ...currentHousehold, name: newName.trim() });
+      setHouseholds(households.map(h => h.id === currentHousehold.id ? { ...h, name: newName.trim() } : h));
+      setEditingName(false);
+      toast.success('Name geändert');
+    } catch { toast.error('Fehler beim Umbenennen'); }
+  };
 
   // Backup state
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
@@ -163,7 +178,33 @@ export default function HouseholdPage() {
         <>
           {/* Household Info */}
           <div className="card p-6">
-            <h2 className="font-semibold text-gray-900 dark:text-white mb-3">🏠 {currentHousehold.name}</h2>
+            <div className="flex items-center gap-2 mb-3">
+              {editingName ? (
+                <>
+                  <input
+                    className="input flex-1 text-base font-semibold"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false); }}
+                    autoFocus
+                  />
+                  <button onClick={handleRename} className="p-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-80">
+                    <Check size={16} />
+                  </button>
+                  <button onClick={() => setEditingName(false)} className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200">
+                    <X size={16} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">🏠 {currentHousehold.name}</h2>
+                  <button onClick={() => { setNewName(currentHousehold.name); setEditingName(true); }}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-[var(--primary)] hover:bg-pink-50 dark:hover:bg-slate-700">
+                    <Pencil size={14} />
+                  </button>
+                </>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><span className="text-gray-500">Währung:</span> <span className="font-medium">{currentHousehold.currency}</span></div>
               {currentHousehold.monthlyBudget && (

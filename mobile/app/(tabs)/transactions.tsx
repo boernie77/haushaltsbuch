@@ -79,20 +79,19 @@ export default function TransactionsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
+      {/* Header + Filters (ein Block) */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <Text style={styles.headerTitle}>Buchungen</Text>
-        <Text style={styles.headerSub}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
-      </View>
-
-      {/* Filters */}
-      <View style={[styles.filterBar, { backgroundColor: theme.colors.surface }]}>
+        <Text style={[styles.headerSub, { marginBottom: 12 }]}>{format(now, 'MMMM yyyy', { locale: de })}</Text>
         <Searchbar
           placeholder="Suchen..."
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={() => load(true)}
-          style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant }]}
+          style={[styles.searchbar, { backgroundColor: 'rgba(255,255,255,0.15)' }]}
+          inputStyle={{ color: '#fff' }}
+          iconColor="rgba(255,255,255,0.7)"
+          placeholderTextColor="rgba(255,255,255,0.6)"
           elevation={0}
         />
         <View style={styles.chips}>
@@ -101,7 +100,8 @@ export default function TransactionsScreen() {
               key={f}
               selected={typeFilter === f}
               onPress={() => setTypeFilter(f)}
-              style={styles.filterChip}
+              style={[styles.filterChip, { backgroundColor: typeFilter === f ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)' }]}
+              textStyle={{ color: '#fff', fontSize: 12 }}
             >
               {f === 'all' ? 'Alle' : f === 'expense' ? '💸 Ausgaben' : '💰 Einnahmen'}
             </Chip>
@@ -141,13 +141,12 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 24, paddingTop: 52 },
+  header: { padding: 20, paddingTop: 52, paddingBottom: 16 },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   headerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 14 },
-  filterBar: { paddingHorizontal: 12, paddingVertical: 8, elevation: 1 },
-  searchbar: { marginBottom: 6 },
-  chips: { flexDirection: 'row', gap: 8 },
-  filterChip: { marginRight: 4 },
+  searchbar: { marginBottom: 10, borderRadius: 12 },
+  chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  filterChip: {},
   list: { padding: 12 },
   transactionCard: { marginBottom: 8, borderRadius: 12, elevation: 1 },
   cardContent: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
