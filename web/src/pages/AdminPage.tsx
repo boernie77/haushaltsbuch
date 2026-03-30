@@ -170,7 +170,7 @@ export default function AdminPage() {
   const tabs = [
     { id: 'stats', label: 'Übersicht', icon: BarChart2 },
     { id: 'users', label: `Benutzer (${users.length})`, icon: Users },
-    { id: 'households', label: `Haushalte (${households.length})`, icon: Home },
+    { id: 'households', label: `Haushalte (${users.length})`, icon: Home },
     { id: 'invites', label: 'Einladungen', icon: Shield },
     { id: 'ai', label: 'KI-Verwaltung', icon: Bot },
     { id: 'backup', label: 'Backup', icon: Database },
@@ -269,35 +269,35 @@ export default function AdminPage() {
 
           {tab === 'households' && (
             <div className="space-y-4">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Haushalt suchen…" value={householdSearch}
-                  onChange={e => handleHouseholdSearch(e.target.value)}
-                  className="input pl-9 w-full max-w-sm" />
-              </div>
-              {households.map(h => (
-                <div key={h.id} className="card p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">{h.name}</h3>
-                      <div className="flex gap-3 mt-1">
-                        <span className="text-sm text-gray-500">
-                          <Users size={13} className="inline mr-1" />{h.HouseholdMembers?.length} Mitglieder
-                        </span>
-                        {h.HouseholdMembers?.slice(0, 3).map((m: any) => (
-                          <span key={m.id} className="text-xs text-gray-400">{m.User?.name}</span>
-                        ))}
-                        {h.HouseholdMembers?.length > 3 && <span className="text-xs text-gray-400">+{h.HouseholdMembers.length - 3} weitere</span>}
+              {users.map(u => (
+                <div key={u.id} className="card p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[var(--primary)]/10 flex items-center justify-center text-[var(--primary)] font-bold text-sm">
+                        {u.name?.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900 dark:text-white">{u.name}</p>
+                        <p className="text-xs text-gray-500">{u.email}</p>
                       </div>
                     </div>
-                    <div className="text-right text-sm text-gray-500">
-                      {h.monthlyBudget && <p>Budget: {h.monthlyBudget} €/Mo</p>}
-                      <p>{format(new Date(h.createdAt), 'dd.MM.yyyy')}</p>
-                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {u.isActive ? 'Aktiv' : 'Deaktiviert'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(u.households || []).map((hName: string) => (
+                      <span key={hName} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-slate-700 text-sm text-gray-700 dark:text-gray-300">
+                        <Home size={13} className="text-[var(--primary)]" /> {hName}
+                      </span>
+                    ))}
+                    {(u.households || []).length === 0 && (
+                      <span className="text-sm text-gray-400">Keine Haushaltsbücher</span>
+                    )}
                   </div>
                 </div>
               ))}
-              {households.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushalte gefunden</p>}
+              {users.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushalte gefunden</p>}
             </div>
           )}
 
