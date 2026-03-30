@@ -101,24 +101,16 @@ export default function AddTransactionScreen() {
     }
   };
 
-  useEffect(() => {
-    if (currentHousehold && paperlessUsers.length === 0) {
-      paperlessAPI.getUsers(currentHousehold.id)
-        .then(({ data }) => setPaperlessUsers(data.users || []))
-        .catch(() => {});
-    }
-  }, [currentHousehold]);
-
   const loadPaperlessData = async () => {
     if (!currentHousehold || paperlessData) return;
     try {
       const { data } = await paperlessAPI.getData(currentHousehold.id);
-      // Nur Favoriten anzeigen
       setPaperlessData({
         documentTypes: (data.documentTypes || []).filter((i: any) => i.isFavorite),
         correspondents: (data.correspondents || []).filter((i: any) => i.isFavorite),
         tags: (data.tags || []).filter((i: any) => i.isFavorite),
       });
+      setPaperlessUsers((data.users || []).filter((u: any) => u.isEnabled));
     } catch {}
   };
 
@@ -363,8 +355,8 @@ export default function AddTransactionScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                   <Chip selected={!ownerPaperlessUserId} onPress={() => setOwnerPaperlessUserId(null)} style={styles.chip}>Standard</Chip>
                   {paperlessUsers.map((u: any) => (
-                    <Chip key={u.id} selected={ownerPaperlessUserId === String(u.id)}
-                      onPress={() => setOwnerPaperlessUserId(ownerPaperlessUserId === String(u.id) ? null : String(u.id))}
+                    <Chip key={u.id} selected={ownerPaperlessUserId === String(u.paperlessId)}
+                      onPress={() => setOwnerPaperlessUserId(ownerPaperlessUserId === String(u.paperlessId) ? null : String(u.paperlessId))}
                       style={styles.chip}>{u.fullName || u.username}</Chip>
                   ))}
                 </ScrollView>
@@ -373,9 +365,9 @@ export default function AddTransactionScreen() {
                 <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Sichtbar für</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {paperlessUsers.map((u: any) => (
-                    <Chip key={u.id} selected={viewPaperlessUserIds.includes(String(u.id))}
+                    <Chip key={u.id} selected={viewPaperlessUserIds.includes(String(u.paperlessId))}
                       onPress={() => {
-                        const id = String(u.id);
+                        const id = String(u.paperlessId);
                         setViewPaperlessUserIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
                       }}
                       style={styles.chip}>{u.fullName || u.username}</Chip>

@@ -33,6 +33,8 @@ export default function TransactionDetailScreen() {
   const [paperlessDocType, setPaperlessDocType] = useState<any>(null);
   const [paperlessCorrespondent, setPaperlessCorrespondent] = useState<any>(null);
   const [paperlessTags, setPaperlessTags] = useState<any[]>([]);
+  const [paperlessOwner, setPaperlessOwner] = useState<any>(null);
+  const [paperlessViewUsers, setPaperlessViewUsers] = useState<any[]>([]);
   const [uploadingPaperless, setUploadingPaperless] = useState(false);
 
   useEffect(() => {
@@ -80,6 +82,7 @@ export default function TransactionDetailScreen() {
           documentTypes: (data.documentTypes || []).filter((i: any) => i.isFavorite),
           correspondents: (data.correspondents || []).filter((i: any) => i.isFavorite),
           tags: (data.tags || []).filter((i: any) => i.isFavorite),
+          users: (data.users || []).filter((u: any) => u.isEnabled),
         });
       } catch {}
     }
@@ -96,6 +99,8 @@ export default function TransactionDetailScreen() {
         correspondentId: paperlessCorrespondent?.id,
         tagIds: JSON.stringify(paperlessTags.map((t: any) => t.id)),
         title: transaction.description || transaction.merchant || `Quittung ${transaction.date}`,
+        ownerPaperlessUserId: paperlessOwner ? String(paperlessOwner.paperlessId) : undefined,
+        viewPaperlessUserIds: paperlessViewUsers.length ? JSON.stringify(paperlessViewUsers.map((u: any) => u.paperlessId)) : undefined,
       });
       Toast.show({ type: 'success', text1: '📄 An Paperless übertragen' });
       setShowPaperlessModal(false);
@@ -211,6 +216,30 @@ export default function TransactionDetailScreen() {
                       setPaperlessTags(exists ? paperlessTags.filter((pt: any) => pt.id !== t.id) : [...paperlessTags, t]);
                     }}
                     style={{ marginRight: 8 }}>{t.name}</Chip>
+                ))}
+              </ScrollView>
+            </>}
+            {(paperlessData.users?.length ?? 0) > 0 && <>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Eigentümer</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                <Chip selected={!paperlessOwner} onPress={() => setPaperlessOwner(null)} style={{ marginRight: 8 }}>Standard</Chip>
+                {paperlessData.users.map((u: any) => (
+                  <Chip key={u.id} selected={paperlessOwner?.id === u.id}
+                    onPress={() => setPaperlessOwner(paperlessOwner?.id === u.id ? null : u)}
+                    style={{ marginRight: 8 }}>{u.fullName || u.username}</Chip>
+                ))}
+              </ScrollView>
+            </>}
+            {(paperlessData.users?.length ?? 0) > 1 && <>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Sichtbar für</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {paperlessData.users.map((u: any) => (
+                  <Chip key={u.id} selected={paperlessViewUsers.some((v: any) => v.id === u.id)}
+                    onPress={() => {
+                      const exists = paperlessViewUsers.some((v: any) => v.id === u.id);
+                      setPaperlessViewUsers(exists ? paperlessViewUsers.filter((v: any) => v.id !== u.id) : [...paperlessViewUsers, u]);
+                    }}
+                    style={{ marginRight: 8 }}>{u.fullName || u.username}</Chip>
                 ))}
               </ScrollView>
             </>}

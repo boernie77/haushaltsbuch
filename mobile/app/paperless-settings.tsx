@@ -8,7 +8,7 @@ import { useAuthStore } from '../src/store/authStore';
 import { paperlessAPI } from '../src/services/api';
 import Toast from 'react-native-toast-message';
 
-type TabKey = 'config' | 'doctypes' | 'correspondents' | 'tags';
+type TabKey = 'config' | 'doctypes' | 'correspondents' | 'tags' | 'users';
 
 export default function PaperlessSettingsScreen() {
   const theme = useTheme() as any;
@@ -24,7 +24,7 @@ export default function PaperlessSettingsScreen() {
   const [hasConfig, setHasConfig] = useState(false);
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<TabKey>('config');
-  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '' });
+  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '', user: '' });
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -69,6 +69,19 @@ export default function PaperlessSettingsScreen() {
     } finally { setSyncing(false); }
   };
 
+  const toggleUserEnabled = async (id: string, current: boolean) => {
+    if (!currentHousehold) return;
+    try {
+      await paperlessAPI.toggleFavorite({ type: 'user', id, isFavorite: !current, isEnabled: !current } as any);
+      setData((prev: any) => ({
+        ...prev,
+        users: (prev.users || []).map((u: any) => u.id === id ? { ...u, isEnabled: !current } : u),
+      }));
+    } catch {
+      Toast.show({ type: 'error', text1: 'Fehler beim Speichern' });
+    }
+  };
+
   const toggleFavorite = async (type: string, id: string, current: boolean) => {
     if (!currentHousehold) return;
     try {
@@ -87,6 +100,7 @@ export default function PaperlessSettingsScreen() {
     { key: 'doctypes', label: 'Typen', icon: 'file-document' },
     { key: 'correspondents', label: 'Absender', icon: 'account-group' },
     { key: 'tags', label: 'Tags', icon: 'tag-multiple' },
+    { key: 'users', label: 'Benutzer', icon: 'account-check' },
   ];
 
   const renderList = (items: any[], type: string, searchKey: keyof typeof search, renderLabel: (item: any) => React.ReactNode) => {
@@ -226,6 +240,56 @@ export default function PaperlessSettingsScreen() {
                   <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{item.name}</Text>
                 </View>
               ))}
+            </View>
+          )}
+
+          {tab === 'users' && (
+            <View style={[styles.card, { backgroundColor: theme.colors.cardBackground }]}>
+              <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
+                Benutzer ({data?.users?.length || 0})
+              </Text>
+              <Text style={{ color: theme.colors.onSurface, opacity: 0.55, fontSize: 12, marginBottom: 10 }}>
+                Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl.
+              </Text>
+              <Searchbar
+                placeholder="Suchen..."
+                value={search.user}
+                onChangeText={v => setSearch(s => ({ ...s, user: v }))}
+                style={{ marginBottom: 8, elevation: 0, borderWidth: 1, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }}
+                inputStyle={{ fontSize: 14, color: theme.colors.onSurface }}
+                iconColor={theme.colors.onSurface + '60'}
+                placeholderTextColor={theme.colors.onSurface + '50'}
+              />
+              {(data?.users || [])
+                .filter((u: any) => {
+                  const q = search.user.toLowerCase();
+                  return !q || u.fullName?.toLowerCase().includes(q) || u.username?.toLowerCase().includes(q);
+                })
+                .map((u: any) => (
+                  <View key={u.id} style={[styles.listRow, { borderBottomColor: theme.colors.onSurface + '15' }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: u.isEnabled ? theme.colors.onSurface : theme.colors.onSurface + '50', fontSize: 15, textDecorationLine: u.isEnabled ? 'none' : 'line-through' }}>
+                        {u.fullName || u.username}
+                      </Text>
+                      {u.fullName && u.username !== u.fullName && (
+                        <Text style={{ color: theme.colors.onSurface + '55', fontSize: 12 }}>@{u.username}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity onPress={() => toggleUserEnabled(u.id, u.isEnabled)} style={styles.starBtn}>
+                      <MaterialCommunityIcons
+                        name={u.isEnabled ? 'account-check' : 'account-cancel'}
+                        size={22}
+                        color={u.isEnabled ? '#22C55E' : theme.colors.onSurface + '30'}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              }
+              {(data?.users || []).length === 0 && (
+                <Text style={{ color: theme.colors.onSurface, opacity: 0.5, textAlign: 'center', marginTop: 32 }}>
+                  Noch keine Benutzer — zuerst synchronisieren
+                </Text>
+              )}
             </View>
           )}
         </ScrollView>

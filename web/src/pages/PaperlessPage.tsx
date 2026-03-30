@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, FileText, Users, Tag, Star, Search } from 'lucide-react';
+import { Save, RefreshCw, FileText, Users, Tag, Star, Search, UserCheck, UserX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { paperlessAPI } from '../services/api';
@@ -11,7 +11,7 @@ export default function PaperlessPage() {
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '' });
+  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '', user: '' });
 
   const loadData = async (hid: string) => {
     const { data: d } = await paperlessAPI.getData(hid);
@@ -58,6 +58,19 @@ export default function PaperlessPage() {
         const key = type === 'doctype' ? 'documentTypes' : type === 'correspondent' ? 'correspondents' : 'tags';
         return { ...prev, [key]: prev[key].map((item: any) => item.id === id ? { ...item, isFavorite: !current } : item) };
       });
+    } catch {
+      toast.error('Fehler beim Speichern');
+    }
+  };
+
+  const toggleUserEnabled = async (id: string, current: boolean) => {
+    if (!currentHousehold) return;
+    try {
+      await paperlessAPI.toggleFavorite({ type: 'user', id, isFavorite: !current, isEnabled: !current } as any);
+      setData((prev: any) => ({
+        ...prev,
+        users: (prev.users || []).map((u: any) => u.id === id ? { ...u, isEnabled: !current } : u),
+      }));
     } catch {
       toast.error('Fehler beim Speichern');
     }
@@ -220,6 +233,45 @@ export default function PaperlessPage() {
                 </span>
               )}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Paperless-Benutzer */}
+      {data && data.users && data.users.length > 0 && (
+        <div className="card p-5">
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+            <Users size={16} className="text-[var(--primary)]" /> Paperless-Benutzer
+            <span className="text-xs text-gray-400 font-normal">({data.users.length})</span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-3">Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl (z.B. Admin-Konten).</p>
+          <div className="relative mb-2">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" className="input pl-7 py-1.5 text-sm" placeholder="Suchen..."
+              value={search.user} onChange={e => setSearch(s => ({ ...s, user: e.target.value }))} />
+          </div>
+          <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+            {data.users
+              .filter((u: any) => !search.user || u.fullName?.toLowerCase().includes(search.user.toLowerCase()) || u.username?.toLowerCase().includes(search.user.toLowerCase()))
+              .map((u: any) => (
+                <div key={u.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className={`text-sm ${u.isEnabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 line-through'}`}>
+                      {u.fullName || u.username}
+                    </span>
+                    {u.fullName && u.username !== u.fullName && (
+                      <span className="text-xs text-gray-400">@{u.username}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleUserEnabled(u.id, u.isEnabled)}
+                    className={`ml-2 shrink-0 transition-colors ${u.isEnabled ? 'text-green-500 hover:text-red-400' : 'text-gray-300 hover:text-green-500'}`}
+                    title={u.isEnabled ? 'Deaktivieren (nicht mehr zur Auswahl)' : 'Aktivieren (zur Auswahl beim Upload)'}
+                  >
+                    {u.isEnabled ? <UserCheck size={16} /> : <UserX size={16} />}
+                  </button>
+                </div>
+              ))}
           </div>
         </div>
       )}

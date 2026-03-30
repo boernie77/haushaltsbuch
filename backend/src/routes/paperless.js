@@ -3,7 +3,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
-const { PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, HouseholdMember, Transaction } = require('../models');
+const { PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, PaperlessUser, HouseholdMember, Transaction } = require('../models');
 const { auth } = require('../middleware/auth');
 
 async function checkAccess(userId, householdId) {
@@ -70,10 +70,11 @@ router.post('/sync/:householdId', auth, async (req, res) => {
     const client = await getPaperlessClient(householdId);
     const now = new Date();
 
-    const [docTypes, correspondents, tags] = await Promise.all([
+    const [docTypes, correspondents, tags, users] = await Promise.all([
       fetchAllPages(`${client.baseURL}/api/document_types/`, client.headers),
       fetchAllPages(`${client.baseURL}/api/correspondents/`, client.headers),
       fetchAllPages(`${client.baseURL}/api/tags/`, client.headers),
+      fetchAllPages(`${client.baseURL}/api/users/`, client.headers),
     ]);
 
     for (const dt of docTypes) {
@@ -85,12 +86,17 @@ router.post('/sync/:householdId', auth, async (req, res) => {
     for (const t of tags) {
       await PaperlessTag.upsert({ householdId, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
     }
+    for (const u of users) {
+      const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username;
+      await PaperlessUser.upsert({ householdId, paperlessId: u.id, username: u.username, fullName, syncedAt: now });
+    }
 
     res.json({
       synced: {
         documentTypes: docTypes.length,
         correspondents: correspondents.length,
         tags: tags.length,
+        users: users.length,
       }
     });
   } catch (err) {
@@ -103,22 +109,29 @@ router.get('/data/:householdId', auth, async (req, res) => {
   try {
     const { householdId } = req.params;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-    const [documentTypes, correspondents, tags] = await Promise.all([
+    const [documentTypes, correspondents, tags, users] = await Promise.all([
       PaperlessDocumentType.findAll({ where: { householdId }, order: [['name', 'ASC']] }),
       PaperlessCorrespondent.findAll({ where: { householdId }, order: [['name', 'ASC']] }),
-      PaperlessTag.findAll({ where: { householdId }, order: [['name', 'ASC']] })
+      PaperlessTag.findAll({ where: { householdId }, order: [['name', 'ASC']] }),
+      PaperlessUser.findAll({ where: { householdId }, order: [['fullName', 'ASC']] }),
     ]);
-    res.json({ documentTypes, correspondents, tags });
+    res.json({ documentTypes, correspondents, tags, users });
   } catch {
     res.status(500).json({ error: 'Failed to fetch data' });
   }
 });
 
-// PUT /api/paperless/favorite — toggle isFavorite
+// PUT /api/paperless/favorite — toggle isFavorite (doctype/correspondent/tag) oder isEnabled (user)
 router.put('/favorite', auth, async (req, res) => {
   try {
-    const { type, id, isFavorite } = req.body;
-    // type: 'doctype' | 'correspondent' | 'tag'
+    const { type, id, isFavorite, isEnabled } = req.body;
+    if (type === 'user') {
+      const item = await PaperlessUser.findByPk(id);
+      if (!item) return res.status(404).json({ error: 'Not found' });
+      if (!await checkAccess(req.user.id, item.householdId)) return res.status(403).json({ error: 'Access denied' });
+      await item.update({ isEnabled });
+      return res.json({ id, isEnabled });
+    }
     const Model = type === 'doctype' ? PaperlessDocumentType
                 : type === 'correspondent' ? PaperlessCorrespondent
                 : PaperlessTag;
@@ -128,7 +141,7 @@ router.put('/favorite', auth, async (req, res) => {
     await item.update({ isFavorite });
     res.json({ id, isFavorite });
   } catch {
-    res.status(500).json({ error: 'Failed to update favorite' });
+    res.status(500).json({ error: 'Failed to update' });
   }
 });
 
@@ -199,15 +212,14 @@ router.post('/create-tag', auth, async (req, res) => {
   }
 });
 
-// GET /api/paperless/users/:householdId — Benutzer aus Paperless laden
+// GET /api/paperless/users/:householdId — Benutzer aus lokaler DB (nach Sync)
 router.get('/users/:householdId', auth, async (req, res) => {
   try {
     if (!await checkAccess(req.user.id, req.params.householdId)) return res.status(403).json({ error: 'Access denied' });
-    const client = await getPaperlessClient(req.params.householdId);
-    const users = await fetchAllPages(`${client.baseURL}/api/users/`, client.headers);
-    res.json({ users: users.map(u => ({ id: u.id, username: u.username, fullName: `${u.first_name} ${u.last_name}`.trim() || u.username })) });
+    const users = await PaperlessUser.findAll({ where: { householdId: req.params.householdId }, order: [['fullName', 'ASC']] });
+    res.json({ users });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch Paperless users: ' + err.message });
+    res.status(500).json({ error: 'Failed to fetch users: ' + err.message });
   }
 });
 

@@ -56,9 +56,11 @@ export default function TransactionsPage() {
     load();
     if (currentHousehold) {
       categoryAPI.getAll(currentHousehold.id).then(({ data }) => setCategories(data.categories));
-      paperlessAPI.getData(currentHousehold.id).then(({ data }) => setPaperlessData(data)).catch(() => {});
+      paperlessAPI.getData(currentHousehold.id).then(({ data }) => {
+        setPaperlessData(data);
+        setPaperlessUsers((data.users || []).filter((u: any) => u.isEnabled));
+      }).catch(() => {});
       recurringAPI.getAll(currentHousehold.id).then(({ data }) => setRecurring(data.recurring || [])).catch(() => {});
-      paperlessAPI.getUsers(currentHousehold.id).then(({ data }) => setPaperlessUsers(data.users || [])).catch(() => {});
     }
   }, [currentHousehold, typeFilter]);
 
@@ -468,7 +470,7 @@ export default function TransactionsPage() {
                   <select className="input" value={paperlessForm.ownerPaperlessUserId || ''}
                     onChange={e => setPaperlessForm((f: any) => ({ ...f, ownerPaperlessUserId: e.target.value }))}>
                     <option value="">— Standard —</option>
-                    {paperlessUsers.map((u: any) => <option key={u.id} value={u.id}>{u.fullName || u.username}</option>)}
+                    {paperlessUsers.map((u: any) => <option key={u.id} value={u.paperlessId}>{u.fullName || u.username}</option>)}
                   </select>
                 </div>
               )}
@@ -477,14 +479,14 @@ export default function TransactionsPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sichtbar für</label>
                   <div className="flex flex-wrap gap-2">
                     {paperlessUsers.map((u: any) => {
-                      const selected = (paperlessForm.viewPaperlessUserIds || []).includes(String(u.id));
+                      const selected = (paperlessForm.viewPaperlessUserIds || []).includes(String(u.paperlessId));
                       return (
                         <button key={u.id} type="button"
                           onClick={() => setPaperlessForm((f: any) => ({
                             ...f,
                             viewPaperlessUserIds: selected
-                              ? (f.viewPaperlessUserIds || []).filter((id: string) => id !== String(u.id))
-                              : [...(f.viewPaperlessUserIds || []), String(u.id)]
+                              ? (f.viewPaperlessUserIds || []).filter((id: string) => id !== String(u.paperlessId))
+                              : [...(f.viewPaperlessUserIds || []), String(u.paperlessId)]
                           }))}
                           className={`px-3 py-1 rounded-full text-xs font-medium transition-all border-2 ${selected ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 border-transparent'}`}>
                           {u.fullName || u.username}

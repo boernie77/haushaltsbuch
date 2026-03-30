@@ -130,6 +130,17 @@ const PaperlessTag = sequelize.define('PaperlessTag', {
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_tags', timestamps: true });
 
+// ── PaperlessUser ─────────────────────────────────────────────────────────────
+const PaperlessUser = sequelize.define('PaperlessUser', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId:   { type: DataTypes.UUID, allowNull: false },
+  paperlessId:   { type: DataTypes.INTEGER, allowNull: false },
+  username:      { type: DataTypes.STRING, allowNull: false },
+  fullName:      { type: DataTypes.STRING, allowNull: true },
+  isEnabled:     { type: DataTypes.BOOLEAN, defaultValue: true },
+  syncedAt:      { type: DataTypes.DATE, allowNull: true },
+}, { tableName: 'paperless_users', timestamps: true });
+
 // ── BackupConfig ──────────────────────────────────────────────────────────────
 const BackupConfig = sequelize.define('BackupConfig', {
   id:              { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -191,6 +202,7 @@ Household.hasOne(PaperlessConfig, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessDocumentType, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessCorrespondent, { foreignKey: 'householdId' });
 Household.hasMany(PaperlessTag, { foreignKey: 'householdId' });
+Household.hasMany(PaperlessUser, { foreignKey: 'householdId' });
 Household.hasMany(Category, { foreignKey: 'householdId' });
 
 InviteCode.belongsTo(User, { foreignKey: 'createdById', as: 'creator' });
@@ -208,6 +220,7 @@ module.exports = {
   PaperlessDocumentType,
   PaperlessCorrespondent,
   PaperlessTag,
+  PaperlessUser,
   GlobalSettings,
   InviteCode,
   BackupConfig,
