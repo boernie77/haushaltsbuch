@@ -78,15 +78,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   loadStoredAuth: async () => {
+    set({ isLoading: true });
     try {
       const token = await SecureStore.getItemAsync('auth_token');
-      if (!token) return;
+      if (!token) { set({ isLoading: false }); return; }
 
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       const { data } = await api.get('/auth/me');
-      set({ token, user: data.user, isAuthenticated: true });
+      const { data: hd } = await api.get('/households');
+      const households = hd.households || [];
+      set({ token, user: data.user, isAuthenticated: true, isLoading: false, households, currentHousehold: households[0] || null });
     } catch {
       await SecureStore.deleteItemAsync('auth_token');
+      set({ isLoading: false });
     }
   },
 
