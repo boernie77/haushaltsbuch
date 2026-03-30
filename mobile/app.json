@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "de.haushaltsbuch.app",
+      "bundleIdentifier": "de.bernauer24.haushaltsbuch",
       "infoPlist": {
         "NSCameraUsageDescription": "Um Quittungen zu fotografieren",
         "NSPhotoLibraryUsageDescription": "Um Quittungen aus der Galerie zu wählen",
@@ -51,12 +51,6 @@
         "expo-camera",
         {
           "cameraPermission": "Um Quittungen zu fotografieren"
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png"
         }
       ],
       "expo-asset",

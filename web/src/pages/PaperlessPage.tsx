@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw, Plus, FileText, Users, Tag } from 'lucide-react';
+import { Save, RefreshCw, FileText, Users, Tag, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { paperlessAPI } from '../services/api';
@@ -11,14 +11,18 @@ export default function PaperlessPage() {
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [newItem, setNewItem] = useState({ type: '', name: '', color: '' });
+
+  const loadData = async (hid: string) => {
+    const { data: d } = await paperlessAPI.getData(hid);
+    setData(d);
+  };
 
   useEffect(() => {
     if (!currentHousehold) return;
     paperlessAPI.getConfig(currentHousehold.id).then(({ data: d }) => {
       if (d.config) { setConfig({ baseUrl: d.config.baseUrl, apiToken: '' }); setConnected(true); }
     }).catch(() => {});
-    paperlessAPI.getData(currentHousehold.id).then(({ data: d }) => setData(d)).catch(() => {});
+    loadData(currentHousehold.id).catch(() => {});
   }, [currentHousehold]);
 
   const handleSave = async () => {
@@ -38,34 +42,57 @@ export default function PaperlessPage() {
     setSyncing(true);
     try {
       const { data: d } = await paperlessAPI.sync(currentHousehold.id);
-      const { data: pd } = await paperlessAPI.getData(currentHousehold.id);
-      setData(pd);
+      await loadData(currentHousehold.id);
       toast.success(`Synchronisiert: ${d.synced.documentTypes} Typen, ${d.synced.correspondents} Korrespondenten, ${d.synced.tags} Tags`);
     } catch (err: any) {
-      toast.error('Sync fehlgeschlagen: ' + err.response?.data?.error);
+      toast.error('Sync fehlgeschlagen: ' + (err.response?.data?.error || err.message));
     } finally { setSyncing(false); }
   };
 
-  const handleCreate = async () => {
-    if (!newItem.name || !currentHousehold) return;
+  const toggleFavorite = async (type: string, id: string, current: boolean) => {
+    if (!currentHousehold) return;
     try {
-      if (newItem.type === 'doctype') await paperlessAPI.createDocType({ householdId: currentHousehold.id, name: newItem.name });
-      else if (newItem.type === 'correspondent') await paperlessAPI.createCorrespondent({ householdId: currentHousehold.id, name: newItem.name });
-      else if (newItem.type === 'tag') await paperlessAPI.createTag({ householdId: currentHousehold.id, name: newItem.name, color: newItem.color });
-      const { data: pd } = await paperlessAPI.getData(currentHousehold.id);
-      setData(pd);
-      setNewItem({ type: '', name: '', color: '' });
-      toast.success('Erstellt!');
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Fehler');
+      await paperlessAPI.toggleFavorite({ type, id, isFavorite: !current });
+      setData((prev: any) => {
+        const key = type === 'doctype' ? 'documentTypes' : type === 'correspondent' ? 'correspondents' : 'tags';
+        return { ...prev, [key]: prev[key].map((item: any) => item.id === id ? { ...item, isFavorite: !current } : item) };
+      });
+    } catch {
+      toast.error('Fehler beim Speichern');
     }
   };
+
+  const FavoriteList = ({ items, type, renderItem }: { items: any[], type: string, renderItem: (item: any) => React.ReactNode }) => (
+    <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+      {items.length === 0 && (
+        <p className="text-sm text-gray-400 text-center py-4">Noch keine Daten — zuerst synchronisieren</p>
+      )}
+      {items.map((item: any) => (
+        <div key={item.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 group">
+          <div className="flex-1 min-w-0">{renderItem(item)}</div>
+          <button
+            onClick={() => toggleFavorite(type, item.id, item.isFavorite)}
+            className={`ml-2 shrink-0 transition-colors ${item.isFavorite ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`}
+            title={item.isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
+          >
+            <Star size={15} fill={item.isFavorite ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const favorites = data ? {
+    documentTypes: data.documentTypes.filter((x: any) => x.isFavorite),
+    correspondents: data.correspondents.filter((x: any) => x.isFavorite),
+    tags: data.tags.filter((x: any) => x.isFavorite),
+  } : null;
 
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Paperless-ngx Integration</h1>
 
-      {/* Connection Config */}
+      {/* Verbindung */}
       <div className="card p-6">
         <h2 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
           <FileText size={18} className="text-[var(--primary)]" /> Verbindung
@@ -88,84 +115,93 @@ export default function PaperlessPage() {
             <Save size={16} /> {saving ? 'Speichert...' : 'Verbinden'}
           </button>
           {connected && (
-            <button onClick={handleSync} disabled={syncing} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium">
+            <button onClick={handleSync} disabled={syncing} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
               <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Synchronisiert...' : 'Daten synchronisieren'}
+              {syncing ? 'Synchronisiert...' : 'Von Paperless synchronisieren'}
             </button>
           )}
         </div>
+        {connected && (
+          <p className="text-xs text-gray-400 mt-2">
+            Tipp: Synchronisiere zunächst alle Daten aus Paperless, dann markiere deine Favoriten mit ⭐ — diese stehen beim Quittungs-Upload zur Auswahl.
+          </p>
+        )}
       </div>
 
-      {/* Create new items */}
-      <div className="card p-6">
-        <h2 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-          <Plus size={18} className="text-[var(--primary)]" /> Neues Element erstellen
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <select className="input" value={newItem.type} onChange={e => setNewItem(n => ({ ...n, type: e.target.value }))}>
-            <option value="">Typ wählen...</option>
-            <option value="doctype">Dokumententyp</option>
-            <option value="correspondent">Korrespondent</option>
-            <option value="tag">Tag</option>
-          </select>
-          <input type="text" className="input" placeholder="Name" value={newItem.name}
-            onChange={e => setNewItem(n => ({ ...n, name: e.target.value }))} />
-          {newItem.type === 'tag' && (
-            <input type="color" className="input h-10 cursor-pointer" value={newItem.color || '#E91E8C'}
-              onChange={e => setNewItem(n => ({ ...n, color: e.target.value }))} />
-          )}
-          <button onClick={handleCreate} disabled={!newItem.type || !newItem.name} className="btn-primary disabled:opacity-50">
-            Erstellen
-          </button>
+      {/* Favoriten-Übersicht */}
+      {favorites && (favorites.documentTypes.length > 0 || favorites.correspondents.length > 0 || favorites.tags.length > 0) && (
+        <div className="card p-5 border border-yellow-200 dark:border-yellow-800">
+          <h2 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <Star size={16} className="text-yellow-400" fill="currentColor" /> Aktive Favoriten
+            <span className="text-xs text-gray-400 font-normal">(stehen beim Upload zur Auswahl)</span>
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {favorites.documentTypes.map((x: any) => (
+              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                <FileText size={10} /> {x.name}
+              </span>
+            ))}
+            {favorites.correspondents.map((x: any) => (
+              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex items-center gap-1">
+                <Users size={10} /> {x.name}
+              </span>
+            ))}
+            {favorites.tags.map((x: any) => (
+              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs text-white flex items-center gap-1"
+                style={{ background: x.color || '#9CA3AF' }}>
+                <Tag size={10} /> {x.name}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Data Overview */}
+      {/* Alle Daten mit Stern-Buttons */}
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Document Types */}
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <FileText size={16} className="text-[var(--primary)]" /> Dokumententypen ({data.documentTypes.length})
+              <FileText size={16} className="text-[var(--primary)]" /> Dokumententypen
+              <span className="text-xs text-gray-400 font-normal">({data.documentTypes.length})</span>
             </h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {data.documentTypes.map((dt: any) => (
-                <div key={dt.id} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-100 dark:border-slate-700">
-                  <span className="text-gray-700 dark:text-gray-300">{dt.name}</span>
-                  {dt.paperlessId && <span className="text-xs text-gray-400">#{dt.paperlessId}</span>}
-                </div>
-              ))}
-            </div>
+            <FavoriteList
+              items={data.documentTypes}
+              type="doctype"
+              renderItem={(item) => (
+                <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
+              )}
+            />
           </div>
 
-          {/* Correspondents */}
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Users size={16} className="text-[var(--primary)]" /> Korrespondenten ({data.correspondents.length})
+              <Users size={16} className="text-[var(--primary)]" /> Korrespondenten
+              <span className="text-xs text-gray-400 font-normal">({data.correspondents.length})</span>
             </h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {data.correspondents.map((c: any) => (
-                <div key={c.id} className="flex items-center justify-between text-sm py-1.5 border-b border-gray-100 dark:border-slate-700">
-                  <span className="text-gray-700 dark:text-gray-300">{c.name}</span>
-                  {c.paperlessId && <span className="text-xs text-gray-400">#{c.paperlessId}</span>}
-                </div>
-              ))}
-            </div>
+            <FavoriteList
+              items={data.correspondents}
+              type="correspondent"
+              renderItem={(item) => (
+                <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
+              )}
+            />
           </div>
 
-          {/* Tags */}
           <div className="card p-5">
             <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Tag size={16} className="text-[var(--primary)]" /> Tags ({data.tags.length})
+              <Tag size={16} className="text-[var(--primary)]" /> Tags
+              <span className="text-xs text-gray-400 font-normal">({data.tags.length})</span>
             </h3>
-            <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto">
-              {data.tags.map((t: any) => (
-                <span key={t.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-white"
-                  style={{ background: t.color || '#9CA3AF' }}>
-                  {t.name}
+            <FavoriteList
+              items={data.tags}
+              type="tag"
+              renderItem={(item) => (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                  style={{ background: item.color || '#9CA3AF' }}>
+                  {item.name}
                 </span>
-              ))}
-            </div>
+              )}
+            />
           </div>
         </div>
       )}

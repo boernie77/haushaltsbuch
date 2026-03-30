@@ -13,7 +13,6 @@ async function checkAccess(userId, householdId) {
 async function getPaperlessClient(householdId) {
   const config = await PaperlessConfig.findOne({ where: { householdId, isActive: true } });
   if (!config) throw new Error('Paperless not configured');
-
   return {
     baseURL: config.baseUrl.replace(/\/$/, ''),
     headers: { Authorization: `Token ${config.apiToken}`, 'Content-Type': 'application/json' }
@@ -24,13 +23,12 @@ async function getPaperlessClient(householdId) {
 router.get('/config/:householdId', auth, async (req, res) => {
   try {
     if (!await checkAccess(req.user.id, req.params.householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const config = await PaperlessConfig.findOne({
       where: { householdId: req.params.householdId },
       attributes: ['id', 'householdId', 'baseUrl', 'isActive', 'createdAt']
     });
     res.json({ config });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch config' });
   }
 });
@@ -40,29 +38,23 @@ router.post('/config', auth, async (req, res) => {
   try {
     const { householdId, baseUrl, apiToken } = req.body;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
-    // Test connection
     try {
-      await axios.get(`${baseUrl.replace(/\/$/, '')}/api/`, {
-        headers: { Authorization: `Token ${apiToken}` }
-      });
+      await axios.get(`${baseUrl.replace(/\/$/, '')}/api/`, { headers: { Authorization: `Token ${apiToken}` } });
     } catch {
       return res.status(400).json({ error: 'Cannot connect to Paperless. Check URL and token.' });
     }
-
     const [config] = await PaperlessConfig.upsert({ householdId, baseUrl, apiToken, isActive: true });
     res.json({ config: { id: config.id, householdId, baseUrl, isActive: true } });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to save config' });
   }
 });
 
-// POST /api/paperless/sync/:householdId — sync document types, correspondents, tags
+// POST /api/paperless/sync/:householdId
 router.post('/sync/:householdId', auth, async (req, res) => {
   try {
     const { householdId } = req.params;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const client = await getPaperlessClient(householdId);
     const now = new Date();
 
@@ -72,25 +64,14 @@ router.post('/sync/:householdId', auth, async (req, res) => {
       axios.get(`${client.baseURL}/api/tags/?page_size=200`, { headers: client.headers })
     ]);
 
-    // Upsert document types
     for (const dt of docTypes.data.results || []) {
-      await PaperlessDocumentType.upsert({
-        householdId, paperlessId: dt.id, name: dt.name, syncedAt: now
-      });
+      await PaperlessDocumentType.upsert({ householdId, paperlessId: dt.id, name: dt.name, syncedAt: now });
     }
-
-    // Upsert correspondents
     for (const c of correspondents.data.results || []) {
-      await PaperlessCorrespondent.upsert({
-        householdId, paperlessId: c.id, name: c.name, syncedAt: now
-      });
+      await PaperlessCorrespondent.upsert({ householdId, paperlessId: c.id, name: c.name, syncedAt: now });
     }
-
-    // Upsert tags
     for (const t of tags.data.results || []) {
-      await PaperlessTag.upsert({
-        householdId, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now
-      });
+      await PaperlessTag.upsert({ householdId, paperlessId: t.id, name: t.name, color: t.colour, syncedAt: now });
     }
 
     res.json({
@@ -101,81 +82,112 @@ router.post('/sync/:householdId', auth, async (req, res) => {
       }
     });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Sync failed: ' + err.message });
   }
 });
 
-// GET /api/paperless/data/:householdId — get all local paperless data
+// GET /api/paperless/data/:householdId
 router.get('/data/:householdId', auth, async (req, res) => {
   try {
     const { householdId } = req.params;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const [documentTypes, correspondents, tags] = await Promise.all([
       PaperlessDocumentType.findAll({ where: { householdId }, order: [['name', 'ASC']] }),
       PaperlessCorrespondent.findAll({ where: { householdId }, order: [['name', 'ASC']] }),
       PaperlessTag.findAll({ where: { householdId }, order: [['name', 'ASC']] })
     ]);
-
     res.json({ documentTypes, correspondents, tags });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch data' });
   }
 });
 
-// POST /api/paperless/create-type — create document type in Paperless + local
+// PUT /api/paperless/favorite — toggle isFavorite
+router.put('/favorite', auth, async (req, res) => {
+  try {
+    const { type, id, isFavorite } = req.body;
+    // type: 'doctype' | 'correspondent' | 'tag'
+    const Model = type === 'doctype' ? PaperlessDocumentType
+                : type === 'correspondent' ? PaperlessCorrespondent
+                : PaperlessTag;
+    const item = await Model.findByPk(id);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    if (!await checkAccess(req.user.id, item.householdId)) return res.status(403).json({ error: 'Access denied' });
+    await item.update({ isFavorite });
+    res.json({ id, isFavorite });
+  } catch {
+    res.status(500).json({ error: 'Failed to update favorite' });
+  }
+});
+
+// POST /api/paperless/create-type — prüft auf Duplikate
 router.post('/create-type', auth, async (req, res) => {
   try {
     const { householdId, name } = req.body;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const client = await getPaperlessClient(householdId);
+
+    // Auf Duplikat in Paperless prüfen
+    const existing = await axios.get(`${client.baseURL}/api/document_types/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    if (existing.data.results?.length > 0) {
+      const found = existing.data.results[0];
+      const [docType] = await PaperlessDocumentType.upsert({ householdId, paperlessId: found.id, name: found.name, syncedAt: new Date() });
+      return res.status(200).json({ documentType: docType, existing: true });
+    }
+
     const response = await axios.post(`${client.baseURL}/api/document_types/`, { name }, { headers: client.headers });
-    const docType = await PaperlessDocumentType.create({
-      householdId, paperlessId: response.data.id, name, syncedAt: new Date()
-    });
+    const docType = await PaperlessDocumentType.create({ householdId, paperlessId: response.data.id, name, syncedAt: new Date() });
     res.status(201).json({ documentType: docType });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to create document type' });
   }
 });
 
-// POST /api/paperless/create-correspondent
+// POST /api/paperless/create-correspondent — prüft auf Duplikate
 router.post('/create-correspondent', auth, async (req, res) => {
   try {
     const { householdId, name } = req.body;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const client = await getPaperlessClient(householdId);
+
+    const existing = await axios.get(`${client.baseURL}/api/correspondents/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    if (existing.data.results?.length > 0) {
+      const found = existing.data.results[0];
+      const [correspondent] = await PaperlessCorrespondent.upsert({ householdId, paperlessId: found.id, name: found.name, syncedAt: new Date() });
+      return res.status(200).json({ correspondent, existing: true });
+    }
+
     const response = await axios.post(`${client.baseURL}/api/correspondents/`, { name }, { headers: client.headers });
-    const correspondent = await PaperlessCorrespondent.create({
-      householdId, paperlessId: response.data.id, name, syncedAt: new Date()
-    });
+    const correspondent = await PaperlessCorrespondent.create({ householdId, paperlessId: response.data.id, name, syncedAt: new Date() });
     res.status(201).json({ correspondent });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to create correspondent' });
   }
 });
 
-// POST /api/paperless/create-tag
+// POST /api/paperless/create-tag — prüft auf Duplikate
 router.post('/create-tag', auth, async (req, res) => {
   try {
     const { householdId, name, color } = req.body;
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
-
     const client = await getPaperlessClient(householdId);
+
+    const existing = await axios.get(`${client.baseURL}/api/tags/?name=${encodeURIComponent(name)}`, { headers: client.headers });
+    if (existing.data.results?.length > 0) {
+      const found = existing.data.results[0];
+      const [tag] = await PaperlessTag.upsert({ householdId, paperlessId: found.id, name: found.name, color: found.colour, syncedAt: new Date() });
+      return res.status(200).json({ tag, existing: true });
+    }
+
     const response = await axios.post(`${client.baseURL}/api/tags/`, { name, colour: color }, { headers: client.headers });
-    const tag = await PaperlessTag.create({
-      householdId, paperlessId: response.data.id, name, color, syncedAt: new Date()
-    });
+    const tag = await PaperlessTag.create({ householdId, paperlessId: response.data.id, name, color, syncedAt: new Date() });
     res.status(201).json({ tag });
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: 'Failed to create tag' });
   }
 });
 
-// POST /api/paperless/upload — upload receipt to Paperless
+// POST /api/paperless/upload
 router.post('/upload', auth, async (req, res) => {
   try {
     const { transactionId, documentTypeId, correspondentId, tagIds, title } = req.body;
@@ -186,11 +198,10 @@ router.post('/upload', auth, async (req, res) => {
 
     const client = await getPaperlessClient(transaction.householdId);
 
-    // Resolve Paperless IDs
     const [docType, correspondent, tags] = await Promise.all([
       documentTypeId ? PaperlessDocumentType.findByPk(documentTypeId) : null,
       correspondentId ? PaperlessCorrespondent.findByPk(correspondentId) : null,
-      tagIds ? PaperlessTag.findAll({ where: { id: JSON.parse(tagIds) } }) : []
+      tagIds?.length ? PaperlessTag.findAll({ where: { id: JSON.parse(tagIds) } }) : []
     ]);
 
     const form = new FormData();
@@ -208,7 +219,6 @@ router.post('/upload', auth, async (req, res) => {
     await transaction.update({ paperlessDocId: response.data });
     res.json({ paperlessDocId: response.data, message: 'Uploaded to Paperless' });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Upload failed: ' + err.message });
   }
 });

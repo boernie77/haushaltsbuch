@@ -77,6 +77,7 @@ export const paperlessAPI = {
   createDocType: (d: any) => api.post('/paperless/create-type', d),
   createCorrespondent: (d: any) => api.post('/paperless/create-correspondent', d),
   createTag: (d: any) => api.post('/paperless/create-tag', d),
+  toggleFavorite: (d: { type: string; id: string; isFavorite: boolean }) => api.put('/paperless/favorite', d),
   upload: (d: any) => api.post('/paperless/upload', d),
 };
 

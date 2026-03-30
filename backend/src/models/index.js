@@ -101,6 +101,7 @@ const PaperlessDocumentType = sequelize.define('PaperlessDocumentType', {
   householdId:   { type: DataTypes.UUID, allowNull: false },
   paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
   name:          { type: DataTypes.STRING, allowNull: false },
+  isFavorite:    { type: DataTypes.BOOLEAN, defaultValue: false },
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_document_types', timestamps: true });
 
@@ -110,6 +111,7 @@ const PaperlessCorrespondent = sequelize.define('PaperlessCorrespondent', {
   householdId:   { type: DataTypes.UUID, allowNull: false },
   paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
   name:          { type: DataTypes.STRING, allowNull: false },
+  isFavorite:    { type: DataTypes.BOOLEAN, defaultValue: false },
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_correspondents', timestamps: true });
 
@@ -120,6 +122,7 @@ const PaperlessTag = sequelize.define('PaperlessTag', {
   paperlessId:   { type: DataTypes.INTEGER, allowNull: true },
   name:          { type: DataTypes.STRING, allowNull: false },
   color:         { type: DataTypes.STRING(7), allowNull: true },
+  isFavorite:    { type: DataTypes.BOOLEAN, defaultValue: false },
   syncedAt:      { type: DataTypes.DATE, allowNull: true },
 }, { tableName: 'paperless_tags', timestamps: true });
 
