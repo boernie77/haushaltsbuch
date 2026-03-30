@@ -238,7 +238,7 @@ router.post('/upload', auth, async (req, res) => {
     if (ownerPaperlessUserId) form.append('owner', ownerPaperlessUserId);
 
     const response = await axios.post(`${client.baseURL}/api/documents/post_document/`, form, {
-      headers: { ...client.headers, ...form.getHeaders(), 'Content-Type': undefined }
+      headers: { Authorization: client.headers.Authorization, ...form.getHeaders() }
     });
 
     // Dokument-ID aus Task-Response — Paperless gibt Task-UUID zurück, nicht direkt die Doc-ID

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, Image, TouchableOpacity, Dimensions } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Image, TouchableOpacity, Dimensions, StatusBar } from 'react-native';
 import { Text, Button, useTheme, ActivityIndicator, Chip, TextInput, Portal, Modal, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -154,16 +154,24 @@ export default function TransactionDetailScreen() {
         </View>
       </View>
 
-      {/* Vollbild-Modal */}
+      {/* Vollbild-Modal mit Zoom */}
       <Portal>
         <Modal visible={fullscreenImage && !!receiptUrl} onDismiss={() => setFullscreenImage(false)}
           contentContainerStyle={styles.fullscreenModal}>
-          <TouchableOpacity style={{ flex: 1 }} onPress={() => setFullscreenImage(false)} activeOpacity={1}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}
+            maximumZoomScale={5}
+            minimumZoomScale={1}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            bouncesZoom
+          >
             {receiptUrl && <Image source={{ uri: receiptUrl }} style={styles.fullscreenImg} resizeMode="contain" />}
-            <IconButton icon="close" iconColor="#fff" size={28}
-              style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.5)' }}
-              onPress={() => setFullscreenImage(false)} />
-          </TouchableOpacity>
+          </ScrollView>
+          <IconButton icon="close" iconColor="#000" size={28}
+            style={{ position: 'absolute', top: StatusBar.currentHeight ?? 44, right: 8, backgroundColor: 'rgba(0,0,0,0.12)' }}
+            onPress={() => setFullscreenImage(false)} />
         </Modal>
       </Portal>
 
@@ -358,8 +366,8 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   receiptThumb: { width: '100%', height: 200, borderRadius: 12 },
   fullscreenHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 5 },
-  fullscreenModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', margin: 0 },
-  fullscreenImg: { width: Dimensions.get('window').width, height: Dimensions.get('window').height },
+  fullscreenModal: { flex: 1, backgroundColor: '#fff', margin: 0 },
+  fullscreenImg: { width: Dimensions.get('window').width, height: Dimensions.get('window').height * 0.9 },
   paperlessModal: { margin: 20, padding: 20, borderRadius: 16 },
   modalTitle: { fontSize: 17, fontWeight: '600', marginBottom: 14 },
   chipLabel: { fontSize: 12, opacity: 0.6, marginBottom: 6, fontWeight: '500' },
