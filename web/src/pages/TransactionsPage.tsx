@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Trash2, FileText, Tag, X } from 'lucide-react';
+import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI } from '../services/api';
@@ -29,6 +29,9 @@ export default function TransactionsPage() {
   const [paperlessData, setPaperlessData] = useState<any>(null);
   const [paperlessForm, setPaperlessForm] = useState({ documentTypeId: '', correspondentId: '', tagIds: [] as string[], title: '' });
   const [uploading, setUploading] = useState(false);
+  const [receiptModal, setReceiptModal] = useState<string | null>(null);
+
+  const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace('/api', '');
 
   const load = async () => {
     if (!currentHousehold) return;
@@ -259,6 +262,13 @@ export default function TransactionsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
+                      {t.receiptImage && (
+                        <button onClick={() => setReceiptModal(API_BASE + t.receiptImage)}
+                          title="Quittung anzeigen"
+                          className="text-gray-400 hover:text-[var(--primary)] transition-colors">
+                          <Receipt size={16} />
+                        </button>
+                      )}
                       {t.receiptImage && hasPaperless && (
                         <button onClick={() => openPaperlessDialog(t)}
                           title={t.paperlessDocId ? 'Bereits in Paperless' : 'Zu Paperless hochladen'}
@@ -277,6 +287,25 @@ export default function TransactionsPage() {
           </table>
         )}
       </div>
+
+      {/* Quittungs-Vollbild-Modal */}
+      {receiptModal && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          onClick={() => setReceiptModal(null)}>
+          <div className="relative max-w-3xl max-h-full" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setReceiptModal(null)}
+              className="absolute -top-10 right-0 text-white/70 hover:text-white flex items-center gap-1 text-sm">
+              <X size={18} /> Schließen
+            </button>
+            <img src={receiptModal} alt="Quittung"
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl" />
+            <a href={receiptModal} target="_blank" rel="noopener noreferrer"
+              className="absolute bottom-3 right-3 bg-black/50 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-black/70">
+              <ZoomIn size={12} /> Original öffnen
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Paperless Upload Dialog */}
       {paperlessDialog && (
