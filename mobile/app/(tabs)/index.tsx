@@ -99,7 +99,7 @@ export default function HomeScreen() {
               <Text style={[styles.cardLabel, { color: theme.colors.onSurface }]}>Monatsbudget</Text>
               <View style={styles.budgetRow}>
                 <Text style={{ color: theme.colors.onSurface }}>
-                  {overview?.thisMonth?.toFixed(2)} / {currentHousehold.monthlyBudget.toFixed(2)} €
+                  {overview?.thisMonth?.toFixed(2)} / {parseFloat(String(currentHousehold.monthlyBudget)).toFixed(2)} €
                 </Text>
                 <Text style={{ color: budgetPercent >= 1 ? theme.colors.error : theme.colors.primary, fontWeight: 'bold' }}>
                   {Math.round(budgetPercent * 100)}%
