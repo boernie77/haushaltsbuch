@@ -212,41 +212,6 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
-// PUT /api/transactions/:id/move — Buchung in anderen Haushalt verschieben
-router.put('/:id/move', auth, async (req, res) => {
-  try {
-    const transaction = await Transaction.findByPk(req.params.id);
-    if (!transaction) return res.status(404).json({ error: 'Not found' });
-
-    // Zugriff auf Quell-Haushalt prüfen
-    const sourceAccess = await checkHouseholdAccess(req.user.id, transaction.householdId);
-    if (!sourceAccess) return res.status(403).json({ error: 'Access denied' });
-
-    const { targetHouseholdId } = req.body;
-    if (!targetHouseholdId) return res.status(400).json({ error: 'targetHouseholdId required' });
-
-    // Zugriff auf Ziel-Haushalt prüfen
-    const targetAccess = await checkHouseholdAccess(req.user.id, targetHouseholdId);
-    if (!targetAccess) return res.status(403).json({ error: 'No access to target household' });
-
-    // Kategorie: prüfen ob im Ziel-Haushalt verfügbar (Systemkategorien sind global)
-    if (transaction.categoryId) {
-      const cat = await Category.findByPk(transaction.categoryId);
-      if (cat && !cat.isSystem && cat.householdId && cat.householdId !== targetHouseholdId) {
-        // Benutzerdefinierte Kategorie gehört nicht zum Ziel → auf null setzen
-        await transaction.update({ householdId: targetHouseholdId, categoryId: null });
-        return res.json({ transaction, warning: 'Kategorie wurde entfernt (nicht im Ziel-Haushalt verfügbar)' });
-      }
-    }
-
-    await transaction.update({ householdId: targetHouseholdId });
-    res.json({ transaction });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to move transaction' });
-  }
-});
-
 // DELETE /api/transactions/:id
 router.delete('/:id', auth, async (req, res) => {
   try {

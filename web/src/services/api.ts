@@ -29,7 +29,6 @@ export const transactionAPI = {
   create: (data: FormData) => api.post('/transactions', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
-  move: (id: string, targetHouseholdId: string) => api.put(`/transactions/${id}/move`, { targetHouseholdId }),
   getRecurring: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
   stopRecurring: (id: string) => api.delete(`/transactions/recurring/${id}`),
   duplicateCheck: (d: any) => api.post('/transactions/duplicate-check', d),
