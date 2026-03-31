@@ -128,9 +128,25 @@ export default function HomeScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 12 }}>
-              Vormonat: {overview?.lastMonth?.toFixed(2)} {currentHousehold?.currency || 'EUR'}
-            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+              <View>
+                <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 11 }}>Einnahmen</Text>
+                <Text style={{ color: theme.colors.incomeColor, fontWeight: '600', fontSize: 15 }}>
+                  +{(overview?.thisMonthIncome || 0).toFixed(2)} {currentHousehold?.currency || 'EUR'}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 11 }}>Bilanz</Text>
+                <Text style={{ color: (overview?.balance || 0) >= 0 ? theme.colors.incomeColor : theme.colors.expenseColor, fontWeight: '600', fontSize: 15 }}>
+                  {(overview?.balance || 0) >= 0 ? '+' : ''}{(overview?.balance || 0).toFixed(2)} {currentHousehold?.currency || 'EUR'}
+                </Text>
+              </View>
+            </View>
+            {(overview?.savingsRate !== undefined) && (
+              <Text style={{ color: (overview.savingsRate || 0) >= 0 ? theme.colors.incomeColor : theme.colors.expenseColor, fontSize: 11, marginTop: 4 }}>
+                Sparquote: {(overview.savingsRate || 0).toFixed(1)}%
+              </Text>
+            )}
           </Card.Content>
         </Card>
 

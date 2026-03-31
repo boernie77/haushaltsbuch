@@ -29,10 +29,11 @@ const Household = sequelize.define('Household', {
   currency:       { type: DataTypes.STRING(3), defaultValue: 'EUR' },
   monthlyBudget:  { type: DataTypes.DECIMAL(10, 2), allowNull: true },
   budgetWarningAt: { type: DataTypes.INTEGER, defaultValue: 80, comment: 'Warn at X% of budget' },
-  isShared:           { type: DataTypes.BOOLEAN, defaultValue: false },
-  adminUserId:        { type: DataTypes.UUID, allowNull: false },
-  anthropicApiKey:    { type: DataTypes.STRING, allowNull: true },
-  aiEnabled:          { type: DataTypes.BOOLEAN, defaultValue: false },
+  isShared:              { type: DataTypes.BOOLEAN, defaultValue: false },
+  adminUserId:           { type: DataTypes.UUID, allowNull: false },
+  anthropicApiKey:       { type: DataTypes.STRING, allowNull: true },
+  aiEnabled:             { type: DataTypes.BOOLEAN, defaultValue: false },
+  emailReportsEnabled:   { type: DataTypes.BOOLEAN, defaultValue: false },
 }, { tableName: 'households', timestamps: true });
 
 // ── HouseholdMember ──────────────────────────────────────────────────────────
@@ -78,6 +79,8 @@ const Transaction = sequelize.define('Transaction', {
   recurringInterval:  { type: DataTypes.STRING(20), allowNull: true, comment: 'weekly | monthly | yearly' },
   recurringDay:       { type: DataTypes.INTEGER, allowNull: true, comment: 'Day of month (1-28) for monthly' },
   recurringNextDate:  { type: DataTypes.DATEONLY, allowNull: true },
+  isPersonal:         { type: DataTypes.BOOLEAN, defaultValue: false },
+  targetHouseholdId:  { type: DataTypes.UUID, allowNull: true },
 }, { tableName: 'transactions', timestamps: true });
 
 // ── Budget ────────────────────────────────────────────────────────────────────
@@ -166,6 +169,28 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
   aiKeyPublic:         { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'If true, all users can use it; if false, only granted users' },
 }, { tableName: 'global_settings', timestamps: true });
 
+// ── SavingsGoal ───────────────────────────────────────────────────────────────
+const SavingsGoal = sequelize.define('SavingsGoal', {
+  id:           { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  householdId:  { type: DataTypes.UUID, allowNull: false },
+  name:         { type: DataTypes.STRING, allowNull: false },
+  targetAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  savedAmount:  { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  targetDate:   { type: DataTypes.DATEONLY, allowNull: true },
+  icon:         { type: DataTypes.STRING, defaultValue: '🎯' },
+  color:        { type: DataTypes.STRING(7), defaultValue: '#E91E8C' },
+  isCompleted:  { type: DataTypes.BOOLEAN, defaultValue: false },
+}, { tableName: 'savings_goals', timestamps: true });
+
+// ── TransactionSplit ──────────────────────────────────────────────────────────
+const TransactionSplit = sequelize.define('TransactionSplit', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  transactionId: { type: DataTypes.UUID, allowNull: false },
+  categoryId:    { type: DataTypes.UUID, allowNull: true },
+  amount:        { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  description:   { type: DataTypes.STRING, allowNull: true },
+}, { tableName: 'transaction_splits', timestamps: true });
+
 // ── InviteCode ────────────────────────────────────────────────────────────────
 const InviteCode = sequelize.define('InviteCode', {
   id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -209,6 +234,13 @@ Household.hasMany(Category, { foreignKey: 'householdId' });
 InviteCode.belongsTo(User, { foreignKey: 'createdById', as: 'creator' });
 InviteCode.belongsTo(User, { foreignKey: 'usedById', as: 'usedBy' });
 
+Household.hasMany(SavingsGoal, { foreignKey: 'householdId' });
+SavingsGoal.belongsTo(Household, { foreignKey: 'householdId' });
+
+Transaction.hasMany(TransactionSplit, { foreignKey: 'transactionId', as: 'splits' });
+TransactionSplit.belongsTo(Transaction, { foreignKey: 'transactionId' });
+TransactionSplit.belongsTo(Category, { foreignKey: 'categoryId' });
+
 module.exports = {
   sequelize,
   User,
@@ -216,7 +248,9 @@ module.exports = {
   HouseholdMember,
   Category,
   Transaction,
+  TransactionSplit,
   Budget,
+  SavingsGoal,
   PaperlessConfig,
   PaperlessDocumentType,
   PaperlessCorrespondent,

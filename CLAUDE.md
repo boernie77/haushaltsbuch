@@ -27,7 +27,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
 │       ├── migrations/             001-initial, 002-backup, 003-invite-type, 004-paperless-favorites,
-│       │                           005-recurring-transactions, 006-paperless-users
+│       │                           005-recurring-transactions, 006-paperless-users,
+│       │                           007-paperless-unique-constraints, 008-transaction-paperless-metadata
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -60,7 +61,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted
 - **Household**: id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
 - **HouseholdMember**: householdId, userId, role (admin/member/viewer)
-- **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`
+- **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
 - **Category**: name, nameDE, icon, color, isSystem, householdId (null = global Systemkategorie)
 - **Budget**: householdId, categoryId, limitAmount, month, year, warningAt
 - **GlobalSettings**: id='global', anthropicApiKey, aiKeyPublic (single-row)
@@ -140,8 +141,17 @@ Sharp-Pipeline: `rotate` → `greyscale` → `normalize` → `clahe({width:4,hei
 API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 **Wichtig:** Mobile muss `householdId` beim OCR-Request mitsenden — sonst schlägt Key-Auflösung fehl.
 
+## KI-OCR Prompt-Details
+- Modell: `claude-opus-4-6`
+- Prompt enthält **aktuelles Datum** (`Heute ist der DD.MM.YYYY`) damit das Modell das Jahr bei Kassenbons korrekt einordnet (z.B. "05.03.26" → 2026, nicht 2025)
+- `description`: max. 1–3 Wörter Oberbegriff (z.B. "Lebensmitteleinkauf", "Restaurantbesuch") — keine Artikellisten
+- `amount`: wird mit `parseFloat(...).toFixed(2)` ins Eingabefeld geschrieben (immer 2 Dezimalstellen)
+- Auto-Upload zu Paperless in `add.tsx`: geschieht nach Transaction-Create wenn Paperless-Felder ausgewählt sind
+
 ## Paperless-Integration
 - **Sync:** Vollständige Paginierung via `fetchAllPages()`, kein Item-Limit
+  - ⚠️ Paperless gibt in `data.next` oft interne URLs zurück (anderer Host/Protokoll) → Host wird auf konfigurierten baseUrl normalisiert
+  - Bulk-Upsert via raw SQL `INSERT ... ON CONFLICT (householdId, paperlessId) DO UPDATE SET ...` mit `randomUUID()` für neue IDs
 - **Auto-Sync:** Cron alle 6h für alle Haushalte mit aktiver Paperless-Config
 - **Favoriten:** `isFavorite`-Flag auf DocumentType, Correspondent, Tag — nur Favoriten im Upload-Dialog
 - **Benutzer:** `PaperlessUser`-Tabelle (Migration 006), `isEnabled` toggle
@@ -149,9 +159,15 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
   - Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl
 - **Duplikatcheck:** `GET /api/paperless/check?householdId=&type=&name=` (case-insensitive, DB-Suche)
 - **Erstellen aus UI:** Dokumententypen, Absender, Tags mit Live-Duplikatcheck (350ms Debounce, ✓/⚠)
+  - ⚠️ Paperless `?name=` Filter nutzt `icontains` (Teilstring) — beim Erstellen immer exakten Namensvergleich auf `results` machen (`r.name.toLowerCase() === name.trim().toLowerCase()`)
+  - Erstellen möglich in Browser (PaperlessPage) und Mobile (paperless-settings.tsx)
 - **Upload-Berechtigungen:** `ownerPaperlessUserId` + `viewPaperlessUserIds` → werden als Paperless-Integer-IDs (`paperlessId`) gesendet, nicht als DB-UUIDs
 - **`PUT /api/paperless/favorite`:** unterstützt `type`: `doctype` | `correspondent` | `tag` | `user`
   - Für User: `{ type: 'user', id, isEnabled }` statt `isFavorite`
+- **Metadata-Vorauswahl:** Nach Upload wird `paperlessMetadata` (JSON) auf der Transaction gespeichert mit `{ documentTypeId, correspondentId, tagIds, ownerPaperlessUserId, viewPaperlessUserIds }` — beim erneuten Öffnen des Upload-Modals wird Vorauswahl wiederhergestellt
+- **Upload-Button Sichtbarkeit:** Nur anzeigen wenn Haushalt eine aktive Paperless-Config hat (`hasPaperless`-State aus `paperlessAPI.getConfig`)
+- **`paperlessDocId`:** INTEGER in DB (Paperless-interne Dok-ID), NICHT die Task-UUID — wird asynchron im Hintergrund nach erfolgreichem Indexieren gesetzt
+- **Unique Constraints** (Migration 007): `(householdId, paperlessId)` auf document_types, correspondents, tags — `Model.upsert()` schlägt fehl → `findOrCreateLocal()`-Hilfsfunktion verwenden
 
 ## Offline-Modus (Mobile)
 - `mobile/src/services/offlineStore.ts`: MMKV-Cache + Offline-Queue
@@ -203,6 +219,11 @@ cd mobile && expo prebuild --clean
 # Danach in Xcode: Team + Bundle ID prüfen, dann bauen
 ```
 
+## VPS-Wartung
+- **Docker-Disk-Cleanup:** `docker system prune -af --volumes=false` — entfernt ungenutzte Images/Container. Docker overlay2 kann sich auf 50+ GB ansammeln wenn viele Deploys stattfanden.
+- Disk prüfen: `df -h /`
+- Bei vollem Disk: PostgreSQL schreibt keine Checkpoints mehr → DB-Container unhealthy → Backend-Fehler 500
+
 ## Wichtige Konventionen
 - VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
 - SSH-Key für VPS: `~/.ssh/emailrelay_vps`
@@ -215,3 +236,5 @@ cd mobile && expo prebuild --clean
 - **Niemals** `sequelize.sync()` in Produktion — nur Migrations-Runner verwenden
 - **Migrations-Parameter:** `sequelize` (Instanz), nicht `queryInterface`!
 - Paperless: `paperlessId` (Integer) für Paperless-API, `id` (UUID) für interne DB — beim Upload immer `paperlessId` senden
+- React Native: Komponenten **nicht** innerhalb anderer Komponenten definieren (`const Foo = () =>`) — führt zu Remount bei jedem Render (Eingabefeld verliert Fokus). Stattdessen Render-Funktion (`const renderFoo = (...)`) verwenden.
+- React Native Modal vs Paper Portal: Paper `Portal`/`Modal` bricht `ScrollView` + `maximumZoomScale` auf iOS → für Vollbild-Zoom nativen `Modal as RNModal` aus `react-native` verwenden

@@ -90,6 +90,17 @@ export default function LoginScreen() {
             >
               Noch kein Konto? Registrieren
             </Button>
+            <Button
+              mode="text"
+              onPress={() => {
+                const { Linking } = require('react-native');
+                Linking.openURL('https://haushalt.bernauer24.com/forgot-password');
+              }}
+              style={styles.linkButton}
+              labelStyle={{ fontSize: 12, opacity: 0.7 }}
+            >
+              Passwort vergessen?
+            </Button>
           </View>
         </ScrollView>
       </LinearGradient>

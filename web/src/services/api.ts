@@ -31,12 +31,16 @@ export const transactionAPI = {
   delete: (id: string) => api.delete(`/transactions/${id}`),
   getRecurring: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
   stopRecurring: (id: string) => api.delete(`/transactions/recurring/${id}`),
+  duplicateCheck: (d: any) => api.post('/transactions/duplicate-check', d),
 };
 
 export const statsAPI = {
   monthly: (p: any) => api.get('/statistics/monthly', { params: p }),
   yearly: (p: any) => api.get('/statistics/yearly', { params: p }),
   overview: (householdId: string) => api.get('/statistics/overview', { params: { householdId } }),
+  trends: (householdId: string, months: number) => api.get('/statistics/trends', { params: { householdId, months } }),
+  wealth: (householdId: string) => api.get('/statistics/wealth', { params: { householdId } }),
+  byPerson: (p: any) => api.get('/statistics/by-person', { params: p }),
 };
 
 export const budgetAPI = {
@@ -106,6 +110,20 @@ export const adminAPI = {
   saveBackupConfig: (d: any) => api.put('/admin/backup/config', d),
   testBackup: (d: any) => api.post('/admin/backup/test', d),
   runBackup: () => api.post('/admin/backup/run'),
+};
+
+export const savingsGoalAPI = {
+  getAll: (householdId: string) => api.get('/savings-goals', { params: { householdId } }),
+  create: (d: any) => api.post('/savings-goals', d),
+  update: (id: string, d: any) => api.put(`/savings-goals/${id}`, d),
+  delete: (id: string) => api.delete(`/savings-goals/${id}`),
+};
+
+export const reportsAPI = {
+  downloadMonthly: (householdId: string, year: number, month: number) =>
+    api.get('/reports/monthly', { params: { householdId, year, month }, responseType: 'blob' }),
+  sendMonthly: (householdId: string, year: number, month: number) =>
+    api.post('/reports/send-monthly', { householdId, year, month }),
 };
 
 export const backupAPI = {

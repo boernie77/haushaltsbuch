@@ -65,10 +65,15 @@ export default function LoginPage() {
               Anmelden
             </button>
           </form>
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
-            Noch kein Konto?{' '}
-            <Link to="/register" className="text-[var(--primary)] hover:underline font-medium">Registrieren</Link>
-          </p>
+          <div className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4 space-y-2">
+            <p>
+              Noch kein Konto?{' '}
+              <Link to="/register" className="text-[var(--primary)] hover:underline font-medium">Registrieren</Link>
+            </p>
+            <p>
+              <Link to="/forgot-password" className="text-[var(--primary)] hover:underline">Passwort vergessen?</Link>
+            </p>
+          </div>
         </div>
         <p className="text-center text-xs text-white/60 mt-4 space-x-3">
           <Link to="/impressum" className="hover:text-white">Impressum</Link>

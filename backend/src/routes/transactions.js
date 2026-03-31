@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { Op } = require('sequelize');
 const multer = require('multer');
 const path = require('path');
-const { Transaction, Category, User, Household, HouseholdMember, Budget } = require('../models');
+const { Transaction, TransactionSplit, Category, User, Household, HouseholdMember, Budget } = require('../models');
 const { auth } = require('../middleware/auth');
 const { checkBudgetWarning } = require('../services/budgetService');
 
@@ -45,7 +45,8 @@ router.get('/', auth, async (req, res) => {
       where,
       include: [
         { model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] },
-        { model: User, attributes: ['id', 'name', 'avatar'] }
+        { model: User, attributes: ['id', 'name', 'avatar'] },
+        { model: TransactionSplit, as: 'splits', include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }] }
       ],
       order: [['date', 'DESC'], ['createdAt', 'DESC']],
       limit: parseInt(limit),
@@ -96,7 +97,7 @@ router.delete('/recurring/:id', auth, async (req, res) => {
 router.post('/', auth, upload.single('receipt'), async (req, res) => {
   try {
     const { amount, description, note, date, type, categoryId, householdId, merchant, tags, isConfirmed,
-            isRecurring, recurringInterval, recurringDay } = req.body;
+            isRecurring, recurringInterval, recurringDay, isPersonal, targetHouseholdId, splits } = req.body;
 
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
@@ -138,12 +139,28 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
       recurringInterval: isRecurring === 'true' ? recurringInterval : null,
       recurringDay: recurringDay ? parseInt(recurringDay) : null,
       recurringNextDate,
+      isPersonal: isPersonal === 'true' || isPersonal === true,
+      targetHouseholdId: type === 'transfer' ? targetHouseholdId : null,
     });
+
+    // Splits speichern falls vorhanden
+    if (splits) {
+      const splitData = typeof splits === 'string' ? JSON.parse(splits) : splits;
+      if (Array.isArray(splitData) && splitData.length > 0) {
+        await TransactionSplit.bulkCreate(splitData.map(s => ({
+          transactionId: transaction.id,
+          categoryId: s.categoryId || null,
+          amount: parseFloat(s.amount),
+          description: s.description || null,
+        })));
+      }
+    }
 
     const full = await Transaction.findByPk(transaction.id, {
       include: [
         { model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] },
-        { model: User, attributes: ['id', 'name', 'avatar'] }
+        { model: User, attributes: ['id', 'name', 'avatar'] },
+        { model: TransactionSplit, as: 'splits', include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }] }
       ]
     });
 
@@ -195,6 +212,43 @@ router.delete('/:id', auth, async (req, res) => {
     res.json({ message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete transaction' });
+  }
+});
+
+// POST /api/transactions/duplicate-check
+router.post('/duplicate-check', auth, async (req, res) => {
+  try {
+    const { householdId, amount, date, description, merchant } = req.body;
+    if (!await checkHouseholdAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
+
+    const checkDate = new Date(date);
+    const from = new Date(checkDate); from.setDate(from.getDate() - 3);
+    const to = new Date(checkDate); to.setDate(to.getDate() + 3);
+
+    const candidates = await Transaction.findAll({
+      where: {
+        householdId,
+        amount: { [Op.between]: [parseFloat(amount) - 0.01, parseFloat(amount) + 0.01] },
+        date: { [Op.between]: [from, to] },
+      },
+      include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }],
+      limit: 5,
+    });
+
+    // Filter by description/merchant similarity
+    const searchTerm = (description || merchant || '').toLowerCase();
+    const duplicates = searchTerm
+      ? candidates.filter(t =>
+          (t.description || '').toLowerCase().includes(searchTerm) ||
+          (t.merchant || '').toLowerCase().includes(searchTerm) ||
+          searchTerm.includes((t.description || '').toLowerCase()) ||
+          searchTerm.includes((t.merchant || '').toLowerCase())
+        )
+      : candidates;
+
+    res.json({ duplicates });
+  } catch (err) {
+    res.status(500).json({ error: 'Duplicate check failed' });
   }
 });
 

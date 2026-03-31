@@ -101,3 +101,10 @@ export const recurringAPI = {
   getAll: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
   stop: (id: string) => api.delete(`/transactions/recurring/${id}`),
 };
+
+export const savingsGoalAPI = {
+  getAll: (householdId: string) => api.get('/savings-goals', { params: { householdId } }),
+  create: (data: any) => api.post('/savings-goals', data),
+  update: (id: string, data: any) => api.put(`/savings-goals/${id}`, data),
+  delete: (id: string) => api.delete(`/savings-goals/${id}`),
+};

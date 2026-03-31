@@ -1,10 +1,22 @@
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
-const { User, Household, HouseholdMember, InviteCode } = require('../models');
+const { User, Household, HouseholdMember, InviteCode, sequelize } = require('../models');
 const { auth } = require('../middleware/auth');
 const { seedSystemCategories } = require('../utils/seedCategories');
+
+function getMailer() {
+  if (!process.env.SMTP_HOST) return null;
+  const nodemailer = require('nodemailer');
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+}
 
 // POST /api/auth/register
 router.post('/register', [
@@ -130,6 +142,82 @@ router.put('/password', auth, [
     res.json({ message: 'Password updated' });
   } catch (err) {
     res.status(500).json({ error: 'Password update failed' });
+  }
+});
+
+// POST /api/auth/forgot-password
+router.post('/forgot-password', [
+  body('email').isEmail().normalizeEmail(),
+], async (req, res) => {
+  // Always return 200 to prevent user enumeration
+  res.json({ message: 'Falls ein Konto existiert, wurde eine E-Mail gesendet.' });
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return;
+    const { email } = req.body;
+    const user = await User.findOne({ where: { email } });
+    if (!user) return;
+
+    const mailer = getMailer();
+    if (!mailer) {
+      console.warn('[auth] SMTP nicht konfiguriert — Passwort-Reset-E-Mail konnte nicht gesendet werden');
+      return;
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await sequelize.query(
+      `INSERT INTO password_reset_tokens ("userId", token, "expiresAt", "createdAt") VALUES (:userId, :token, :expiresAt, NOW())`,
+      { replacements: { userId: user.id, token, expiresAt } }
+    );
+
+    const resetUrl = `${process.env.APP_URL || 'https://haushalt.bernauer24.com'}/reset-password?token=${token}`;
+    await mailer.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: user.email,
+      subject: 'Haushaltsbuch – Passwort zurücksetzen',
+      html: `
+        <div style="font-family:sans-serif;max-width:500px;margin:0 auto">
+          <h2 style="color:#E91E8C">Passwort zurücksetzen</h2>
+          <p>Hallo ${user.name},</p>
+          <p>du hast eine Anfrage zum Zurücksetzen deines Passworts gestellt.</p>
+          <p>Klicke auf den folgenden Link (gültig 1 Stunde):</p>
+          <p><a href="${resetUrl}" style="background:#E91E8C;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;display:inline-block">Passwort zurücksetzen</a></p>
+          <p style="color:#999;font-size:12px">Falls du keine Anfrage gestellt hast, ignoriere diese E-Mail.</p>
+        </div>
+      `
+    });
+  } catch (err) {
+    console.error('[auth] forgot-password error:', err.message);
+  }
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', [
+  body('token').notEmpty(),
+  body('password').isLength({ min: 8 }),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ error: 'Ungültige Eingabe' });
+
+    const { token, password } = req.body;
+    const rows = await sequelize.query(
+      `SELECT * FROM password_reset_tokens WHERE token = :token AND "expiresAt" > NOW() AND "usedAt" IS NULL LIMIT 1`,
+      { replacements: { token }, type: 'SELECT' }
+    );
+    if (!rows.length) return res.status(400).json({ error: 'Link ungültig oder abgelaufen.' });
+
+    const resetToken = rows[0];
+    const hashed = await bcrypt.hash(password, 12);
+    await User.update({ password: hashed }, { where: { id: resetToken.userId } });
+    await sequelize.query(`UPDATE password_reset_tokens SET "usedAt" = NOW() WHERE token = :token`, { replacements: { token } });
+
+    res.json({ message: 'Passwort erfolgreich geändert.' });
+  } catch (err) {
+    console.error('[auth] reset-password error:', err.message);
+    res.status(500).json({ error: 'Fehler beim Zurücksetzen' });
   }
 });
 

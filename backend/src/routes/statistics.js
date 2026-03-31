@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { Op, fn, col, literal } = require('sequelize');
-const { Transaction, Category, HouseholdMember, sequelize } = require('../models');
+const { Transaction, Category, HouseholdMember, User, sequelize } = require('../models');
 const { auth } = require('../middleware/auth');
 
 async function checkAccess(userId, householdId) {
@@ -20,15 +20,12 @@ router.get('/monthly', auth, async (req, res) => {
     const end = new Date(y, m, 0);
 
     const [expenses, income, byCategory] = await Promise.all([
-      // Total expenses
       Transaction.sum('amount', {
         where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } }
       }),
-      // Total income
       Transaction.sum('amount', {
         where: { householdId, type: 'income', date: { [Op.between]: [start, end] } }
       }),
-      // By category
       Transaction.findAll({
         attributes: ['categoryId', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('Transaction.id')), 'count']],
         where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } },
@@ -39,7 +36,6 @@ router.get('/monthly', auth, async (req, res) => {
       })
     ]);
 
-    // Daily spending
     const daily = await Transaction.findAll({
       attributes: [
         [fn('DATE', col('date')), 'day'],
@@ -78,7 +74,6 @@ router.get('/yearly', auth, async (req, res) => {
 
     const y = parseInt(year) || new Date().getFullYear();
 
-    // Monthly breakdown
     const monthly = await Transaction.findAll({
       attributes: [
         [fn('EXTRACT', literal('MONTH FROM date')), 'month'],
@@ -94,7 +89,6 @@ router.get('/yearly', auth, async (req, res) => {
       raw: true
     });
 
-    // Category totals for year
     const byCategory = await Transaction.findAll({
       attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
       where: {
@@ -106,17 +100,11 @@ router.get('/yearly', auth, async (req, res) => {
       order: [[literal('total'), 'DESC']],
     });
 
-    // Build monthly chart data
-    const months = Array.from({ length: 12 }, (_, i) => ({
-      month: i + 1,
-      expenses: 0,
-      income: 0
-    }));
-
+    const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, expenses: 0, income: 0 }));
     monthly.forEach(m => {
       const idx = parseInt(m.month) - 1;
       if (m.type === 'expense') months[idx].expenses = parseFloat(m.total);
-      else months[idx].income = parseFloat(m.total);
+      else if (m.type === 'income') months[idx].income = parseFloat(m.total);
     });
 
     const totalExpenses = months.reduce((s, m) => s + m.expenses, 0);
@@ -127,6 +115,7 @@ router.get('/yearly', auth, async (req, res) => {
       totalExpenses,
       totalIncome,
       balance: totalIncome - totalExpenses,
+      savingsRate: totalIncome > 0 ? Math.round((totalIncome - totalExpenses) / totalIncome * 1000) / 10 : 0,
       monthly: months,
       byCategory: byCategory.map(b => ({
         categoryId: b.categoryId,
@@ -150,9 +139,10 @@ router.get('/overview', auth, async (req, res) => {
     const thisMonth = { [Op.between]: [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0)] };
     const lastMonth = { [Op.between]: [new Date(now.getFullYear(), now.getMonth() - 1, 1), new Date(now.getFullYear(), now.getMonth(), 0)] };
 
-    const [thisMonthExp, lastMonthExp, topCategory, recentCount] = await Promise.all([
+    const [thisMonthExp, lastMonthExp, thisMonthInc, topCategory, recentCount] = await Promise.all([
       Transaction.sum('amount', { where: { householdId, type: 'expense', date: thisMonth } }),
       Transaction.sum('amount', { where: { householdId, type: 'expense', date: lastMonth } }),
+      Transaction.sum('amount', { where: { householdId, type: 'income', date: thisMonth } }),
       Transaction.findOne({
         attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
         where: { householdId, type: 'expense', date: thisMonth },
@@ -166,20 +156,181 @@ router.get('/overview', auth, async (req, res) => {
 
     const current = parseFloat(thisMonthExp) || 0;
     const previous = parseFloat(lastMonthExp) || 0;
+    const income = parseFloat(thisMonthInc) || 0;
     const change = previous > 0 ? ((current - previous) / previous) * 100 : 0;
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const currentDay = now.getDate();
+    const projectedExpenses = currentDay > 0 ? (current / currentDay) * daysInMonth : 0;
 
     res.json({
       thisMonth: current,
+      thisMonthIncome: income,
+      balance: income - current,
+      savingsRate: income > 0 ? Math.round((income - current) / income * 1000) / 10 : 0,
       lastMonth: previous,
       changePercent: Math.round(change * 10) / 10,
       topCategory: topCategory ? { ...topCategory.Category?.toJSON(), total: parseFloat(topCategory.dataValues.total) } : null,
       transactionCount: recentCount,
-      daysInMonth: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
-      currentDay: now.getDate()
+      daysInMonth,
+      currentDay,
+      projectedExpenses: Math.round(projectedExpenses * 100) / 100,
+      projectedRemaining: Math.round((income - projectedExpenses) * 100) / 100,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch overview' });
+  }
+});
+
+// GET /api/statistics/trends?householdId=&months=3|6|12
+router.get('/trends', auth, async (req, res) => {
+  try {
+    const { householdId, months = 6 } = req.query;
+    if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
+
+    const n = parseInt(months);
+    const since = new Date();
+    since.setMonth(since.getMonth() - n);
+    since.setDate(1);
+
+    const [byCategory, totals] = await Promise.all([
+      Transaction.findAll({
+        attributes: [
+          'categoryId',
+          [fn('SUM', col('amount')), 'total'],
+          [fn('COUNT', col('Transaction.id')), 'count']
+        ],
+        where: { householdId, type: 'expense', date: { [Op.gte]: since } },
+        include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
+        group: ['categoryId', 'Category.id'],
+        order: [[literal('total'), 'DESC']],
+      }),
+      Promise.all([
+        Transaction.sum('amount', { where: { householdId, type: 'expense', date: { [Op.gte]: since } } }),
+        Transaction.sum('amount', { where: { householdId, type: 'income', date: { [Op.gte]: since } } }),
+      ])
+    ]);
+
+    const totalExp = parseFloat(totals[0]) || 0;
+    const totalInc = parseFloat(totals[1]) || 0;
+
+    res.json({
+      months: n,
+      totalExpenses: totalExp,
+      totalIncome: totalInc,
+      savingsRate: totalInc > 0 ? Math.round((totalInc - totalExp) / totalInc * 1000) / 10 : 0,
+      avgMonthlyExpenses: Math.round(totalExp / n * 100) / 100,
+      avgMonthlyIncome: Math.round(totalInc / n * 100) / 100,
+      byCategory: byCategory.map(b => ({
+        categoryId: b.categoryId,
+        category: b.Category,
+        total: parseFloat(b.dataValues.total),
+        avg: Math.round(parseFloat(b.dataValues.total) / n * 100) / 100,
+        count: parseInt(b.dataValues.count),
+        share: totalExp > 0 ? Math.round(parseFloat(b.dataValues.total) / totalExp * 1000) / 10 : 0
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+});
+
+// GET /api/statistics/wealth?householdId=
+router.get('/wealth', auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
+
+    const rows = await sequelize.query(`
+      SELECT
+        EXTRACT(YEAR FROM date)::int AS year,
+        EXTRACT(MONTH FROM date)::int AS month,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) -
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS balance
+      FROM transactions
+      WHERE "householdId" = :householdId AND type IN ('expense','income')
+      GROUP BY year, month
+      ORDER BY year, month
+    `, { replacements: { householdId }, type: 'SELECT' });
+
+    let cumulative = 0;
+    const data = rows.map(r => {
+      cumulative += parseFloat(r.balance);
+      return {
+        year: r.year,
+        month: r.month,
+        balance: Math.round(parseFloat(r.balance) * 100) / 100,
+        cumulative: Math.round(cumulative * 100) / 100,
+        label: `${String(r.month).padStart(2,'0')}/${r.year}`
+      };
+    });
+
+    res.json({ data });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch wealth data' });
+  }
+});
+
+// GET /api/statistics/by-person?householdId=&month=&year=
+router.get('/by-person', auth, async (req, res) => {
+  try {
+    const { householdId, month, year } = req.query;
+    if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
+
+    const y = parseInt(year) || new Date().getFullYear();
+    const m = parseInt(month) || new Date().getMonth() + 1;
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 0);
+
+    const rows = await Transaction.findAll({
+      attributes: ['userId', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('Transaction.id')), 'count']],
+      where: { householdId, type: 'expense', isPersonal: false, date: { [Op.between]: [start, end] } },
+      include: [{ model: User, attributes: ['id', 'name', 'avatar'] }],
+      group: ['userId', 'User.id'],
+      order: [[literal('total'), 'DESC']],
+    });
+
+    const total = rows.reduce((s, r) => s + parseFloat(r.dataValues.total), 0);
+    const persons = rows.map(r => ({
+      userId: r.userId,
+      user: r.User,
+      total: parseFloat(r.dataValues.total),
+      count: parseInt(r.dataValues.count),
+      share: total > 0 ? Math.round(parseFloat(r.dataValues.total) / total * 1000) / 10 : 0
+    }));
+
+    // Settlement calculation
+    const n = persons.length;
+    const avg = n > 0 ? total / n : 0;
+    const balances = persons.map(p => ({ ...p, diff: p.total - avg }));
+    const creditors = balances.filter(p => p.diff > 0.01).sort((a, b) => b.diff - a.diff);
+    const debtors = balances.filter(p => p.diff < -0.01).sort((a, b) => a.diff - b.diff);
+
+    const settlements = [];
+    let ci = 0, di = 0;
+    const cred = creditors.map(c => ({ ...c, rem: c.diff }));
+    const debt = debtors.map(d => ({ ...d, rem: Math.abs(d.diff) }));
+    while (ci < cred.length && di < debt.length) {
+      const amount = Math.min(cred[ci].rem, debt[di].rem);
+      if (amount > 0.01) {
+        settlements.push({
+          from: debt[di].user,
+          to: cred[ci].user,
+          amount: Math.round(amount * 100) / 100
+        });
+      }
+      cred[ci].rem -= amount;
+      debt[di].rem -= amount;
+      if (cred[ci].rem < 0.01) ci++;
+      if (debt[di].rem < 0.01) di++;
+    }
+
+    res.json({ year: y, month: m, total, avg: Math.round(avg * 100) / 100, persons, settlements });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch person statistics' });
   }
 });
 

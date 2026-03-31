@@ -1,14 +1,18 @@
 import React, { useState, useRef } from 'react';
-import { Download, Upload, Database } from 'lucide-react';
+import { Download, Upload, Database, FileText, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
-import { backupAPI } from '../services/api';
+import { backupAPI, reportsAPI } from '../services/api';
 
 export default function BackupPage() {
   const { currentHousehold } = useAuthStore();
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
   const [importing, setImporting] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const now = new Date();
+  const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
+  const [reportYear, setReportYear] = useState(now.getFullYear());
+  const [sendingReport, setSendingReport] = useState(false);
 
   const handleExport = async () => {
     if (!currentHousehold) return;
@@ -21,6 +25,31 @@ export default function BackupPage() {
       URL.revokeObjectURL(url);
       toast.success(`Export gestartet: ${filename}`);
     } catch { toast.error('Export fehlgeschlagen'); }
+  };
+
+  const handleDownloadReport = async () => {
+    if (!currentHousehold) return;
+    try {
+      const { data } = await reportsAPI.downloadMonthly(currentHousehold.id, reportYear, reportMonth);
+      const url = URL.createObjectURL(new Blob([data], { type: 'text/html' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bericht-${reportYear}-${String(reportMonth).padStart(2, '0')}.html`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Bericht heruntergeladen');
+    } catch { toast.error('Fehler beim Generieren des Berichts'); }
+  };
+
+  const handleSendReport = async () => {
+    if (!currentHousehold) return;
+    setSendingReport(true);
+    try {
+      const { data } = await reportsAPI.sendMonthly(currentHousehold.id, reportYear, reportMonth);
+      toast.success(data.message || 'Bericht gesendet');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Versand fehlgeschlagen');
+    } finally { setSendingReport(false); }
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -66,6 +95,34 @@ export default function BackupPage() {
               </select>
               <button onClick={handleExport} className="btn-primary flex items-center gap-2 text-sm">
                 <Download size={15} /> Exportieren
+              </button>
+            </div>
+          </div>
+
+          {/* Monatsberichte */}
+          <div className="card p-6">
+            <h2 className="font-semibold text-gray-900 dark:text-white mb-1">Monatsbericht</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              HTML-Bericht mit Übersicht, Kategorien und allen Buchungen herunterladen oder per E-Mail senden.
+            </p>
+            <div className="flex flex-wrap gap-3 items-center mb-4">
+              <select className="input w-auto text-sm" value={reportMonth} onChange={e => setReportMonth(+e.target.value)}>
+                {['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'].map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select className="input w-auto text-sm" value={reportYear} onChange={e => setReportYear(+e.target.value)}>
+                {[now.getFullYear() - 1, now.getFullYear()].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-3 flex-wrap">
+              <button onClick={handleDownloadReport} className="btn-primary flex items-center gap-2 text-sm">
+                <FileText size={15} /> Herunterladen
+              </button>
+              <button onClick={handleSendReport} disabled={sendingReport}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50">
+                {sendingReport ? <div className="animate-spin h-4 w-4 border-2 border-[var(--primary)] border-t-transparent rounded-full" /> : <Mail size={15} />}
+                Per E-Mail senden
               </button>
             </div>
           </div>

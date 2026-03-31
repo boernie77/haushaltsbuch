@@ -157,6 +157,10 @@ async function startCron() {
   cron.schedule('0 */6 * * *', syncAllPaperless);
   console.log('[cron] Paperless-Sync: alle 6 Stunden');
 
+  // Monatsabschluss-Berichte: 1. jeden Monats um 08:00
+  cron.schedule('0 8 1 * *', sendMonthlyReports);
+  console.log('[cron] Monatsberichte: 1. jeden Monats 08:00');
+
   // Backup: aus Konfiguration
   try {
     const { BackupConfig } = require('../models');
@@ -193,6 +197,43 @@ function scheduleJob(cronExpression) {
 function stopCron() {
   if (activeBackupJob) { activeBackupJob.destroy(); activeBackupJob = null; }
   if (recurringJob) { recurringJob.destroy(); recurringJob = null; }
+}
+
+async function sendMonthlyReports() {
+  try {
+    if (!process.env.SMTP_HOST) return;
+    const { Household, HouseholdMember, User } = require('../models');
+    const { buildMonthlyReport, renderHtml } = require('../routes/reports');
+    const nodemailer = require('nodemailer');
+    const mailer = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+
+    const now = new Date();
+    const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+    const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+
+    const households = await Household.findAll({ where: { emailReportsEnabled: true } });
+    for (const h of households) {
+      try {
+        const data = await buildMonthlyReport(h.id, year, lastMonth);
+        const html = renderHtml(data);
+        const members = await HouseholdMember.findAll({ where: { householdId: h.id }, include: [{ model: User, attributes: ['email', 'name'] }] });
+        const monthNames = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+        for (const m of members) {
+          await mailer.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: m.User.email, subject: `Haushaltsbuch Monatsbericht ${monthNames[lastMonth-1]} ${year}`, html });
+        }
+        console.log(`[reports] Monatsbericht ${h.name}: ${members.length} E-Mails gesendet`);
+      } catch (err) {
+        console.error(`[reports] Fehler bei ${h.name}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[reports] Monatsbericht-Cron Fehler:', err.message);
+  }
 }
 
 module.exports = { startCron, scheduleJob, stopCron, processRecurringTransactions };

@@ -4,7 +4,7 @@ import { Text, Button, useTheme, ActivityIndicator, Divider, Chip, ProgressBar }
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../src/store/authStore';
-import { budgetAPI, categoryAPI } from '../src/services/api';
+import { budgetAPI, categoryAPI, savingsGoalAPI } from '../src/services/api';
 import Toast from 'react-native-toast-message';
 
 export default function BudgetScreen() {
@@ -23,6 +23,13 @@ export default function BudgetScreen() {
   const [formMonth, setFormMonth] = useState<number | null>(now.getMonth() + 1);
   const [formYear, setFormYear] = useState(now.getFullYear());
   const [saving, setSaving] = useState(false);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalName, setGoalName] = useState('');
+  const [goalTarget, setGoalTarget] = useState('');
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [depositGoalId, setDepositGoalId] = useState<string | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
 
   const load = async () => {
     if (!currentHousehold) return;
@@ -33,6 +40,8 @@ export default function BudgetScreen() {
       ]);
       setBudgets(budgetRes.data.budgets || []);
       setCategories(catRes.data.categories || []);
+      const goalRes = await savingsGoalAPI.getAll(currentHousehold.id);
+      setGoals(goalRes.data.goals || []);
     } catch {
       Toast.show({ type: 'error', text1: 'Budgets konnten nicht geladen werden' });
     } finally {
@@ -80,6 +89,36 @@ export default function BudgetScreen() {
         }
       }
     ]);
+  };
+
+  const handleSaveGoal = async () => {
+    if (!currentHousehold || !goalName || !goalTarget) return;
+    setSavingGoal(true);
+    try {
+      await savingsGoalAPI.create({ householdId: currentHousehold.id, name: goalName, targetAmount: parseFloat(goalTarget), icon: '🎯' });
+      Toast.show({ type: 'success', text1: 'Sparziel erstellt' });
+      setShowGoalForm(false);
+      setGoalName('');
+      setGoalTarget('');
+      load();
+    } catch {
+      Toast.show({ type: 'error', text1: 'Fehler beim Erstellen' });
+    } finally { setSavingGoal(false); }
+  };
+
+  const handleDeposit = async (goalId: string) => {
+    const amt = parseFloat(depositAmount);
+    if (!amt || amt <= 0) return;
+    const goal = goals.find(g => g.id === goalId);
+    try {
+      await savingsGoalAPI.update(goalId, { savedAmount: (parseFloat(goal.savedAmount) || 0) + amt });
+      Toast.show({ type: 'success', text1: 'Eingezahlt!' });
+      setDepositGoalId(null);
+      setDepositAmount('');
+      load();
+    } catch {
+      Toast.show({ type: 'error', text1: 'Fehler' });
+    }
   };
 
   const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
@@ -213,6 +252,79 @@ export default function BudgetScreen() {
             );
           })
         )}
+        {/* Divider + Sparziele */}
+        <View style={{ margin: 16, marginTop: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 16 }}>🎯 Sparziele</Text>
+          <Button icon="plus" compact textColor={theme.colors.primary} onPress={() => setShowGoalForm(!showGoalForm)}>Neu</Button>
+        </View>
+
+        {showGoalForm && (
+          <View style={[styles.formCard, { backgroundColor: theme.colors.cardBackground }]}>
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Name</Text>
+            <RNTextInput
+              style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
+              value={goalName} onChangeText={setGoalName} placeholder="z.B. Urlaub"
+              placeholderTextColor={theme.colors.onSurface + '60'}
+            />
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Zielbetrag (€)</Text>
+            <RNTextInput
+              style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
+              value={goalTarget} onChangeText={setGoalTarget} placeholder="z.B. 1000"
+              placeholderTextColor={theme.colors.onSurface + '60'} keyboardType="decimal-pad"
+            />
+            <View style={styles.formButtons}>
+              <Button mode="outlined" onPress={() => setShowGoalForm(false)} style={{ flex: 1, marginRight: 8 }}>Abbrechen</Button>
+              <Button mode="contained" onPress={handleSaveGoal} disabled={savingGoal} buttonColor={theme.colors.primary} style={{ flex: 1 }}>
+                {savingGoal ? <ActivityIndicator size={16} color="#fff" /> : 'Erstellen'}
+              </Button>
+            </View>
+          </View>
+        )}
+
+        {goals.length === 0 && !showGoalForm ? (
+          <Text style={{ color: theme.colors.onSurface, opacity: 0.4, textAlign: 'center', paddingVertical: 16 }}>Noch keine Sparziele</Text>
+        ) : goals.map(goal => {
+          const pct = goal.targetAmount > 0 ? Math.min(goal.savedAmount / goal.targetAmount, 1) : 0;
+          return (
+            <View key={goal.id} style={[styles.budgetCard, { backgroundColor: theme.colors.cardBackground, borderWidth: goal.isCompleted ? 2 : 0, borderColor: '#22c55e' }]}>
+              <View style={styles.budgetHeader}>
+                <Text style={{ color: theme.colors.onSurface, fontWeight: '600', fontSize: 15 }}>
+                  {goal.icon} {goal.name} {goal.isCompleted ? '✅' : ''}
+                </Text>
+                <Button icon="delete" compact textColor={theme.colors.error} onPress={async () => {
+                  await savingsGoalAPI.delete(goal.id);
+                  setGoals(gs => gs.filter(g => g.id !== goal.id));
+                }}>{''}</Button>
+              </View>
+              <View style={styles.budgetNumbers}>
+                <Text style={{ color: theme.colors.onSurface, opacity: 0.7 }}>
+                  {parseFloat(goal.savedAmount).toFixed(2)} / {parseFloat(goal.targetAmount).toFixed(2)} €
+                </Text>
+                <Text style={{ color: goal.isCompleted ? '#22c55e' : theme.colors.primary, fontWeight: '600' }}>
+                  {Math.round(pct * 100)}%
+                </Text>
+              </View>
+              <ProgressBar progress={pct} color={goal.isCompleted ? '#22c55e' : theme.colors.primary} style={styles.progressBar} />
+              {!goal.isCompleted && (
+                depositGoalId === goal.id ? (
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                    <RNTextInput
+                      style={[styles.input, { flex: 1, color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background, marginBottom: 0 }]}
+                      value={depositAmount} onChangeText={setDepositAmount} placeholder="Betrag"
+                      placeholderTextColor={theme.colors.onSurface + '60'} keyboardType="decimal-pad" autoFocus
+                    />
+                    <Button mode="contained" onPress={() => handleDeposit(goal.id)} buttonColor={theme.colors.primary} compact style={{ marginTop: 2 }}>OK</Button>
+                    <Button mode="outlined" onPress={() => { setDepositGoalId(null); setDepositAmount(''); }} compact style={{ marginTop: 2 }}>✕</Button>
+                  </View>
+                ) : (
+                  <Button mode="text" textColor={theme.colors.primary} onPress={() => setDepositGoalId(goal.id)} style={{ marginTop: 4, alignSelf: 'flex-start' }} compact>
+                    + Einzahlen
+                  </Button>
+                )
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
     </View>
   );

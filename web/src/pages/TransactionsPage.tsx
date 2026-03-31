@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn, RefreshCw, ChevronDown, ChevronUp, Repeat } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
-import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI } from '../services/api';
+import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI, householdAPI } from '../services/api';
 
 export default function TransactionsPage() {
   const { currentHousehold } = useAuthStore();
@@ -24,7 +24,12 @@ export default function TransactionsPage() {
     receiptFile: null as File | null,
     isRecurring: false,
     recurringInterval: 'monthly',
+    targetHouseholdId: '',
   });
+  const [splits, setSplits] = useState<{ categoryId: string; amount: string; description: string }[]>([]);
+  const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [dupChecked, setDupChecked] = useState(false);
+  const [allHouseholds, setAllHouseholds] = useState<any[]>([]);
 
   // Paperless Upload Dialog
   const [paperlessDialog, setPaperlessDialog] = useState<{ transactionId: string; title: string } | null>(null);
@@ -61,6 +66,7 @@ export default function TransactionsPage() {
         setPaperlessUsers((data.users || []).filter((u: any) => u.isEnabled));
       }).catch(() => {});
       recurringAPI.getAll(currentHousehold.id).then(({ data }) => setRecurring(data.recurring || [])).catch(() => {});
+      householdAPI.getAll().then(({ data }) => setAllHouseholds(data.households || [])).catch(() => {});
     }
   }, [currentHousehold, typeFilter]);
 
@@ -87,6 +93,28 @@ export default function TransactionsPage() {
     finally { setOcrLoading(false); }
   };
 
+  const checkDuplicates = async () => {
+    if (!form.amount || !form.date || !currentHousehold) return;
+    try {
+      const { data } = await transactionAPI.duplicateCheck({
+        householdId: currentHousehold.id,
+        amount: form.amount,
+        date: form.date,
+        description: form.description,
+        merchant: form.merchant,
+      });
+      setDuplicates(data.duplicates || []);
+      setDupChecked(true);
+    } catch {}
+  };
+
+  const resetForm = () => {
+    setForm({ amount: '', description: '', merchant: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'expense', categoryId: '', receiptFile: null, isRecurring: false, recurringInterval: 'monthly', targetHouseholdId: '' });
+    setSplits([]);
+    setDuplicates([]);
+    setDupChecked(false);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.amount || !currentHousehold) return;
@@ -94,18 +122,20 @@ export default function TransactionsPage() {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => {
         if (k === 'receiptFile' && v) fd.append('receipt', v as File);
-        else if (!['receiptFile', 'isRecurring', 'recurringInterval'].includes(k) && v) fd.append(k, v as string);
+        else if (!['receiptFile', 'isRecurring', 'recurringInterval', 'targetHouseholdId'].includes(k) && v) fd.append(k, v as string);
       });
       if (form.isRecurring) {
         fd.append('isRecurring', 'true');
         fd.append('recurringInterval', form.recurringInterval);
       }
+      if (form.type === 'transfer' && form.targetHouseholdId) fd.append('targetHouseholdId', form.targetHouseholdId);
+      if (splits.length > 0) fd.append('splits', JSON.stringify(splits.map(s => ({ ...s, amount: parseFloat(s.amount) }))));
       fd.append('householdId', currentHousehold.id);
       const { data } = await transactionAPI.create(fd);
       if (data.budgetWarning) toast.error(`⚠️ Budget zu ${data.budgetWarning[0].percentage}% ausgeschöpft!`, { duration: 6000 });
       toast.success('Gespeichert');
       setShowForm(false);
-      setForm({ amount: '', description: '', merchant: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'expense', categoryId: '', receiptFile: null, isRecurring: false, recurringInterval: 'monthly' });
+      resetForm();
       load();
       recurringAPI.getAll(currentHousehold.id).then(({data}) => setRecurring(data.recurring || []));
     } catch (err: any) {
@@ -184,40 +214,90 @@ export default function TransactionsPage() {
           <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Neue Buchung</h2>
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2 flex gap-2">
-              {['expense', 'income'].map(t => (
+              {[['expense', '💸 Ausgabe'], ['income', '💰 Einnahme'], ['transfer', '🔄 Umbuchung']].map(([t, label]) => (
                 <button key={t} type="button" onClick={() => setForm(f => ({ ...f, type: t }))}
                   className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${form.type === t ? 'bg-[var(--primary)] text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300'}`}>
-                  {t === 'expense' ? '💸 Ausgabe' : '💰 Einnahme'}
+                  {label}
                 </button>
               ))}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Betrag (€) *</label>
               <input type="number" step="0.01" className="input" value={form.amount}
-                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
+                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} onBlur={checkDuplicates} required />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datum</label>
               <input type="date" className="input" value={form.date}
-                onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))} onBlur={checkDuplicates} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Beschreibung</label>
               <input type="text" className="input" value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))} onBlur={checkDuplicates} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Händler</label>
               <input type="text" className="input" value={form.merchant}
                 onChange={e => setForm(f => ({ ...f, merchant: e.target.value }))} />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategorie</label>
-              <select className="input" value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
-                <option value="">-- Wählen --</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.nameDE || c.name}</option>)}
-              </select>
-            </div>
+            {form.type !== 'transfer' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategorie</label>
+                <select className="input" value={form.categoryId} onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}>
+                  <option value="">-- Wählen --</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.nameDE || c.name}</option>)}
+                </select>
+              </div>
+            )}
+            {form.type === 'transfer' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ziel-Haushalt</label>
+                <select className="input" value={form.targetHouseholdId} onChange={e => setForm(f => ({ ...f, targetHouseholdId: e.target.value }))}>
+                  <option value="">-- Wählen --</option>
+                  {allHouseholds.filter(h => h.id !== currentHousehold?.id).map(h => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Duplikat-Warnung */}
+            {dupChecked && duplicates.length > 0 && (
+              <div className="md:col-span-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700 rounded-xl p-3">
+                <p className="text-orange-700 dark:text-orange-300 text-sm font-medium mb-2">⚠️ Mögliche Duplikate gefunden:</p>
+                {duplicates.map(d => (
+                  <p key={d.id} className="text-xs text-orange-600 dark:text-orange-400">
+                    {format(new Date(d.date), 'dd.MM.yyyy')} · {d.description || d.merchant || '—'} · {parseFloat(d.amount).toFixed(2)} €
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Split-Buchungen */}
+            {form.type === 'expense' && (
+              <div className="md:col-span-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Aufteilen auf Kategorien (optional)</label>
+                  <button type="button" onClick={() => setSplits(s => [...s, { categoryId: '', amount: '', description: '' }])}
+                    className="text-xs text-[var(--primary)] hover:underline">+ Zeile hinzufügen</button>
+                </div>
+                {splits.map((split, i) => (
+                  <div key={i} className="flex gap-2 mb-2">
+                    <select className="input flex-1 text-sm" value={split.categoryId} onChange={e => setSplits(s => s.map((x, j) => j === i ? { ...x, categoryId: e.target.value } : x))}>
+                      <option value="">Kategorie</option>
+                      {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.nameDE || c.name}</option>)}
+                    </select>
+                    <input type="number" step="0.01" className="input w-24 text-sm" placeholder="Betrag" value={split.amount}
+                      onChange={e => setSplits(s => s.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+                    <input type="text" className="input flex-1 text-sm" placeholder="Notiz" value={split.description}
+                      onChange={e => setSplits(s => s.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} />
+                    <button type="button" onClick={() => setSplits(s => s.filter((_, j) => j !== i))}
+                      className="text-gray-400 hover:text-red-500 px-1">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Quittung {ocrLoading && <span className="text-[var(--primary)] animate-pulse">KI analysiert...</span>}
@@ -251,7 +331,7 @@ export default function TransactionsPage() {
               )}
             </div>
             <div className="md:col-span-2 flex gap-3 justify-end">
-              <button type="button" onClick={() => { setShowForm(false); setForm({ amount: '', description: '', merchant: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'expense', categoryId: '', receiptFile: null, isRecurring: false, recurringInterval: 'monthly' }); }}
+              <button type="button" onClick={() => { setShowForm(false); resetForm(); }}
                 className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-sm font-medium">
                 Abbrechen
               </button>
