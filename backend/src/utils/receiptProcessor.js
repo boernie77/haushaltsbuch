@@ -4,33 +4,39 @@ const fs = require('fs');
 
 /**
  * Verarbeitet ein Quittungsbild zu einem klaren Dokumenten-Scan:
- * - Rand/Hintergrund: sauber weiß (wie Threshold)
- * - Textbereich: behält Graustufen für bessere Lesbarkeit
+ * - Rand/Hintergrund: sauber weiß (CLAHE+Threshold als Maske)
+ * - Textbereich: glatte Graustufen aus normalisiertem Bild (kein CLAHE-Rauschen)
  */
 async function processReceiptImage(inputPath) {
-  // Vorverarbeitung: Graustufen, Kontrast, CLAHE, Schärfen
-  const { data, info } = await sharp(inputPath)
+  // Gemeinsame Basis: rotiert + skaliert + Graustufen
+  const baseBuffer = await sharp(inputPath)
     .rotate()
     .resize({ width: 1800, withoutEnlargement: true })
     .greyscale()
     .normalize()
-    .clahe({ width: 4, height: 4, maxSlope: 3 })
-    .sharpen({ sigma: 1.2 })
+    .png()
+    .toBuffer();
+
+  // 1) Glattes Bild (für Textbereiche): nur normalize, KEIN CLAHE → keine Artefakte
+  const { data: smooth, info } = await sharp(baseBuffer)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // Pixel-Mapping: Hintergrund → weiß, Text → Graustufen behalten
-  const result = Buffer.alloc(data.length);
-  const cutoff = 140; // Ab hier = Hintergrund (wie bewährter Threshold)
+  // 2) Threshold-Maske (für Hintergrund-Erkennung): CLAHE+Sharpen+Threshold
+  const { data: mask } = await sharp(baseBuffer)
+    .clahe({ width: 4, height: 4, maxSlope: 3 })
+    .sharpen({ sigma: 1.2 })
+    .threshold(140)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
 
-  for (let i = 0; i < data.length; i++) {
-    const px = data[i];
-    if (px >= cutoff) {
-      // Hintergrund/Rand → rein weiß
-      result[i] = 255;
+  // Kombinieren: Maske weiß → weiß (Hintergrund), Maske schwarz → glatter Wert (Text)
+  const result = Buffer.alloc(smooth.length);
+  for (let i = 0; i < smooth.length; i++) {
+    if (mask[i] === 255) {
+      result[i] = 255; // Hintergrund/Rand → rein weiß
     } else {
-      // Text → originalen CLAHE-Wert behalten (Graustufen, nicht binär schwarz)
-      result[i] = px;
+      result[i] = smooth[i]; // Text → glatte Graustufen
     }
   }
 
