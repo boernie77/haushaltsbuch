@@ -20,19 +20,29 @@ jobs:
             cd /opt/haushaltsbuch
             git pull origin main
 
-            # .env neu schreiben
-            cat > .env << 'ENVEOF'
-            DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
-            ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-            ALLOWED_ORIGINS=https://haushalt.bernauer24.com
-            APP_URL=https://haushalt.bernauer24.com
-            API_URL=https://haushalt.bernauer24.com/api
-            ENVEOF
+            # .env: nur bekannte Secrets aktualisieren, alle anderen Zeilen (SMTP, ENCRYPTION_KEY usw.) bleiben erhalten
+            touch .env
+            set_env() {
+              local key="$1" val="$2"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${val}|" .env
+              else
+                echo "${key}=${val}" >> .env
+              fi
+            }
+            set_env DB_PASSWORD "${{ secrets.DB_PASSWORD }}"
+            set_env JWT_SECRET "${{ secrets.JWT_SECRET }}"
+            set_env ANTHROPIC_API_KEY "${{ secrets.ANTHROPIC_API_KEY }}"
+            set_env ALLOWED_ORIGINS "https://haushalt.bernauer24.com"
+            set_env APP_URL "https://haushalt.bernauer24.com"
+            set_env API_URL "https://haushalt.bernauer24.com/api"
 
             docker-compose build --no-cache
             docker-compose up -d
             sleep 8
             docker-compose exec -T backend node src/utils/migrate.js
-            docker-compose exec -T backend node -e "require('./src/utils/seedCategories').seedSystemCategories()" || true
-            echo "✅ Deployment erfolgreich"
+            docker-compose exec -T backend node -e "
+              const { seedSystemCategories } = require('./src/utils/seedCategories');
+              seedSystemCategories().then(() => process.exit(0)).catch(() => process.exit(0));
+            "
+            echo "Done"
