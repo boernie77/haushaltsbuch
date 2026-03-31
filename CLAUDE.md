@@ -310,8 +310,9 @@ cd mobile && expo prebuild --clean
 - **Fallback:** Exa, wenn Repo nicht auf DeepWiki verfügbar
 - Nach jeder Recherche: Code auf veraltete Versionen prüfen und Upgrade-Empfehlung geben
 
-## Dependency-Status (Stand 2026-03-31)
-Minor-Updates eingespielt: `sequelize` 6.37.8, `pg` 8.20.0, `jsonwebtoken` 9.0.3, `sharp` 0.34.5, `axios` 1.14.0, `typescript` 5.8.3
+## Dependency-Status (Stand 2026-04-01)
+Minor-Updates eingespielt: `sequelize` 6.37.8, `pg` 8.20.0, `jsonwebtoken` 9.0.3, `axios` 1.14.0, `typescript` 5.8.3
+`sharp` bleibt auf **0.33.5** — 0.34.x bricht auf Alpine/musl. Upgrade erst nach Dockerfile-Base-Wechsel (`node:20-alpine` → `node:20`).
 
 **Ausstehende Major-Upgrades** (bewusst zurückgestellt, nächste Session):
 | Paket | Von → Auf | Hauptproblem |
