@@ -446,6 +446,9 @@ export default function TransactionsPage() {
                         }} className="text-gray-400 hover:text-red-500 transition-colors" title="Beenden">
                           <X size={16} />
                         </button>
+                        <button onClick={() => { setMoveDialog({ id: r.id, description: r.description || r.merchant || 'Buchung' }); setMoveTargetId(''); }} className="text-gray-400 hover:text-blue-500 transition-colors" title="In anderes Haushaltsbuch verschieben">
+                          <ArrowRightLeft size={16} />
+                        </button>
                       </div>
                     </td>
                   </tr>
