@@ -120,7 +120,7 @@ router.delete('/recurring/:id', auth, async (req, res) => {
 router.post('/', auth, upload.single('receipt'), async (req, res) => {
   try {
     const { amount, description, note, date, type, categoryId, householdId, merchant, tags, isConfirmed,
-            isRecurring, recurringInterval, recurringDay, isPersonal, targetHouseholdId, splits } = req.body;
+            isRecurring, recurringInterval, recurringDay, isPersonal, targetHouseholdId, splits, tip } = req.body;
 
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
@@ -169,6 +169,7 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
       recurringNextDate,
       isPersonal: isPersonal === 'true' || isPersonal === true,
       targetHouseholdId: type === 'transfer' ? targetHouseholdId : null,
+      tip: tip ? parseFloat(tip) : 0,
     });
 
     // Splits speichern falls vorhanden
@@ -230,8 +231,9 @@ router.put('/:id', auth, async (req, res) => {
     const access = await checkHouseholdAccess(req.user.id, transaction.householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
 
-    const { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed, isRecurring, recurringInterval } = req.body;
+    const { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed, isRecurring, recurringInterval, tip } = req.body;
     const updates = { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed };
+    if (tip !== undefined) updates.tip = parseFloat(tip) || 0;
 
     const isRecurringBool = isRecurring !== undefined ? isRecurring : transaction.isRecurring;
     if (isRecurring !== undefined) {

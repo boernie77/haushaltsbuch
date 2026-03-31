@@ -26,6 +26,7 @@ export default function TransactionsPage() {
     isRecurring: false,
     recurringInterval: 'monthly',
     targetHouseholdId: '',
+    tip: '',
   });
   const [splits, setSplits] = useState<{ categoryId: string; amount: string; description: string }[]>([]);
   const [duplicates, setDuplicates] = useState<any[]>([]);
@@ -114,15 +115,16 @@ export default function TransactionsPage() {
   };
 
   const resetForm = () => {
-    setForm({ amount: '', description: '', merchant: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'expense', categoryId: '', receiptFile: null, isRecurring: false, recurringInterval: 'monthly', targetHouseholdId: '' });
+    setForm({ amount: '', description: '', merchant: '', date: format(new Date(), 'yyyy-MM-dd'), type: 'expense', categoryId: '', receiptFile: null, isRecurring: false, recurringInterval: 'monthly', targetHouseholdId: '', tip: '' });
     setSplits([]);
     setDuplicates([]);
     setDupChecked(false);
   };
 
   const openEdit = (t: any) => {
+    const tipVal = parseFloat(t.tip || '0');
     setForm({
-      amount: parseFloat(t.amount).toFixed(2),
+      amount: (parseFloat(t.amount) - tipVal).toFixed(2),
       description: t.description || '',
       merchant: t.merchant || '',
       date: format(new Date(t.date), 'yyyy-MM-dd'),
@@ -132,6 +134,7 @@ export default function TransactionsPage() {
       isRecurring: t.isRecurring || false,
       recurringInterval: t.recurringInterval || 'monthly',
       targetHouseholdId: t.targetHouseholdId || '',
+      tip: tipVal > 0 ? tipVal.toFixed(2) : '',
     });
     setEditingId(t.id);
     setShowForm(true);
@@ -144,10 +147,13 @@ export default function TransactionsPage() {
     e.preventDefault();
     if (!form.amount || !currentHousehold) return;
     try {
+      const tipAmount = parseFloat(form.tip || '0') || 0;
+      const totalAmount = parseFloat(form.amount) + tipAmount;
       if (editingId) {
         // Update existing
         await transactionAPI.update(editingId, {
-          amount: parseFloat(form.amount),
+          amount: totalAmount,
+          tip: tipAmount,
           description: form.description,
           merchant: form.merchant,
           date: form.date,
@@ -163,6 +169,8 @@ export default function TransactionsPage() {
         const fd = new FormData();
         Object.entries(form).forEach(([k, v]) => {
           if (k === 'receiptFile' && v) fd.append('receipt', v as File);
+          else if (k === 'amount') fd.append('amount', String(totalAmount));
+          else if (k === 'tip') { if (tipAmount > 0) fd.append('tip', String(tipAmount)); }
           else if (!['receiptFile', 'isRecurring', 'recurringInterval', 'targetHouseholdId'].includes(k) && v) fd.append(k, v as string);
         });
         if (form.isRecurring) {
@@ -279,10 +287,22 @@ export default function TransactionsPage() {
               ))}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Betrag (€) *</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Betrag (€) *
+                {form.tip && parseFloat(form.tip) > 0 && (
+                  <span className="ml-2 text-xs text-gray-400">Gesamt: {(parseFloat(form.amount || '0') + parseFloat(form.tip)).toFixed(2)} €</span>
+                )}
+              </label>
               <input type="number" step="0.01" className="input" value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} onBlur={checkDuplicates} required />
             </div>
+            {form.type === 'expense' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Trinkgeld (€)</label>
+                <input type="number" step="0.01" min="0" className="input" value={form.tip}
+                  onChange={e => setForm(f => ({ ...f, tip: e.target.value }))} placeholder="0.00" />
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datum</label>
               <input type="date" className="input" value={form.date}

@@ -8,6 +8,52 @@ async function checkAccess(userId, householdId) {
   return HouseholdMember.findOne({ where: { userId, householdId } });
 }
 
+// Berechnet alle Vorkommen eines Recurring-Templates innerhalb [rangeStart, rangeEnd]
+function getOccurrencesInRange(nextDate, interval, recurringDay, rangeStart, rangeEnd) {
+  if (!nextDate || !interval) return [];
+  const results = [];
+  const end = new Date(rangeEnd); end.setHours(23, 59, 59, 999);
+  const start = new Date(rangeStart); start.setHours(0, 0, 0, 0);
+
+  function stepForward(d) {
+    const r = new Date(d);
+    if (interval === 'weekly') r.setDate(r.getDate() + 7);
+    else if (interval === 'monthly') {
+      r.setMonth(r.getMonth() + 1);
+      if (recurringDay) {
+        const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+        r.setDate(Math.min(recurringDay, maxDay));
+      }
+    } else if (interval === 'yearly') r.setFullYear(r.getFullYear() + 1);
+    return r;
+  }
+
+  function stepBack(d) {
+    const r = new Date(d);
+    if (interval === 'weekly') r.setDate(r.getDate() - 7);
+    else if (interval === 'monthly') {
+      r.setMonth(r.getMonth() - 1);
+      if (recurringDay) {
+        const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+        r.setDate(Math.min(recurringDay, maxDay));
+      }
+    } else if (interval === 'yearly') r.setFullYear(r.getFullYear() - 1);
+    return r;
+  }
+
+  // Gehe von nextDate rückwärts bis wir vor rangeStart sind
+  let cursor = new Date(nextDate); cursor.setHours(0, 0, 0, 0);
+  while (cursor >= start) cursor = stepBack(cursor);
+  // Jetzt vorwärts bis rangeEnd
+  cursor = stepForward(cursor);
+  while (cursor <= end) {
+    if (cursor >= start) results.push(new Date(cursor));
+    cursor = stepForward(cursor);
+    if (results.length > 60) break; // Sicherheit
+  }
+  return results;
+}
+
 // GET /api/statistics/monthly?householdId=&year=&month=
 router.get('/monthly', auth, async (req, res) => {
   try {
@@ -173,7 +219,28 @@ router.get('/overview', auth, async (req, res) => {
     const change = previous > 0 ? ((current - previous) / previous) * 100 : 0;
     const daysInMonth = Math.round((curEnd - curStart) / (1000 * 60 * 60 * 24)) + 1;
     const currentDay = Math.max(1, Math.round((now - curStart) / (1000 * 60 * 60 * 24)) + 1);
-    const projectedExpenses = currentDay > 0 ? (current / currentDay) * daysInMonth : 0;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+
+    // Fixkosten (Wiederkehrende Buchungen): separat behandeln, nicht linear hochrechnen
+    const recurringTemplates = await Transaction.findAll({
+      where: { householdId, isRecurring: true, type: 'expense' },
+      attributes: ['amount', 'recurringInterval', 'recurringDay', 'recurringNextDate']
+    });
+    let fixedAlreadyPaid = 0;
+    let fixedYetToCome = 0;
+    for (const t of recurringTemplates) {
+      if (!t.recurringNextDate || !t.recurringInterval) continue;
+      const occurrences = getOccurrencesInRange(t.recurringNextDate, t.recurringInterval, t.recurringDay, curStart, curEnd);
+      for (const d of occurrences) {
+        if (d <= today) fixedAlreadyPaid += parseFloat(t.amount);
+        else fixedYetToCome += parseFloat(t.amount);
+      }
+    }
+
+    // Variable Ausgaben = aktuelle Ausgaben abzüglich bereits gebuchter Fixkosten
+    const variableSoFar = Math.max(0, current - fixedAlreadyPaid);
+    const projectedVariable = currentDay > 0 ? (variableSoFar / currentDay) * daysInMonth : 0;
+    const projectedExpenses = projectedVariable + fixedAlreadyPaid + fixedYetToCome;
 
     res.json({
       thisMonth: current,
@@ -188,6 +255,7 @@ router.get('/overview', auth, async (req, res) => {
       currentDay,
       projectedExpenses: Math.round(projectedExpenses * 100) / 100,
       projectedRemaining: Math.round((income - projectedExpenses) * 100) / 100,
+      fixedMonthly: Math.round((fixedAlreadyPaid + fixedYetToCome) * 100) / 100,
     });
   } catch (err) {
     console.error(err);

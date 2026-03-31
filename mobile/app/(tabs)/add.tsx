@@ -32,6 +32,7 @@ export default function AddTransactionScreen() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [tip, setTip] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringInterval, setRecurringInterval] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [paperlessUsers, setPaperlessUsers] = useState<any[]>([]);
@@ -122,8 +123,11 @@ export default function AddTransactionScreen() {
     }
     setSaving(true);
     try {
+      const tipAmount = parseFloat(tip || '0') || 0;
+      const totalAmount = parseFloat(amount || '0') + tipAmount;
       const form = new FormData();
-      form.append('amount', amount);
+      form.append('amount', String(totalAmount));
+      if (tipAmount > 0) form.append('tip', String(tipAmount));
       form.append('description', description);
       form.append('merchant', merchant);
       form.append('date', date);
@@ -217,7 +221,7 @@ export default function AddTransactionScreen() {
 
           {/* Amount */}
           <TextInput
-            label="Betrag (€)"
+            label={tip && parseFloat(tip) > 0 ? `Betrag (€) — Gesamt: ${(parseFloat(amount || '0') + parseFloat(tip)).toFixed(2)} €` : 'Betrag (€)'}
             value={amount}
             onChangeText={setAmount}
             mode="outlined"
@@ -225,6 +229,19 @@ export default function AddTransactionScreen() {
             style={styles.input}
             left={<TextInput.Icon icon="currency-eur" />}
           />
+
+          {/* Tip (only for expenses) */}
+          {type === 'expense' && (
+            <TextInput
+              label="Trinkgeld (€)"
+              value={tip}
+              onChangeText={setTip}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+              left={<TextInput.Icon icon="hand-coin-outline" />}
+            />
+          )}
 
           {/* Description */}
           <TextInput

@@ -82,6 +82,7 @@ const Transaction = sequelize.define('Transaction', {
   recurringNextDate:  { type: DataTypes.DATEONLY, allowNull: true },
   isPersonal:         { type: DataTypes.BOOLEAN, defaultValue: false },
   targetHouseholdId:  { type: DataTypes.UUID, allowNull: true },
+  tip:                { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
 }, { tableName: 'transactions', timestamps: true });
 
 // ── Budget ────────────────────────────────────────────────────────────────────
