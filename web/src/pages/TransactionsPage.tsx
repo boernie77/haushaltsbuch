@@ -105,6 +105,7 @@ export default function TransactionsPage() {
         date: form.date,
         description: form.description,
         merchant: form.merchant,
+        ...(editingId ? { excludeId: editingId } : {}),
       });
       setDuplicates(data.duplicates || []);
       setDupChecked(true);

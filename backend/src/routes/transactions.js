@@ -259,19 +259,23 @@ router.delete('/:id', auth, async (req, res) => {
 // POST /api/transactions/duplicate-check
 router.post('/duplicate-check', auth, async (req, res) => {
   try {
-    const { householdId, amount, date, description, merchant } = req.body;
+    const { householdId, amount, date, description, merchant, excludeId } = req.body;
     if (!await checkHouseholdAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
 
     const checkDate = new Date(date);
     const from = new Date(checkDate); from.setDate(from.getDate() - 3);
     const to = new Date(checkDate); to.setDate(to.getDate() + 3);
 
+    const where = {
+      householdId,
+      isRecurring: { [Op.ne]: true },
+      amount: { [Op.between]: [parseFloat(amount) - 0.01, parseFloat(amount) + 0.01] },
+      date: { [Op.between]: [from, to] },
+    };
+    if (excludeId) where.id = { [Op.ne]: excludeId };
+
     const candidates = await Transaction.findAll({
-      where: {
-        householdId,
-        amount: { [Op.between]: [parseFloat(amount) - 0.01, parseFloat(amount) + 0.01] },
-        date: { [Op.between]: [from, to] },
-      },
+      where,
       include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }],
       limit: 5,
     });
