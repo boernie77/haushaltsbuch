@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn, RefreshCw, ChevronDown, ChevronUp, Repeat } from 'lucide-react';
+import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn, RefreshCw, ChevronDown, ChevronUp, Repeat, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI, householdAPI } from '../services/api';
@@ -13,6 +13,7 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const now = new Date();
@@ -115,26 +116,62 @@ export default function TransactionsPage() {
     setDupChecked(false);
   };
 
+  const openEdit = (t: any) => {
+    setForm({
+      amount: parseFloat(t.amount).toFixed(2),
+      description: t.description || '',
+      merchant: t.merchant || '',
+      date: format(new Date(t.date), 'yyyy-MM-dd'),
+      type: t.type,
+      categoryId: t.categoryId || '',
+      receiptFile: null,
+      isRecurring: t.isRecurring || false,
+      recurringInterval: t.recurringInterval || 'monthly',
+      targetHouseholdId: t.targetHouseholdId || '',
+    });
+    setEditingId(t.id);
+    setShowForm(true);
+    setDuplicates([]);
+    setDupChecked(false);
+    setSplits([]);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.amount || !currentHousehold) return;
     try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => {
-        if (k === 'receiptFile' && v) fd.append('receipt', v as File);
-        else if (!['receiptFile', 'isRecurring', 'recurringInterval', 'targetHouseholdId'].includes(k) && v) fd.append(k, v as string);
-      });
-      if (form.isRecurring) {
-        fd.append('isRecurring', 'true');
-        fd.append('recurringInterval', form.recurringInterval);
+      if (editingId) {
+        // Update existing
+        await transactionAPI.update(editingId, {
+          amount: parseFloat(form.amount),
+          description: form.description,
+          merchant: form.merchant,
+          date: form.date,
+          type: form.type,
+          categoryId: form.categoryId || null,
+          tags: [],
+        });
+        toast.success('Buchung aktualisiert');
+      } else {
+        // Create new
+        const fd = new FormData();
+        Object.entries(form).forEach(([k, v]) => {
+          if (k === 'receiptFile' && v) fd.append('receipt', v as File);
+          else if (!['receiptFile', 'isRecurring', 'recurringInterval', 'targetHouseholdId'].includes(k) && v) fd.append(k, v as string);
+        });
+        if (form.isRecurring) {
+          fd.append('isRecurring', 'true');
+          fd.append('recurringInterval', form.recurringInterval);
+        }
+        if (form.type === 'transfer' && form.targetHouseholdId) fd.append('targetHouseholdId', form.targetHouseholdId);
+        if (splits.length > 0) fd.append('splits', JSON.stringify(splits.map(s => ({ ...s, amount: parseFloat(s.amount) }))));
+        fd.append('householdId', currentHousehold.id);
+        const { data } = await transactionAPI.create(fd);
+        if (data.budgetWarning) toast.error(`⚠️ Budget zu ${data.budgetWarning[0].percentage}% ausgeschöpft!`, { duration: 6000 });
+        toast.success('Gespeichert');
       }
-      if (form.type === 'transfer' && form.targetHouseholdId) fd.append('targetHouseholdId', form.targetHouseholdId);
-      if (splits.length > 0) fd.append('splits', JSON.stringify(splits.map(s => ({ ...s, amount: parseFloat(s.amount) }))));
-      fd.append('householdId', currentHousehold.id);
-      const { data } = await transactionAPI.create(fd);
-      if (data.budgetWarning) toast.error(`⚠️ Budget zu ${data.budgetWarning[0].percentage}% ausgeschöpft!`, { duration: 6000 });
-      toast.success('Gespeichert');
       setShowForm(false);
+      setEditingId(null);
       resetForm();
       load();
       recurringAPI.getAll(currentHousehold.id).then(({data}) => setRecurring(data.recurring || []));
@@ -184,7 +221,7 @@ export default function TransactionsPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Buchungen</h1>
-        <button className="btn-primary flex items-center gap-2" onClick={() => setShowForm(true)}>
+        <button className="btn-primary flex items-center gap-2" onClick={() => { setEditingId(null); resetForm(); setShowForm(true); }}>
           <Plus size={18} /> Neue Buchung
         </button>
       </div>
@@ -194,7 +231,7 @@ export default function TransactionsPage() {
         <form onSubmit={handleSearch} className="flex gap-2 flex-1">
           <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input className="input pl-9 w-full" placeholder="Suchen..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input w-full" style={{ paddingLeft: '2.25rem' }} placeholder="Suchen..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <button type="submit" className="btn-primary px-3 shrink-0">Suchen</button>
         </form>
@@ -211,7 +248,7 @@ export default function TransactionsPage() {
       {/* Add Form */}
       {showForm && (
         <div className="card p-6">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Neue Buchung</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-white mb-4">{editingId ? 'Buchung bearbeiten' : 'Neue Buchung'}</h2>
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2 flex gap-2">
               {[['expense', '💸 Ausgabe'], ['income', '💰 Einnahme'], ['transfer', '🔄 Umbuchung']].map(([t, label]) => (
@@ -331,11 +368,11 @@ export default function TransactionsPage() {
               )}
             </div>
             <div className="md:col-span-2 flex gap-3 justify-end">
-              <button type="button" onClick={() => { setShowForm(false); resetForm(); }}
+              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); resetForm(); }}
                 className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-sm font-medium">
                 Abbrechen
               </button>
-              <button type="submit" className="btn-primary">Speichern</button>
+              <button type="submit" className="btn-primary">{editingId ? 'Aktualisieren' : 'Speichern'}</button>
             </div>
           </form>
         </div>
@@ -388,6 +425,9 @@ export default function TransactionsPage() {
                           <Receipt size={16} />
                         </button>
                       )}
+                      <button onClick={() => openEdit(t)} className="text-gray-400 hover:text-[var(--primary)] transition-colors" title="Bearbeiten">
+                        <Pencil size={15} />
+                      </button>
                       {t.receiptImage && hasPaperless && (
                         <button onClick={() => openPaperlessDialog(t)}
                           title={t.paperlessDocId ? 'Bereits in Paperless' : 'Zu Paperless hochladen'}

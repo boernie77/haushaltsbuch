@@ -215,7 +215,7 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input className="input pl-9 w-full" placeholder="Benutzer suchen (Name, E-Mail)..." value={userSearch}
+                <input className="input w-full" style={{ paddingLeft: '2.25rem' }} placeholder="Benutzer suchen (Name, E-Mail)..." value={userSearch}
                   onChange={e => setUserSearch(e.target.value)} />
               </div>
             <div className="card overflow-hidden">
@@ -275,7 +275,7 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input className="input pl-9 w-full" placeholder="Haushalt suchen (Name)..." value={householdSearch}
+                <input className="input w-full" style={{ paddingLeft: '2.25rem' }} placeholder="Haushalt suchen (Name)..." value={householdSearch}
                   onChange={e => setHouseholdSearch(e.target.value)} />
               </div>
               {households.filter(h => {
