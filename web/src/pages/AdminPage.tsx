@@ -30,6 +30,11 @@ export default function AdminPage() {
   const [sshPublicKey, setSshPublicKey] = useState<string | null>(null);
   const [sshKeyLoading, setSshKeyLoading] = useState(false);
   const [sshKeyRegenerating, setSshKeyRegenerating] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restorePreview, setRestorePreview] = useState<any>(null);
+  const [restorePreviewing, setRestorePreviewing] = useState(false);
+  const [restoreConfirmText, setRestoreConfirmText] = useState('');
+  const [restoring, setRestoring] = useState(false);
   const [householdSearch, setHouseholdSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
@@ -82,6 +87,38 @@ export default function AdminPage() {
       setSshPublicKey(data.publicKey);
     } catch { toast.error('SSH-Key konnte nicht geladen werden'); }
     finally { setSshKeyLoading(false); }
+  };
+
+  const handleRestoreFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setRestoreFile(file);
+    setRestorePreview(null);
+    setRestoreConfirmText('');
+    if (!file) return;
+    setRestorePreviewing(true);
+    try {
+      const { data } = await adminAPI.previewRestore(file);
+      setRestorePreview(data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Datei konnte nicht gelesen werden');
+      setRestoreFile(null);
+    } finally { setRestorePreviewing(false); }
+  };
+
+  const handleRestore = async () => {
+    if (!restoreFile) return;
+    setRestoring(true);
+    try {
+      const { data } = await adminAPI.restoreBackup(restoreFile);
+      toast.success(`Wiederherstellung abgeschlossen: ${data.restored.transactions} Buchungen, ${data.restored.users} Benutzer`);
+      setRestoreFile(null);
+      setRestorePreview(null);
+      setRestoreConfirmText('');
+      // Reload page data
+      window.location.reload();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Wiederherstellung fehlgeschlagen');
+    } finally { setRestoring(false); }
   };
 
   const handleRegenerateSshKey = async () => {
@@ -658,6 +695,78 @@ export default function AdminPage() {
                     Einstellungen speichern
                   </button>
                 </div>
+              </div>
+
+              {/* Restore card */}
+              <div className="card p-6 space-y-4 border border-red-200 dark:border-red-900">
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Database size={18} className="text-red-500" /> Backup wiederherstellen
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Stellt alle Daten aus einer Backup-Datei wieder her. <strong className="text-red-600 dark:text-red-400">Alle aktuellen Daten werden dabei vollständig überschrieben.</strong>
+                </p>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Backup-Datei auswählen (.json.gz oder .json)</label>
+                  <input type="file" accept=".json,.gz,.json.gz" onChange={handleRestoreFileChange}
+                    className="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-medium file:bg-gray-100 dark:file:bg-slate-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200" />
+                </div>
+
+                {restorePreviewing && (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full" />
+                    Datei wird analysiert…
+                  </div>
+                )}
+
+                {restorePreview && (
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-xl bg-gray-50 dark:bg-slate-800 space-y-2 text-sm">
+                      <p className="font-semibold text-gray-700 dark:text-gray-300">Inhalt der Backup-Datei:</p>
+                      <p className="text-gray-500 text-xs">Erstellt am: <strong>{new Date(restorePreview.exportedAt).toLocaleString('de-DE')}</strong></p>
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {[
+                          { label: 'Benutzer',      value: restorePreview.counts.users },
+                          { label: 'Haushaltsbücher', value: restorePreview.counts.households },
+                          { label: 'Buchungen',     value: restorePreview.counts.transactions },
+                          { label: 'Kategorien',    value: restorePreview.counts.categories },
+                          { label: 'Budgets',       value: restorePreview.counts.budgets },
+                          { label: 'Einladungen',   value: restorePreview.counts.inviteCodes },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="p-2 rounded-lg bg-white dark:bg-slate-700 text-center">
+                            <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+                            <p className="text-xs text-gray-500">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 space-y-3">
+                      <p className="text-sm font-semibold text-red-700 dark:text-red-400">⚠️ Achtung: Diese Aktion kann nicht rückgängig gemacht werden!</p>
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        Alle aktuellen Buchungen, Benutzer und Einstellungen werden gelöscht und durch den Backup-Stand ersetzt.
+                        Benutzer müssen danach ihr Passwort zurücksetzen (Passwort-Reset per E-Mail).
+                      </p>
+                      <div>
+                        <label className="block text-xs font-medium text-red-700 dark:text-red-400 mb-1">
+                          Tippe <strong>WIEDERHERSTELLEN</strong> zur Bestätigung:
+                        </label>
+                        <input type="text" className="input border-red-300 dark:border-red-700 focus:border-red-500"
+                          placeholder="WIEDERHERSTELLEN"
+                          value={restoreConfirmText}
+                          onChange={e => setRestoreConfirmText(e.target.value)} />
+                      </div>
+                      <button
+                        onClick={handleRestore}
+                        disabled={restoreConfirmText !== 'WIEDERHERSTELLEN' || restoring}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 text-white font-medium text-sm hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        {restoring
+                          ? <><div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> Wird wiederhergestellt…</>
+                          : <><Database size={15} /> Jetzt wiederherstellen</>}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

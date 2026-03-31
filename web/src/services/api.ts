@@ -113,6 +113,8 @@ export const adminAPI = {
   runBackup: () => api.post('/admin/backup/run'),
   getSshPublicKey: () => api.get('/admin/backup/ssh-key'),
   regenerateSshKey: () => api.post('/admin/backup/ssh-key/regenerate'),
+  previewRestore: (file: File) => { const fd = new FormData(); fd.append('backup', file); return api.post('/admin/backup/restore/preview', fd); },
+  restoreBackup:  (file: File) => { const fd = new FormData(); fd.append('backup', file); return api.post('/admin/backup/restore', fd, { timeout: 120000 }); },
 };
 
 export const savingsGoalAPI = {

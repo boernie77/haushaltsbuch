@@ -201,4 +201,148 @@ async function runGlobalBackup() {
   return filename;
 }
 
-module.exports = { exportAllData, exportHouseholdData, importHouseholdData, uploadToSftp, runGlobalBackup };
+// ── Parse backup file (gzip or plain JSON) ────────────────────────────────────
+function parseBackupBuffer(buffer) {
+  let json;
+  try {
+    // Try gzip first
+    json = zlib.gunzipSync(buffer).toString('utf8');
+  } catch {
+    // Fall back to plain JSON
+    json = buffer.toString('utf8');
+  }
+  const data = JSON.parse(json);
+  if (!data.tables) throw new Error('Ungültiges Backup-Format (kein tables-Objekt)');
+  return data;
+}
+
+// ── Restore all data ──────────────────────────────────────────────────────────
+async function restoreAllData(data) {
+  const { sequelize } = require('../models');
+  const t = data.tables;
+
+  const tx = await sequelize.transaction();
+  try {
+    // Delete in reverse dependency order
+    await sequelize.query('DELETE FROM transaction_splits',           { transaction: tx });
+    await sequelize.query('DELETE FROM transactions',                 { transaction: tx });
+    await sequelize.query('DELETE FROM budgets',                      { transaction: tx });
+    await sequelize.query('DELETE FROM savings_goals',                { transaction: tx });
+    await sequelize.query('DELETE FROM password_reset_tokens',        { transaction: tx });
+    await sequelize.query('DELETE FROM paperless_document_types',     { transaction: tx });
+    await sequelize.query('DELETE FROM paperless_correspondents',     { transaction: tx });
+    await sequelize.query('DELETE FROM paperless_tags',               { transaction: tx });
+    await sequelize.query('DELETE FROM paperless_users',              { transaction: tx });
+    await sequelize.query('DELETE FROM paperless_configs',            { transaction: tx });
+    await sequelize.query('DELETE FROM invite_codes',                 { transaction: tx });
+    await sequelize.query('DELETE FROM household_members',            { transaction: tx });
+    await sequelize.query('DELETE FROM categories',                   { transaction: tx });
+    await sequelize.query('DELETE FROM households',                   { transaction: tx });
+    await sequelize.query('DELETE FROM users',                        { transaction: tx });
+    await sequelize.query('DELETE FROM global_settings',              { transaction: tx });
+    await sequelize.query('DELETE FROM backup_configs',               { transaction: tx });
+
+    const opts = { transaction: tx, validate: false, hooks: false, individualHooks: false, returning: false };
+
+    // Re-insert in forward dependency order
+    // Users — restore password hash as-is (backup excludes password field — users must reset passwords)
+    if (t.users?.length) {
+      await sequelize.query(
+        `INSERT INTO users (id, name, email, password, role, theme, "aiKeyGranted", "isActive", "createdAt", "updatedAt")
+         VALUES ${t.users.map(() => '(?,?,?,?,?,?,?,?,?,?)').join(',')}`,
+        {
+          transaction: tx,
+          replacements: t.users.flatMap(u => [
+            u.id, u.name, u.email,
+            '$2b$10$placeholder.hash.that.will.not.work', // users must reset password after restore
+            u.role || 'member', u.theme || 'masculine',
+            u.aiKeyGranted ?? false, u.isActive ?? true,
+            u.createdAt || new Date(), u.updatedAt || new Date(),
+          ]),
+        }
+      );
+    }
+
+    if (t.global_settings?.length) {
+      for (const g of t.global_settings) {
+        await GlobalSettings.create({
+          id: g.id || 'global',
+          anthropicApiKey: g.anthropicApiKey || null,
+          aiKeyPublic: g.aiKeyPublic ?? false,
+        }, { transaction: tx });
+      }
+    }
+
+    if (t.households?.length) {
+      for (const h of t.households) {
+        await Household.create({
+          id: h.id, name: h.name, currency: h.currency || 'EUR',
+          monthlyBudget: h.monthlyBudget || null, budgetWarningAt: h.budgetWarningAt || null,
+          anthropicApiKey: h.anthropicApiKey || null, aiEnabled: h.aiEnabled ?? false,
+          adminUserId: h.adminUserId,
+        }, { transaction: tx });
+      }
+    }
+
+    if (t.household_members?.length) {
+      await HouseholdMember.bulkCreate(
+        t.household_members.map(m => ({ householdId: m.householdId, userId: m.userId, role: m.role || 'member', createdAt: m.createdAt, updatedAt: m.updatedAt })),
+        { ...opts, ignoreDuplicates: true }
+      );
+    }
+
+    if (t.categories?.length) {
+      await Category.bulkCreate(
+        t.categories.map(c => ({ id: c.id, name: c.name, nameDE: c.nameDE, icon: c.icon, color: c.color, isSystem: c.isSystem ?? false, householdId: c.householdId || null, sortOrder: c.sortOrder || 0, createdAt: c.createdAt, updatedAt: c.updatedAt })),
+        { ...opts, ignoreDuplicates: true }
+      );
+    }
+
+    if (t.transactions?.length) {
+      // Insert in chunks to avoid parameter limits
+      const CHUNK = 200;
+      for (let i = 0; i < t.transactions.length; i += CHUNK) {
+        await Transaction.bulkCreate(
+          t.transactions.slice(i, i + CHUNK).map(tr => ({
+            id: tr.id, amount: tr.amount, description: tr.description, note: tr.note,
+            date: tr.date, type: tr.type, categoryId: tr.categoryId, householdId: tr.householdId,
+            userId: tr.userId, merchant: tr.merchant, tags: tr.tags || [],
+            isRecurring: tr.isRecurring ?? false, recurringInterval: tr.recurringInterval || null,
+            recurringDay: tr.recurringDay || null, recurringNextDate: tr.recurringNextDate || null,
+            tip: tr.tip || 0, createdAt: tr.createdAt, updatedAt: tr.updatedAt,
+          })),
+          { ...opts, ignoreDuplicates: true }
+        );
+      }
+    }
+
+    if (t.budgets?.length) {
+      await Budget.bulkCreate(
+        t.budgets.map(b => ({ id: b.id, householdId: b.householdId, categoryId: b.categoryId, limitAmount: b.limitAmount, month: b.month, year: b.year, warningAt: b.warningAt || null, createdAt: b.createdAt, updatedAt: b.updatedAt })),
+        { ...opts, ignoreDuplicates: true }
+      );
+    }
+
+    if (t.invite_codes?.length) {
+      await InviteCode.bulkCreate(
+        t.invite_codes.map(c => ({ id: c.id, code: c.code, type: c.type, householdId: c.householdId, role: c.role, useCount: c.useCount || 0, maxUses: c.maxUses || 1, expiresAt: c.expiresAt || null, createdAt: c.createdAt, updatedAt: c.updatedAt })),
+        { ...opts, ignoreDuplicates: true }
+      );
+    }
+
+    await tx.commit();
+
+    return {
+      users: t.users?.length || 0,
+      households: t.households?.length || 0,
+      categories: t.categories?.length || 0,
+      transactions: t.transactions?.length || 0,
+      budgets: t.budgets?.length || 0,
+    };
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+}
+
+module.exports = { exportAllData, exportHouseholdData, importHouseholdData, uploadToSftp, runGlobalBackup, parseBackupBuffer, restoreAllData };

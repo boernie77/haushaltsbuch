@@ -292,6 +292,55 @@ router.post('/backup/test', auth, superAdminGuard, async (req, res) => {
   }
 });
 
+// POST /api/admin/backup/restore/preview — parse file, return metadata without restoring
+router.post('/backup/restore/preview', auth, superAdminGuard, (req, res) => {
+  const multer = require('multer');
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } })
+    .single('backup')(req, res, async (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+      try {
+        const { parseBackupBuffer } = require('../services/backupService');
+        const data = parseBackupBuffer(req.file.buffer);
+        const t = data.tables;
+        res.json({
+          exportedAt: data.exportedAt,
+          version: data.version,
+          counts: {
+            users:        t.users?.length        || 0,
+            households:   t.households?.length   || 0,
+            categories:   t.categories?.length   || 0,
+            transactions: t.transactions?.length || 0,
+            budgets:      t.budgets?.length      || 0,
+            inviteCodes:  t.invite_codes?.length || 0,
+          },
+        });
+      } catch (e) {
+        res.status(400).json({ error: `Backup konnte nicht gelesen werden: ${e.message}` });
+      }
+    });
+});
+
+// POST /api/admin/backup/restore — full restore (destructive!)
+router.post('/backup/restore', auth, superAdminGuard, (req, res) => {
+  const multer = require('multer');
+  multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } })
+    .single('backup')(req, res, async (err) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
+      try {
+        const { parseBackupBuffer, restoreAllData } = require('../services/backupService');
+        const data = parseBackupBuffer(req.file.buffer);
+        const result = await restoreAllData(data);
+        console.log(`[backup] Wiederherstellung abgeschlossen:`, result);
+        res.json({ success: true, restored: result, exportedAt: data.exportedAt });
+      } catch (e) {
+        console.error('[backup] Restore error:', e);
+        res.status(500).json({ error: `Wiederherstellung fehlgeschlagen: ${e.message}` });
+      }
+    });
+});
+
 // POST /api/admin/backup/run
 router.post('/backup/run', auth, superAdminGuard, async (req, res) => {
   try {
