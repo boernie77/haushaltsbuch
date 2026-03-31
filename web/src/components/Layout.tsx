@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Receipt, BarChart2, Wallet, Home, FileText, Shield, LogOut, Menu, X, ChevronDown, HardDrive, Sun, Moon
 } from 'lucide-react';
@@ -156,6 +156,13 @@ export default function Layout() {
             </div>
           )}
         </div>
+        {/* Footer Links */}
+        {sidebarOpen && (
+          <div className="px-4 pb-3 flex gap-3 text-xs text-gray-400 dark:text-gray-600">
+            <Link to="/impressum" className="hover:text-[var(--primary)]">Impressum</Link>
+            <Link to="/datenschutz" className="hover:text-[var(--primary)]">Datenschutz</Link>
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}

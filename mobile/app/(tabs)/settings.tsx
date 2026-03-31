@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TextInput } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, TextInput, Linking } from 'react-native';
 import { Text, List, Switch, useTheme, Avatar, Divider, Button, ActivityIndicator } from 'react-native-paper';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -193,6 +193,26 @@ export default function SettingsScreen() {
           </List.Section>
         </>
       )}
+
+      <List.Section>
+        <List.Subheader>Rechtliches</List.Subheader>
+        <List.Item
+          title="Impressum"
+          left={() => <List.Icon icon="information-outline" color={theme.colors.primary} />}
+          right={() => <List.Icon icon="open-in-new" />}
+          onPress={() => Linking.openURL('https://haushalt.bernauer24.com/impressum')}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
+          titleStyle={{ color: theme.colors.onSurface }}
+        />
+        <List.Item
+          title="Datenschutzerklärung"
+          left={() => <List.Icon icon="shield-lock-outline" color={theme.colors.primary} />}
+          right={() => <List.Icon icon="open-in-new" />}
+          onPress={() => Linking.openURL('https://haushalt.bernauer24.com/datenschutz')}
+          style={{ backgroundColor: theme.colors.cardBackground, paddingLeft: 8 }}
+          titleStyle={{ color: theme.colors.onSurface }}
+        />
+      </List.Section>
 
       <View style={styles.logoutContainer}>
         <Button mode="outlined" onPress={handleLogout} icon="logout"
