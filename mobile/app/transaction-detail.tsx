@@ -218,7 +218,7 @@ export default function TransactionDetailScreen() {
               </ScrollView>
             </>}
             {paperlessData.correspondents.length > 0 && <>
-              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Absender</Text>
+              <Text style={[styles.chipLabel, { color: theme.colors.onSurface }]}>Korrespondent</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 {paperlessData.correspondents.map((c: any) => (
                   <Chip key={c.id} selected={paperlessCorrespondent?.id === c.id}

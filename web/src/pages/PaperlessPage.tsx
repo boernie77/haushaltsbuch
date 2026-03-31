@@ -289,7 +289,7 @@ export default function PaperlessPage() {
             {renderFavoriteList(data.correspondents, 'correspondent', 'correspondent', (item) => (
               <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
             ))}
-            {connected && renderCreateForm('correspondent', 'Neuer Absender...')}
+            {connected && renderCreateForm('correspondent', 'Neuer Korrespondent...')}
           </div>
 
           <div className="card p-5">

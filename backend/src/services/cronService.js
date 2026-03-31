@@ -138,7 +138,7 @@ async function syncAllPaperless() {
           PaperlessTag.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: tags.map(t => t.id) } } }),
           ...(users.length ? [PaperlessUser.destroy({ where: { householdId: hid, paperlessId: { [Op.notIn]: users.map(u => u.id) } } })] : []),
         ]);
-        console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Absender, ${tags.length} Tags, ${users.length} Benutzer`);
+        console.log(`[paperless-sync] Haushalt ${hid}: ${docTypes.length} Typen, ${correspondents.length} Korrespondenten, ${tags.length} Tags, ${users.length} Benutzer`);
       } catch (err) {
         console.error(`[paperless-sync] Haushalt ${config.householdId}: ${err.message}`);
       }

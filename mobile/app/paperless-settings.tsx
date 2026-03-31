@@ -142,7 +142,7 @@ export default function PaperlessSettingsScreen() {
   const tabs: { key: TabKey; label: string; icon: string }[] = [
     { key: 'config', label: 'Verbindung', icon: 'cog' },
     { key: 'doctypes', label: 'Typen', icon: 'file-document' },
-    { key: 'correspondents', label: 'Absender', icon: 'account-group' },
+    { key: 'correspondents', label: 'Korrespondenten', icon: 'account-group' },
     { key: 'tags', label: 'Tags', icon: 'tag-multiple' },
     { key: 'users', label: 'Benutzer', icon: 'account-check' },
   ];
