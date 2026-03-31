@@ -19,13 +19,12 @@ function getOccurrencesInRange(nextDate, interval, recurringDay, rangeStart, ran
     const r = new Date(d);
     if (interval === 'weekly') r.setDate(r.getDate() + 7);
     else if (interval === 'monthly') {
+      r.setDate(1); // setDate(1) VOR setMonth – verhindert JS-Date-Overflow (z.B. März 30 → Feb 30 → März 2)
       r.setMonth(r.getMonth() + 1);
-      if (recurringDay) {
-        const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
-        r.setDate(Math.min(recurringDay, maxDay));
-      }
+      const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+      r.setDate(Math.min(recurringDay || maxDay, maxDay));
     } else if (interval === 'yearly') r.setFullYear(r.getFullYear() + 1);
-    else r.setFullYear(r.getFullYear() + 100); // Unbekanntes Interval: weit in die Zukunft springen
+    else r.setFullYear(r.getFullYear() + 100);
     return r;
   }
 
@@ -33,13 +32,12 @@ function getOccurrencesInRange(nextDate, interval, recurringDay, rangeStart, ran
     const r = new Date(d);
     if (interval === 'weekly') r.setDate(r.getDate() - 7);
     else if (interval === 'monthly') {
+      r.setDate(1); // setDate(1) VOR setMonth – verhindert JS-Date-Overflow
       r.setMonth(r.getMonth() - 1);
-      if (recurringDay) {
-        const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
-        r.setDate(Math.min(recurringDay, maxDay));
-      }
+      const maxDay = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+      r.setDate(Math.min(recurringDay || maxDay, maxDay));
     } else if (interval === 'yearly') r.setFullYear(r.getFullYear() - 1);
-    else r.setFullYear(r.getFullYear() - 100); // Unbekanntes Interval: weit in die Vergangenheit springen
+    else r.setFullYear(r.getFullYear() - 100);
     return r;
   }
 

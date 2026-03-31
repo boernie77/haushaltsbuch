@@ -17,6 +17,7 @@ function calcNextFutureDate(date, interval, recurringDay) {
     if (interval === 'weekly') {
       next.setDate(next.getDate() + 7);
     } else if (interval === 'monthly') {
+      next.setDate(1);
       next.setMonth(next.getMonth() + 1);
       if (recurringDay) {
         const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();

@@ -12,6 +12,7 @@ function calcNextDate(interval, recurringDay, fromDate) {
   if (interval === 'weekly') {
     d.setDate(d.getDate() + 7);
   } else if (interval === 'monthly') {
+    d.setDate(1);
     d.setMonth(d.getMonth() + 1);
     if (recurringDay) {
       const maxDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();

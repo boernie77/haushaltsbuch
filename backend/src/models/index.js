@@ -1,9 +1,10 @@
 const { Sequelize, DataTypes } = require('sequelize');
+const { encrypt, decrypt } = require('../utils/encrypt');
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
   logging: process.env.NODE_ENV !== 'production' ? console.log : false,
-  pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+  pool: { max: 20, min: 2, acquire: 30000, idle: 10000 }
 });
 
 // ── User ────────────────────────────────────────────────────────────────────
@@ -31,7 +32,10 @@ const Household = sequelize.define('Household', {
   budgetWarningAt: { type: DataTypes.INTEGER, defaultValue: 80, comment: 'Warn at X% of budget' },
   isShared:              { type: DataTypes.BOOLEAN, defaultValue: false },
   adminUserId:           { type: DataTypes.UUID, allowNull: false },
-  anthropicApiKey:       { type: DataTypes.STRING, allowNull: true },
+  anthropicApiKey:       { type: DataTypes.TEXT, allowNull: true,
+    get() { return decrypt(this.getDataValue('anthropicApiKey')); },
+    set(v) { this.setDataValue('anthropicApiKey', encrypt(v)); }
+  },
   aiEnabled:             { type: DataTypes.BOOLEAN, defaultValue: false },
   emailReportsEnabled:   { type: DataTypes.BOOLEAN, defaultValue: false },
   monthStartDay:         { type: DataTypes.INTEGER, defaultValue: 1, comment: 'Day of month the budget period starts (1-28)' },
@@ -101,7 +105,10 @@ const PaperlessConfig = sequelize.define('PaperlessConfig', {
   id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   householdId: { type: DataTypes.UUID, allowNull: false, unique: true },
   baseUrl:     { type: DataTypes.STRING, allowNull: false },
-  apiToken:    { type: DataTypes.STRING, allowNull: false },
+  apiToken:    { type: DataTypes.TEXT, allowNull: false,
+    get() { return decrypt(this.getDataValue('apiToken')); },
+    set(v) { this.setDataValue('apiToken', encrypt(v)); }
+  },
   isActive:    { type: DataTypes.BOOLEAN, defaultValue: true },
 }, { tableName: 'paperless_configs', timestamps: true });
 
@@ -153,7 +160,10 @@ const BackupConfig = sequelize.define('BackupConfig', {
   sftpHost:        { type: DataTypes.STRING, allowNull: true },
   sftpPort:        { type: DataTypes.INTEGER, defaultValue: 22 },
   sftpUser:        { type: DataTypes.STRING, allowNull: true },
-  sftpPassword:    { type: DataTypes.STRING, allowNull: true },
+  sftpPassword:    { type: DataTypes.TEXT, allowNull: true,
+    get() { return decrypt(this.getDataValue('sftpPassword')); },
+    set(v) { this.setDataValue('sftpPassword', encrypt(v)); }
+  },
   sftpPath:        { type: DataTypes.STRING, defaultValue: '/backups' },
   schedule:        { type: DataTypes.STRING, allowNull: true },
   scheduleLabel:   { type: DataTypes.STRING, allowNull: true },
@@ -167,7 +177,10 @@ const BackupConfig = sequelize.define('BackupConfig', {
 // Single-row table (id = 'global') for app-wide settings managed by superadmin
 const GlobalSettings = sequelize.define('GlobalSettings', {
   id:                  { type: DataTypes.STRING, primaryKey: true, defaultValue: 'global' },
-  anthropicApiKey:     { type: DataTypes.STRING, allowNull: true, comment: 'Central AI key set by superadmin' },
+  anthropicApiKey:     { type: DataTypes.TEXT, allowNull: true, comment: 'Central AI key set by superadmin',
+    get() { return decrypt(this.getDataValue('anthropicApiKey')); },
+    set(v) { this.setDataValue('anthropicApiKey', encrypt(v)); }
+  },
   aiKeyPublic:         { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'If true, all users can use it; if false, only granted users' },
 }, { tableName: 'global_settings', timestamps: true });
 
