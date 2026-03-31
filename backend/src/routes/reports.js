@@ -25,7 +25,7 @@ async function buildMonthlyReport(householdId, year, month) {
 
   const [transactions, byCategory, totals] = await Promise.all([
     Transaction.findAll({
-      where: { householdId, date: { [Op.between]: [start, end] } },
+      where: { householdId, isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } },
       include: [
         { model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] },
         { model: User, attributes: ['name'] }
@@ -34,14 +34,14 @@ async function buildMonthlyReport(householdId, year, month) {
     }),
     Transaction.findAll({
       attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
-      where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } },
+      where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } },
       include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
       group: ['categoryId', 'Category.id'],
       order: [[literal('total'), 'DESC']],
     }),
     Promise.all([
-      Transaction.sum('amount', { where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } } }),
-      Transaction.sum('amount', { where: { householdId, type: 'income', date: { [Op.between]: [start, end] } } }),
+      Transaction.sum('amount', { where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } } }),
+      Transaction.sum('amount', { where: { householdId, type: 'income', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } } }),
     ]),
   ]);
 

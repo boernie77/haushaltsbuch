@@ -20,16 +20,17 @@ router.get('/monthly', auth, async (req, res) => {
     const household = await Household.findByPk(householdId, { attributes: ['monthStartDay'] });
     const { start, end } = getMonthBounds(y, m, household?.monthStartDay || 1);
 
+    const notRecurring = { isRecurring: { [Op.ne]: true } };
     const [expenses, income, byCategory] = await Promise.all([
       Transaction.sum('amount', {
-        where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } }
+        where: { householdId, type: 'expense', ...notRecurring, date: { [Op.between]: [start, end] } }
       }),
       Transaction.sum('amount', {
-        where: { householdId, type: 'income', date: { [Op.between]: [start, end] } }
+        where: { householdId, type: 'income', ...notRecurring, date: { [Op.between]: [start, end] } }
       }),
       Transaction.findAll({
         attributes: ['categoryId', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('Transaction.id')), 'count']],
-        where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } },
+        where: { householdId, type: 'expense', ...notRecurring, date: { [Op.between]: [start, end] } },
         include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
         group: ['categoryId', 'Category.id'],
         order: [[literal('total'), 'DESC']],
@@ -42,7 +43,7 @@ router.get('/monthly', auth, async (req, res) => {
         [fn('DATE', col('date')), 'day'],
         [fn('SUM', col('amount')), 'total']
       ],
-      where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } },
+      where: { householdId, type: 'expense', ...notRecurring, date: { [Op.between]: [start, end] } },
       group: [fn('DATE', col('date'))],
       order: [[fn('DATE', col('date')), 'ASC']],
       raw: true
@@ -82,7 +83,7 @@ router.get('/yearly', auth, async (req, res) => {
         'type'
       ],
       where: {
-        householdId,
+        householdId, isRecurring: { [Op.ne]: true },
         date: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31)] }
       },
       group: [fn('EXTRACT', literal('MONTH FROM date')), 'type'],
@@ -93,7 +94,7 @@ router.get('/yearly', auth, async (req, res) => {
     const byCategory = await Transaction.findAll({
       attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
       where: {
-        householdId, type: 'expense',
+        householdId, type: 'expense', isRecurring: { [Op.ne]: true },
         date: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31)] }
       },
       include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
@@ -150,19 +151,20 @@ router.get('/overview', auth, async (req, res) => {
     const thisMonthRange = { [Op.between]: [curStart, curEnd] };
     const lastMonthRange = { [Op.between]: [prevStart, prevEnd] };
 
+    const nr = { isRecurring: { [Op.ne]: true } };
     const [thisMonthExp, lastMonthExp, thisMonthInc, topCategory, recentCount] = await Promise.all([
-      Transaction.sum('amount', { where: { householdId, type: 'expense', date: thisMonthRange } }),
-      Transaction.sum('amount', { where: { householdId, type: 'expense', date: lastMonthRange } }),
-      Transaction.sum('amount', { where: { householdId, type: 'income', date: thisMonthRange } }),
+      Transaction.sum('amount', { where: { householdId, type: 'expense', ...nr, date: thisMonthRange } }),
+      Transaction.sum('amount', { where: { householdId, type: 'expense', ...nr, date: lastMonthRange } }),
+      Transaction.sum('amount', { where: { householdId, type: 'income', ...nr, date: thisMonthRange } }),
       Transaction.findOne({
         attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
-        where: { householdId, type: 'expense', date: thisMonthRange },
+        where: { householdId, type: 'expense', ...nr, date: thisMonthRange },
         include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
         group: ['categoryId', 'Category.id'],
         order: [[literal('total'), 'DESC']],
         limit: 1
       }),
-      Transaction.count({ where: { householdId, date: thisMonthRange } })
+      Transaction.count({ where: { householdId, ...nr, date: thisMonthRange } })
     ]);
 
     const current = parseFloat(thisMonthExp) || 0;
@@ -211,14 +213,14 @@ router.get('/trends', auth, async (req, res) => {
           [fn('SUM', col('amount')), 'total'],
           [fn('COUNT', col('Transaction.id')), 'count']
         ],
-        where: { householdId, type: 'expense', date: { [Op.gte]: since } },
+        where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.gte]: since } },
         include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
         group: ['categoryId', 'Category.id'],
         order: [[literal('total'), 'DESC']],
       }),
       Promise.all([
-        Transaction.sum('amount', { where: { householdId, type: 'expense', date: { [Op.gte]: since } } }),
-        Transaction.sum('amount', { where: { householdId, type: 'income', date: { [Op.gte]: since } } }),
+        Transaction.sum('amount', { where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.gte]: since } } }),
+        Transaction.sum('amount', { where: { householdId, type: 'income', isRecurring: { [Op.ne]: true }, date: { [Op.gte]: since } } }),
       ])
     ]);
 
@@ -260,7 +262,7 @@ router.get('/wealth', auth, async (req, res) => {
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) -
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS balance
       FROM transactions
-      WHERE "householdId" = :householdId AND type IN ('expense','income')
+      WHERE "householdId" = :householdId AND type IN ('expense','income') AND "isRecurring" IS NOT TRUE
       GROUP BY year, month
       ORDER BY year, month
     `, { replacements: { householdId }, type: 'SELECT' });
@@ -297,7 +299,7 @@ router.get('/by-person', auth, async (req, res) => {
 
     const rows = await Transaction.findAll({
       attributes: ['userId', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('Transaction.id')), 'count']],
-      where: { householdId, type: 'expense', isPersonal: false, date: { [Op.between]: [start, end] } },
+      where: { householdId, type: 'expense', isPersonal: false, isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } },
       include: [{ model: User, attributes: ['id', 'name', 'avatar'] }],
       group: ['userId', 'User.id'],
       order: [[literal('total'), 'DESC']],

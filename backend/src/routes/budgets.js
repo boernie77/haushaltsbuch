@@ -26,7 +26,7 @@ router.get('/', auth, async (req, res) => {
     const { start, end } = getMonthBounds(y, m, household?.monthStartDay || 1);
 
     const result = await Promise.all(budgets.map(async (budget) => {
-      const where = { householdId, type: 'expense', date: { [Op.between]: [start, end] } };
+      const where = { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } };
       if (budget.categoryId) where.categoryId = budget.categoryId;
 
       const spent = await Transaction.sum('amount', { where }) || 0;

@@ -26,7 +26,7 @@ async function checkBudgetWarning(householdId, categoryId, date) {
 
       if (categoryBudget) {
         const spent = await Transaction.sum('amount', {
-          where: { householdId, categoryId, type: 'expense', date: { [Op.between]: [start, end] } }
+          where: { householdId, categoryId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } }
         }) || 0;
 
         const percentage = Math.round((spent / categoryBudget.limitAmount) * 100);
@@ -45,7 +45,7 @@ async function checkBudgetWarning(householdId, categoryId, date) {
     // Check total household budget
     if (household?.monthlyBudget) {
       const totalSpent = await Transaction.sum('amount', {
-        where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } }
+        where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } }
       }) || 0;
 
       const percentage = Math.round((totalSpent / household.monthlyBudget) * 100);
