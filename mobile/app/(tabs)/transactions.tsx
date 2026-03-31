@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, FlatList, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { Text, Card, useTheme, Chip, FAB, ActivityIndicator, Searchbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { useAuthStore } from '../../src/store/authStore';
-import { transactionAPI } from '../../src/services/api';
+import { transactionAPI, recurringAPI } from '../../src/services/api';
 import { cache, offlineQueue, isNetworkError } from '../../src/services/offlineStore';
 
 export default function TransactionsScreen() {
@@ -15,6 +15,7 @@ export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [recurring, setRecurring] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -28,27 +29,33 @@ export default function TransactionsScreen() {
     if (!currentHousehold) return;
     const cacheKey = `transactions_${currentHousehold.id}`;
     try {
-      const p = reset ? 1 : page;
-      const { data } = await transactionAPI.getAll({
-        householdId: currentHousehold.id,
-        month: now.getMonth() + 1,
-        year: now.getFullYear(),
-        type: typeFilter !== 'all' ? typeFilter : undefined,
-        search: search || undefined,
-        page: p,
-        limit: 30
-      });
-      const fetched = data.transactions;
-      if (reset) {
-        setTransactions(fetched);
-        setPage(2);
-        if (!search && typeFilter === 'all') await cache.set(cacheKey, fetched);
+      if (typeFilter === 'recurring') {
+        const { data } = await recurringAPI.getAll(currentHousehold.id);
+        setRecurring(data);
+        setOffline(false);
       } else {
-        setTransactions(prev => [...prev, ...fetched]);
-        setPage(p + 1);
+        const p = reset ? 1 : page;
+        const { data } = await transactionAPI.getAll({
+          householdId: currentHousehold.id,
+          month: now.getMonth() + 1,
+          year: now.getFullYear(),
+          type: typeFilter !== 'all' ? typeFilter : undefined,
+          search: search || undefined,
+          page: p,
+          limit: 30
+        });
+        const fetched = data.transactions;
+        if (reset) {
+          setTransactions(fetched);
+          setPage(2);
+          if (!search && typeFilter === 'all') await cache.set(cacheKey, fetched);
+        } else {
+          setTransactions(prev => [...prev, ...fetched]);
+          setPage(p + 1);
+        }
+        setHasMore(fetched.length === 30);
+        setOffline(false);
       }
-      setHasMore(fetched.length === 30);
-      setOffline(false);
     } catch (err: any) {
       if (isNetworkError(err) && reset) {
         const pending = (await offlineQueue.getAll()).map(t => ({
@@ -118,7 +125,7 @@ export default function TransactionsScreen() {
           placeholderTextColor="rgba(255,255,255,0.6)"
         />
         <View style={styles.chips}>
-          {['all', 'expense', 'income'].map(f => (
+          {['all', 'expense', 'income', 'recurring'].map(f => (
             <Chip
               key={f}
               selected={typeFilter === f}
@@ -126,7 +133,7 @@ export default function TransactionsScreen() {
               style={[styles.filterChip, { backgroundColor: typeFilter === f ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)' }]}
               textStyle={{ color: '#fff', fontSize: 12 }}
             >
-              {f === 'all' ? 'Alle' : f === 'expense' ? '💸 Ausgaben' : '💰 Einnahmen'}
+              {f === 'all' ? 'Alle' : f === 'expense' ? '💸 Ausgaben' : f === 'income' ? '💰 Einnahmen' : '🔄 Wiederkehrend'}
             </Chip>
           ))}
         </View>
@@ -143,6 +150,55 @@ export default function TransactionsScreen() {
 
       {loading ? (
         <View style={styles.centered}><ActivityIndicator color={theme.colors.primary} /></View>
+      ) : typeFilter === 'recurring' ? (
+        <FlatList
+          data={recurring}
+          keyExtractor={item => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <Card style={[styles.transactionCard, { backgroundColor: theme.colors.cardBackground }]}>
+              <Card.Content style={styles.cardContent}>
+                <View style={[styles.iconContainer, { backgroundColor: item.Category?.color ? item.Category.color + '20' : '#eee' }]}>
+                  <Text style={styles.categoryIcon}>{item.Category?.icon || '🔄'}</Text>
+                </View>
+                <View style={styles.transactionInfo}>
+                  <Text style={[styles.transactionDescription, { color: theme.colors.onSurface }]} numberOfLines={1}>
+                    {item.description || item.merchant || 'Wiederkehrend'}
+                  </Text>
+                  <Text style={{ color: theme.colors.onSurface, opacity: 0.5, fontSize: 12 }}>
+                    {item.recurringInterval === 'weekly' ? 'Wöchentlich' : item.recurringInterval === 'monthly' ? 'Monatlich' : 'Jährlich'}
+                    {item.recurringNextDate ? ` · Nächste: ${format(new Date(item.recurringNextDate), 'dd.MM.yyyy')}` : ''}
+                  </Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <Text style={[styles.amount, { color: item.type === 'income' ? theme.colors.incomeColor : theme.colors.expenseColor }]}>
+                    {item.type === 'income' ? '+' : '-'}{parseFloat(item.amount).toFixed(2)} €
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert('Beenden', 'Wiederkehrende Buchung beenden?', [
+                        { text: 'Abbrechen', style: 'cancel' },
+                        { text: 'Beenden', style: 'destructive', onPress: async () => {
+                          await recurringAPI.stop(item.id);
+                          setRecurring(prev => prev.filter(r => r.id !== item.id));
+                        }},
+                      ]);
+                    }}
+                  >
+                    <MaterialCommunityIcons name="close-circle-outline" size={20} color={theme.colors.error} />
+                  </TouchableOpacity>
+                </View>
+              </Card.Content>
+            </Card>
+          )}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={{ fontSize: 48 }}>🔄</Text>
+              <Text style={{ color: theme.colors.onSurface, opacity: 0.5, marginTop: 8 }}>Keine wiederkehrenden Buchungen</Text>
+            </View>
+          }
+        />
       ) : (
         <FlatList
           data={transactions}

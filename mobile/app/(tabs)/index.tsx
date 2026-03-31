@@ -177,6 +177,38 @@ export default function HomeScreen() {
           </Card>
         )}
 
+        {/* Monatsprognose */}
+        {overview?.projectedExpenses > 0 && (
+          <Card style={[styles.card, { backgroundColor: theme.colors.cardBackground }]}>
+            <Card.Content>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={[styles.cardLabel, { color: theme.colors.onSurface, marginBottom: 0 }]}>Monats-Prognose</Text>
+                <MaterialCommunityIcons name="chart-bar" size={18} color={theme.colors.onSurface + '60'} />
+              </View>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 13 }}>Hochgerechnete Ausgaben</Text>
+                  <Text style={{ color: theme.colors.expenseColor, fontWeight: '600', fontSize: 13 }}>
+                    {overview.projectedExpenses.toFixed(2)} {currentHousehold?.currency || 'EUR'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 13 }}>Verbleibend (prognostiziert)</Text>
+                  <Text style={{ color: (overview.projectedRemaining || 0) >= 0 ? theme.colors.incomeColor : theme.colors.expenseColor, fontWeight: '600', fontSize: 13 }}>
+                    {(overview.projectedRemaining || 0).toFixed(2)} {currentHousehold?.currency || 'EUR'}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: theme.colors.onSurface, opacity: 0.6, fontSize: 13 }}>Tag</Text>
+                  <Text style={{ color: theme.colors.onSurface, fontSize: 13 }}>
+                    {overview.currentDay} / {overview.daysInMonth}
+                  </Text>
+                </View>
+              </View>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Top Category */}
         {overview?.topCategory && (
           <Card style={[styles.card, { backgroundColor: theme.colors.cardBackground }]}>
