@@ -70,6 +70,11 @@ export default function LoginPage() {
             <Link to="/register" className="text-[var(--primary)] hover:underline font-medium">Registrieren</Link>
           </p>
         </div>
+        <p className="text-center text-xs text-white/60 mt-4 space-x-3">
+          <Link to="/impressum" className="hover:text-white">Impressum</Link>
+          <span>·</span>
+          <Link to="/datenschutz" className="hover:text-white">Datenschutz</Link>
+        </p>
       </div>
     </div>
   );
