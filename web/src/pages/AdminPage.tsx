@@ -499,7 +499,7 @@ export default function AdminPage() {
                     <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                       <p className="font-semibold text-blue-800 dark:text-blue-300 mb-1">Was passiert hier?</p>
                       <p className="text-blue-700 dark:text-blue-400 text-xs">
-                        Der Server (auf Hetzner) bekommt einen eindeutigen "Schlüssel". Deinem Homeserver sagst du einmalig:
+                        Der App-Server bekommt einen eindeutigen "Schlüssel". Deinem Backup-Server sagst du einmalig:
                         "Lass diesen Schlüssel rein". Danach können Backups automatisch übertragen werden — ohne Passwort.
                       </p>
                     </div>
@@ -516,10 +516,9 @@ export default function AdminPage() {
                       <li className="flex gap-3">
                         <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">2</span>
                         <div>
-                          <p className="font-semibold">Auf dem Homeserver anmelden</p>
-                          <p className="text-xs text-gray-500 mt-0.5">Öffne ein Terminal auf deinem Computer und verbinde dich mit deinem Homeserver:</p>
-                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">ssh systemv@100.106.190.68</pre>
-                          <p className="text-xs text-gray-500 mt-1">(Ersetze <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">systemv</code> durch deinen Benutzernamen und die IP durch deine Tailscale-IP)</p>
+                          <p className="font-semibold">Auf dem Backup-Server anmelden</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Öffne ein Terminal und verbinde dich mit deinem Backup-Server (ersetze die Platzhalter durch deine eigenen Werte):</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">ssh BENUTZER@IP-ADRESSE</pre>
                         </div>
                       </li>
 
@@ -554,8 +553,8 @@ export default function AdminPage() {
                         <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">6</span>
                         <div>
                           <p className="font-semibold">Backup-Ordner erstellen</p>
-                          <p className="text-xs text-gray-500 mt-0.5">Erstelle den Ordner, in dem die Backups gespeichert werden sollen:</p>
-                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">mkdir -p ~/haushaltsbuch_backup</pre>
+                          <p className="text-xs text-gray-500 mt-0.5">Erstelle den Ordner, in dem die Backups gespeichert werden sollen (beliebiger Name):</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">mkdir -p ~/backups</pre>
                         </div>
                       </li>
 
@@ -568,7 +567,7 @@ export default function AdminPage() {
                             Klicke dann auf <strong>„Verbindung testen"</strong>.
                           </p>
                           <div className="mt-1 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-400">
-                            <strong>Remote-Pfad:</strong> muss absolut sein, z.B. <code>/home/systemv/haushaltsbuch_backup</code> — nicht nur <code>haushaltsbuch_backup</code>
+                            <strong>Remote-Pfad:</strong> muss absolut sein, z.B. <code>/home/benutzer/backups</code> — nicht nur <code>backups</code>
                           </div>
                         </div>
                       </li>
