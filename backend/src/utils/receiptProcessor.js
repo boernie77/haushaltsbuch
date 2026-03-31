@@ -17,15 +17,17 @@ async function processReceiptImage(inputPath) {
     .png()
     .toBuffer();
 
-  // 1) Glattes Bild (für Textbereiche): normalize + leichter Kontrast-Boost
+  // 1) Glattes Bild (für Textbereiche): Kontrast-Boost, 1 Kanal erzwingen
   const { data: smooth, info } = await sharp(baseBuffer)
     .linear(1.3, -30) // Text etwas dunkler, Hintergrund etwas heller
+    .toColourspace('b-w') // Erzwingt 1 Kanal (greyscale PNG kann 3 Kanäle haben)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // 2) Threshold-Maske: einfacher globaler Threshold (KEIN CLAHE → keine Kachel-Streifen)
+  // 2) Threshold-Maske: einfacher globaler Threshold, 1 Kanal
   const { data: mask } = await sharp(baseBuffer)
-    .threshold(165) // Etwas höher → mehr wird als Hintergrund erkannt
+    .threshold(165)
+    .toColourspace('b-w')
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -40,7 +42,7 @@ async function processReceiptImage(inputPath) {
   }
 
   const buffer = await sharp(result, {
-    raw: { width: info.width, height: info.height, channels: 1 }
+    raw: { width: info.width, height: info.height, channels: info.channels }
   })
     .jpeg({ quality: 92 })
     .toBuffer();
