@@ -17,9 +17,9 @@ async function processReceiptImage(inputPath) {
     .greyscale()
     .normalize() // Voller Dynamikumfang (0-255)
     .clahe({ width: 4, height: 4, maxSlope: 3 }) // Adaptive Kontrastverbesserung
-    .sharpen({ sigma: 1.5 }) // Text kräftiger machen VOR Threshold
-    .threshold(118) // Etwas niedrigerer Wert → dünnere Schrift bleibt erhalten
-    .jpeg({ quality: 90 })
+    .sharpen({ sigma: 1.2 }) // Text kräftiger machen VOR Threshold
+    .threshold(140) // Originalwert — bewährt für saubere Schwarz-Weiß-Ergebnisse
+    .jpeg({ quality: 92 })
     .toBuffer();
   return buffer;
 }
