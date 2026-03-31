@@ -17,16 +17,15 @@ async function processReceiptImage(inputPath) {
     .png()
     .toBuffer();
 
-  // 1) Glattes Bild (für Textbereiche): nur normalize, KEIN CLAHE → keine Artefakte
+  // 1) Glattes Bild (für Textbereiche): normalize + leichter Kontrast-Boost
   const { data: smooth, info } = await sharp(baseBuffer)
+    .linear(1.3, -30) // Text etwas dunkler, Hintergrund etwas heller
     .raw()
     .toBuffer({ resolveWithObject: true });
 
-  // 2) Threshold-Maske (für Hintergrund-Erkennung): CLAHE+Sharpen+Threshold
+  // 2) Threshold-Maske: einfacher globaler Threshold (KEIN CLAHE → keine Kachel-Streifen)
   const { data: mask } = await sharp(baseBuffer)
-    .clahe({ width: 4, height: 4, maxSlope: 3 })
-    .sharpen({ sigma: 1.2 })
-    .threshold(140)
+    .threshold(165) // Etwas höher → mehr wird als Hintergrund erkannt
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -36,7 +35,7 @@ async function processReceiptImage(inputPath) {
     if (mask[i] === 255) {
       result[i] = 255; // Hintergrund/Rand → rein weiß
     } else {
-      result[i] = smooth[i]; // Text → glatte Graustufen
+      result[i] = smooth[i]; // Text → glatte Graustufen mit Kontrast
     }
   }
 
