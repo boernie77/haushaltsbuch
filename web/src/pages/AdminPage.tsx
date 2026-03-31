@@ -28,6 +28,7 @@ export default function AdminPage() {
   const [backupTesting, setBackupTesting] = useState(false);
   const [backupRunning, setBackupRunning] = useState(false);
   const [householdSearch, setHouseholdSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
 
   const SCHEDULES: Record<string, { label: string; cron: string }> = {
     daily:    { label: 'Täglich (02:00)',          cron: '0 2 * * *'   },
@@ -159,18 +160,10 @@ export default function AdminPage() {
     finally { setBackupRunning(false); }
   };
 
-  const handleHouseholdSearch = async (search: string) => {
-    setHouseholdSearch(search);
-    try {
-      const { data } = await adminAPI.getHouseholds({ search });
-      setHouseholds(data.households);
-    } catch {}
-  };
-
   const tabs = [
     { id: 'stats', label: 'Übersicht', icon: BarChart2 },
     { id: 'users', label: `Benutzer (${users.length})`, icon: Users },
-    { id: 'households', label: `Haushalte (${users.length})`, icon: Home },
+    { id: 'households', label: `Haushalte (${households.length})`, icon: Home },
     { id: 'invites', label: 'Einladungen', icon: Shield },
     { id: 'ai', label: 'KI-Verwaltung', icon: Bot },
     { id: 'backup', label: 'Backup', icon: Database },
@@ -219,6 +212,12 @@ export default function AdminPage() {
           )}
 
           {tab === 'users' && (
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input className="input pl-9 w-full" placeholder="Benutzer suchen (Name, E-Mail)..." value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)} />
+              </div>
             <div className="card overflow-hidden">
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-slate-700">
@@ -229,7 +228,11 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                  {users.map(u => (
+                  {users.filter(u => {
+                    if (!userSearch) return true;
+                    const q = userSearch.toLowerCase();
+                    return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+                  }).map(u => (
                     <tr key={u.id} className="hover:bg-pink-50/50 dark:hover:bg-slate-700/50">
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{u.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{u.email}</td>
@@ -265,39 +268,53 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            </div>
           )}
 
           {tab === 'households' && (
             <div className="space-y-4">
-              {users.map(u => (
-                <div key={u.id} className="card p-5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <input className="input pl-9 w-full" placeholder="Haushalt suchen (Name)..." value={householdSearch}
+                  onChange={e => setHouseholdSearch(e.target.value)} />
+              </div>
+              {households.filter(h => {
+                if (!householdSearch) return true;
+                const q = householdSearch.toLowerCase();
+                return h.name?.toLowerCase().includes(q);
+              }).map(h => (
+                <div key={h.id} className="card p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-[var(--primary)]/10 flex items-center justify-center text-[var(--primary)] font-bold text-sm">
-                        {u.name?.charAt(0)}
+                        <Home size={16} />
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">{u.name}</p>
-                        <p className="text-xs text-gray-500">{u.email}</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">{h.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {h.HouseholdMembers?.length ?? '?'} Mitglied(er)
+                          {h.currency ? ` · ${h.currency}` : ''}
+                        </p>
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {u.isActive ? 'Aktiv' : 'Deaktiviert'}
-                    </span>
+                    <div className="flex gap-2">
+                      {h.aiEnabled && <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">KI</span>}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {(u.households || []).map((hName: string) => (
-                      <span key={hName} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-slate-700 text-sm text-gray-700 dark:text-gray-300">
-                        <Home size={13} className="text-[var(--primary)]" /> {hName}
-                      </span>
-                    ))}
-                    {(u.households || []).length === 0 && (
-                      <span className="text-sm text-gray-400">Keine Haushaltsbücher</span>
-                    )}
-                  </div>
+                  {h.HouseholdMembers && h.HouseholdMembers.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {h.HouseholdMembers.map((m: any) => (
+                        <span key={m.userId || m.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-slate-700 text-sm text-gray-700 dark:text-gray-300">
+                          <Users size={13} className="text-[var(--primary)]" />
+                          {m.User?.name || '—'}
+                          <span className="text-xs text-gray-400 ml-1">({m.role})</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
-              {users.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushalte gefunden</p>}
+              {households.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushalte gefunden</p>}
             </div>
           )}
 

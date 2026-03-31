@@ -191,12 +191,12 @@ export default function TransactionsPage() {
 
       {/* Filters */}
       <div className="card p-4 flex flex-wrap gap-3">
-        <form onSubmit={handleSearch} className="flex gap-2 flex-1 min-w-48">
-          <div className="relative flex-1">
+        <form onSubmit={handleSearch} className="flex gap-2 flex-1">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-            <input className="input pl-9" placeholder="Suchen..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="input pl-9 w-full" placeholder="Suchen..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <button type="submit" className="btn-primary px-3">Suchen</button>
+          <button type="submit" className="btn-primary px-3 shrink-0">Suchen</button>
         </form>
         <div className="flex gap-2">
           {['all', 'expense', 'income'].map(f => (
@@ -316,7 +316,7 @@ export default function TransactionsPage() {
                   onChange={e => setForm(f => ({ ...f, isRecurring: e.target.checked }))}
                   className="rounded" />
                 <Repeat size={15} className="text-[var(--primary)]" />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Wiederkehrende / feste Ausgabe</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Wiederkehrende Buchung</span>
               </label>
               {form.isRecurring && (
                 <div className="mt-2 flex gap-2">
@@ -407,14 +407,14 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {/* Feste Ausgaben */}
+      {/* Wiederkehrende Buchungen */}
       {recurring.length > 0 && (
         <div className="card overflow-hidden">
           <button className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50"
             onClick={() => setShowRecurring(!showRecurring)}>
             <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
               <Repeat size={16} className="text-[var(--primary)]" />
-              Feste Ausgaben ({recurring.length})
+              Wiederkehrende Buchungen ({recurring.length})
             </span>
             {showRecurring ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
