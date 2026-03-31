@@ -13,13 +13,14 @@ const fs = require('fs');
 async function processReceiptImage(inputPath) {
   const buffer = await sharp(inputPath)
     .rotate() // EXIF-Rotation korrigieren
-    .resize({ width: 2000, withoutEnlargement: true }) // Max 2000px breit → unter 5MB für Claude API
+    .resize({ width: 1800, withoutEnlargement: true }) // Max 1800px breit → unter 5MB
     .greyscale()
     .normalize() // Voller Dynamikumfang (0-255)
     .clahe({ width: 4, height: 4, maxSlope: 3 }) // Adaptive Kontrastverbesserung
-    .linear(1.4, -(255 * 0.15)) // Kontrast erhöhen + Hintergrund aufhellen (kein harter Threshold)
-    .sharpen({ sigma: 1.0 })
-    .jpeg({ quality: 85 })
+    .median(3) // Rauschen entfernen (vor Threshold!)
+    .sharpen({ sigma: 1.2 })
+    .threshold(128) // Saubere S/W-Binarisierung: Hintergrund weiß, Text schwarz
+    .jpeg({ quality: 90 })
     .toBuffer();
   return buffer;
 }
