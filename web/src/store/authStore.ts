@@ -17,6 +17,7 @@ interface Household {
   monthlyBudget?: number;
   budgetWarningAt: number;
   memberRole: string;
+  monthStartDay?: number;
 }
 
 interface AuthState {

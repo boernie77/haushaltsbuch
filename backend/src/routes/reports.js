@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { Op, fn, col, literal } = require('sequelize');
 const { Transaction, Category, Household, HouseholdMember, User } = require('../models');
 const { auth } = require('../middleware/auth');
+const { getMonthBounds } = require('../utils/monthBounds');
 
 async function checkAccess(userId, householdId) {
   return HouseholdMember.findOne({ where: { userId, householdId } });
@@ -19,9 +20,8 @@ function getMailer() {
 }
 
 async function buildMonthlyReport(householdId, year, month) {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0);
   const household = await Household.findByPk(householdId);
+  const { start, end } = getMonthBounds(year, month, household?.monthStartDay || 1);
 
   const [transactions, byCategory, totals] = await Promise.all([
     Transaction.findAll({

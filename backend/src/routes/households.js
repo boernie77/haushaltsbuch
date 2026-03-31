@@ -19,13 +19,14 @@ router.get('/', auth, async (req, res) => {
 // POST /api/households
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, description, currency, monthlyBudget, budgetWarningAt, isShared } = req.body;
+    const { name, description, currency, monthlyBudget, budgetWarningAt, isShared, monthStartDay } = req.body;
 
     const household = await Household.create({
       name, description, currency: currency || 'EUR',
       monthlyBudget, budgetWarningAt: budgetWarningAt || 80,
       isShared: isShared || false,
-      adminUserId: req.user.id
+      adminUserId: req.user.id,
+      monthStartDay: monthStartDay || 1,
     });
 
     await HouseholdMember.create({ householdId: household.id, userId: req.user.id, role: 'admin' });
@@ -44,8 +45,8 @@ router.put('/:id', auth, async (req, res) => {
     const member = await HouseholdMember.findOne({ where: { householdId: req.params.id, userId: req.user.id } });
     if (!member || member.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
 
-    const { name, description, currency, monthlyBudget, budgetWarningAt, isShared } = req.body;
-    await household.update({ name, description, currency, monthlyBudget, budgetWarningAt, isShared });
+    const { name, description, currency, monthlyBudget, budgetWarningAt, isShared, monthStartDay } = req.body;
+    await household.update({ name, description, currency, monthlyBudget, budgetWarningAt, isShared, monthStartDay });
     res.json({ household });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update household' });

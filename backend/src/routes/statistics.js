@@ -1,7 +1,8 @@
 const router = require('express').Router();
 const { Op, fn, col, literal } = require('sequelize');
-const { Transaction, Category, HouseholdMember, User, sequelize } = require('../models');
+const { Transaction, Category, HouseholdMember, User, Household, sequelize } = require('../models');
 const { auth } = require('../middleware/auth');
+const { getMonthBounds, getPeriodForDate } = require('../utils/monthBounds');
 
 async function checkAccess(userId, householdId) {
   return HouseholdMember.findOne({ where: { userId, householdId } });
@@ -16,8 +17,8 @@ router.get('/monthly', auth, async (req, res) => {
     const y = parseInt(year) || new Date().getFullYear();
     const m = parseInt(month) || new Date().getMonth() + 1;
 
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0);
+    const household = await Household.findByPk(householdId, { attributes: ['monthStartDay'] });
+    const { start, end } = getMonthBounds(y, m, household?.monthStartDay || 1);
 
     const [expenses, income, byCategory] = await Promise.all([
       Transaction.sum('amount', {
@@ -136,30 +137,40 @@ router.get('/overview', auth, async (req, res) => {
     if (!await checkAccess(req.user.id, householdId)) return res.status(403).json({ error: 'Access denied' });
 
     const now = new Date();
-    const thisMonth = { [Op.between]: [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 0)] };
-    const lastMonth = { [Op.between]: [new Date(now.getFullYear(), now.getMonth() - 1, 1), new Date(now.getFullYear(), now.getMonth(), 0)] };
+    const hh = await Household.findByPk(householdId, { attributes: ['monthStartDay'] });
+    const startDay = hh?.monthStartDay || 1;
+
+    const { year: curYear, month: curMonth } = getPeriodForDate(now, startDay);
+    const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
+    const prevYear = curMonth === 1 ? curYear - 1 : curYear;
+
+    const { start: curStart, end: curEnd } = getMonthBounds(curYear, curMonth, startDay);
+    const { start: prevStart, end: prevEnd } = getMonthBounds(prevYear, prevMonth, startDay);
+
+    const thisMonthRange = { [Op.between]: [curStart, curEnd] };
+    const lastMonthRange = { [Op.between]: [prevStart, prevEnd] };
 
     const [thisMonthExp, lastMonthExp, thisMonthInc, topCategory, recentCount] = await Promise.all([
-      Transaction.sum('amount', { where: { householdId, type: 'expense', date: thisMonth } }),
-      Transaction.sum('amount', { where: { householdId, type: 'expense', date: lastMonth } }),
-      Transaction.sum('amount', { where: { householdId, type: 'income', date: thisMonth } }),
+      Transaction.sum('amount', { where: { householdId, type: 'expense', date: thisMonthRange } }),
+      Transaction.sum('amount', { where: { householdId, type: 'expense', date: lastMonthRange } }),
+      Transaction.sum('amount', { where: { householdId, type: 'income', date: thisMonthRange } }),
       Transaction.findOne({
         attributes: ['categoryId', [fn('SUM', col('amount')), 'total']],
-        where: { householdId, type: 'expense', date: thisMonth },
+        where: { householdId, type: 'expense', date: thisMonthRange },
         include: [{ model: Category, attributes: ['name', 'nameDE', 'icon', 'color'] }],
         group: ['categoryId', 'Category.id'],
         order: [[literal('total'), 'DESC']],
         limit: 1
       }),
-      Transaction.count({ where: { householdId, date: thisMonth } })
+      Transaction.count({ where: { householdId, date: thisMonthRange } })
     ]);
 
     const current = parseFloat(thisMonthExp) || 0;
     const previous = parseFloat(lastMonthExp) || 0;
     const income = parseFloat(thisMonthInc) || 0;
     const change = previous > 0 ? ((current - previous) / previous) * 100 : 0;
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const currentDay = now.getDate();
+    const daysInMonth = Math.round((curEnd - curStart) / (1000 * 60 * 60 * 24)) + 1;
+    const currentDay = Math.max(1, Math.round((now - curStart) / (1000 * 60 * 60 * 24)) + 1);
     const projectedExpenses = currentDay > 0 ? (current / currentDay) * daysInMonth : 0;
 
     res.json({
@@ -281,8 +292,8 @@ router.get('/by-person', auth, async (req, res) => {
 
     const y = parseInt(year) || new Date().getFullYear();
     const m = parseInt(month) || new Date().getMonth() + 1;
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0);
+    const hhPerson = await Household.findByPk(householdId, { attributes: ['monthStartDay'] });
+    const { start, end } = getMonthBounds(y, m, hhPerson?.monthStartDay || 1);
 
     const rows = await Transaction.findAll({
       attributes: ['userId', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('Transaction.id')), 'count']],

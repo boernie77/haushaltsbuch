@@ -34,6 +34,7 @@ const Household = sequelize.define('Household', {
   anthropicApiKey:       { type: DataTypes.STRING, allowNull: true },
   aiEnabled:             { type: DataTypes.BOOLEAN, defaultValue: false },
   emailReportsEnabled:   { type: DataTypes.BOOLEAN, defaultValue: false },
+  monthStartDay:         { type: DataTypes.INTEGER, defaultValue: 1, comment: 'Day of month the budget period starts (1-28)' },
 }, { tableName: 'households', timestamps: true });
 
 // ── HouseholdMember ──────────────────────────────────────────────────────────

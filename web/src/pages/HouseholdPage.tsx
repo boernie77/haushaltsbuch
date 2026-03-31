@@ -41,6 +41,27 @@ export default function HouseholdPage() {
     } catch { toast.error('Fehler beim Umbenennen'); }
   };
 
+  // Month start day
+  const [monthStartDay, setMonthStartDay] = useState<number>(currentHousehold?.monthStartDay || 1);
+  const [monthStartDaySaving, setMonthStartDaySaving] = useState(false);
+
+  useEffect(() => {
+    setMonthStartDay(currentHousehold?.monthStartDay || 1);
+  }, [currentHousehold?.id]);
+
+  const handleSaveMonthStartDay = async () => {
+    if (!currentHousehold) return;
+    const day = Math.max(1, Math.min(28, monthStartDay));
+    setMonthStartDaySaving(true);
+    try {
+      await householdAPI.update(currentHousehold.id, { monthStartDay: day });
+      setCurrentHousehold({ ...currentHousehold, monthStartDay: day });
+      setHouseholds(households.map(h => h.id === currentHousehold.id ? { ...h, monthStartDay: day } : h));
+      toast.success('Monatsbeginn gespeichert');
+    } catch { toast.error('Fehler beim Speichern'); }
+    finally { setMonthStartDaySaving(false); }
+  };
+
   // AI Settings state
   const [aiSettings, setAiSettings] = useState<{ aiEnabled: boolean; hasApiKey: boolean; maskedApiKey: string | null }>({
     aiEnabled: false, hasApiKey: false, maskedApiKey: null
@@ -191,6 +212,9 @@ export default function HouseholdPage() {
               {currentHousehold.monthlyBudget && (
                 <div><span className="text-gray-500">Monatsbudget:</span> <span className="font-medium">{currentHousehold.monthlyBudget} €</span></div>
               )}
+              {(currentHousehold.monthStartDay ?? 1) !== 1 && (
+                <div><span className="text-gray-500">Monat beginnt am:</span> <span className="font-medium">{currentHousehold.monthStartDay}.</span></div>
+              )}
             </div>
             {households.length > 1 && (
               <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700">
@@ -199,6 +223,39 @@ export default function HouseholdPage() {
                   <Trash2 size={14} /> Haushaltsbuch löschen
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Month start day */}
+          <div className="card p-6">
+            <h2 className="font-semibold text-gray-900 dark:text-white mb-1">Monatszeitraum</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Lege fest, an welchem Tag des Monats dein Budget-Monat beginnt. Nützlich z.B. wenn du am 15. Gehalt bekommst.
+            </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Monat beginnt am</label>
+              <input
+                type="number"
+                min={1}
+                max={28}
+                className="input w-24"
+                value={monthStartDay}
+                onChange={e => setMonthStartDay(Math.max(1, Math.min(28, parseInt(e.target.value) || 1)))}
+              />
+              <span className="text-sm text-gray-500">. des Monats</span>
+              <button
+                onClick={handleSaveMonthStartDay}
+                disabled={monthStartDaySaving}
+                className="btn-primary ml-auto flex items-center gap-2 disabled:opacity-50"
+              >
+                {monthStartDaySaving ? <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" /> : null}
+                Speichern
+              </button>
+            </div>
+            {monthStartDay !== 1 && (
+              <p className="text-xs text-gray-400 mt-3">
+                Zeitraum: {monthStartDay}. des Monats bis {monthStartDay - 1}. des Folgemonats
+              </p>
             )}
           </div>
 

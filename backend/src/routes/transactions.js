@@ -5,6 +5,7 @@ const path = require('path');
 const { Transaction, TransactionSplit, Category, User, Household, HouseholdMember, Budget } = require('../models');
 const { auth } = require('../middleware/auth');
 const { checkBudgetWarning } = require('../services/budgetService');
+const { getMonthBounds } = require('../utils/monthBounds');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads')),
@@ -32,8 +33,8 @@ router.get('/', auth, async (req, res) => {
     if (search) where.description = { [Op.iLike]: `%${search}%` };
 
     if (month && year) {
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0);
+      const household = await Household.findByPk(householdId, { attributes: ['monthStartDay'] });
+      const { start: startDate, end: endDate } = getMonthBounds(parseInt(year), parseInt(month), household?.monthStartDay || 1);
       where.date = { [Op.between]: [startDate, endDate] };
     } else if (year) {
       where.date = {

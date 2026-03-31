@@ -1,5 +1,6 @@
 const { Op, fn, col } = require('sequelize');
 const { Transaction, Budget, Household } = require('../models');
+const { getMonthBounds, getPeriodForDate } = require('../utils/monthBounds');
 
 /**
  * Check if any budget warning thresholds are reached after a new transaction.
@@ -7,11 +8,10 @@ const { Transaction, Budget, Household } = require('../models');
  */
 async function checkBudgetWarning(householdId, categoryId, date) {
   try {
-    const d = new Date(date);
-    const month = d.getMonth() + 1;
-    const year = d.getFullYear();
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0);
+    const household = await Household.findByPk(householdId);
+    const startDay = household?.monthStartDay || 1;
+    const { year, month } = getPeriodForDate(date, startDay);
+    const { start, end } = getMonthBounds(year, month, startDay);
 
     const warnings = [];
 
@@ -43,7 +43,6 @@ async function checkBudgetWarning(householdId, categoryId, date) {
     }
 
     // Check total household budget
-    const household = await Household.findByPk(householdId);
     if (household?.monthlyBudget) {
       const totalSpent = await Transaction.sum('amount', {
         where: { householdId, type: 'expense', date: { [Op.between]: [start, end] } }

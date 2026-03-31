@@ -1,7 +1,8 @@
 const router = require('express').Router();
-const { Budget, Transaction, Category, HouseholdMember } = require('../models');
+const { Budget, Transaction, Category, HouseholdMember, Household } = require('../models');
 const { auth } = require('../middleware/auth');
 const { Op, fn, col } = require('sequelize');
+const { getMonthBounds } = require('../utils/monthBounds');
 
 // GET /api/budgets?householdId=&month=&year=
 router.get('/', auth, async (req, res) => {
@@ -13,14 +14,16 @@ router.get('/', auth, async (req, res) => {
     const y = parseInt(year) || new Date().getFullYear();
     const m = parseInt(month) || new Date().getMonth() + 1;
 
-    const budgets = await Budget.findAll({
-      where: { householdId, year: y, [Op.or]: [{ month: m }, { month: null }] },
-      include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }]
-    });
+    const [budgets, household] = await Promise.all([
+      Budget.findAll({
+        where: { householdId, year: y, [Op.or]: [{ month: m }, { month: null }] },
+        include: [{ model: Category, attributes: ['id', 'name', 'nameDE', 'icon', 'color'] }]
+      }),
+      Household.findByPk(householdId, { attributes: ['monthStartDay'] })
+    ]);
 
     // Calculate spending for each budget
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 0);
+    const { start, end } = getMonthBounds(y, m, household?.monthStartDay || 1);
 
     const result = await Promise.all(budgets.map(async (budget) => {
       const where = { householdId, type: 'expense', date: { [Op.between]: [start, end] } };
