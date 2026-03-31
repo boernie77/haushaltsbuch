@@ -22,6 +22,13 @@ export default function HouseholdScreen() {
   const [saving, setSaving] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(true);
 
+  // Neues Haushaltsbuch
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCurrency, setNewCurrency] = useState('EUR');
+  const [newBudget, setNewBudget] = useState('');
+  const [creating, setCreating] = useState(false);
+
   useEffect(() => {
     if (currentHousehold) {
       setName(currentHousehold.name);
@@ -97,6 +104,32 @@ export default function HouseholdScreen() {
     );
   };
 
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      await householdAPI.create({
+        name: newName.trim(),
+        currency: newCurrency,
+        monthlyBudget: newBudget ? parseFloat(newBudget) : null,
+      });
+      const { data } = await householdAPI.getAll();
+      const all = data.households;
+      setHouseholds(all);
+      const created = all.find((h: any) => h.name === newName.trim()) || all[all.length - 1];
+      setCurrentHousehold(created);
+      setNewName('');
+      setNewBudget('');
+      setNewCurrency('EUR');
+      setShowCreate(false);
+      Toast.show({ type: 'success', text1: 'Haushaltsbuch erstellt' });
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.response?.data?.error || 'Fehler beim Erstellen' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
 
   return (
@@ -132,6 +165,66 @@ export default function HouseholdScreen() {
             </ScrollView>
           </View>
         )}
+
+        <Divider />
+
+        {/* Neues Haushaltsbuch */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Neues Haushaltsbuch</Text>
+          {!showCreate ? (
+            <Button
+              mode="outlined"
+              icon="plus"
+              onPress={() => setShowCreate(true)}
+              style={{ borderColor: theme.colors.primary + '60' }}
+              textColor={theme.colors.primary}
+            >
+              Neues Haushaltsbuch anlegen
+            </Button>
+          ) : (
+            <>
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Name *</Text>
+              <RNTextInput
+                style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="z.B. Unser Haushalt"
+                placeholderTextColor={theme.colors.onSurface + '60'}
+              />
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Währung</Text>
+              <View style={styles.chipRow}>
+                {CURRENCIES.map(c => (
+                  <Chip
+                    key={c}
+                    selected={newCurrency === c}
+                    onPress={() => setNewCurrency(c)}
+                    style={{ marginRight: 8 }}
+                    selectedColor={theme.colors.primary}
+                  >
+                    {c}
+                  </Chip>
+                ))}
+              </View>
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Monatsbudget (optional)</Text>
+              <RNTextInput
+                style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
+                value={newBudget}
+                onChangeText={setNewBudget}
+                placeholder="z.B. 2000"
+                placeholderTextColor={theme.colors.onSurface + '60'}
+                keyboardType="decimal-pad"
+              />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <Button mode="outlined" onPress={() => setShowCreate(false)} style={{ flex: 1 }} textColor={theme.colors.onSurface}>
+                  Abbrechen
+                </Button>
+                <Button mode="contained" onPress={handleCreate} disabled={creating || !newName.trim()} buttonColor={theme.colors.primary} style={{ flex: 1 }}>
+                  {creating ? <ActivityIndicator size={16} color="#fff" /> : 'Erstellen'}
+                </Button>
+              </View>
+            </>
+          )}
+        </View>
 
         <Divider />
 
