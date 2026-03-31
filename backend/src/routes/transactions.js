@@ -7,6 +7,28 @@ const { auth } = require('../middleware/auth');
 const { checkBudgetWarning } = require('../services/budgetService');
 const { getMonthBounds } = require('../utils/monthBounds');
 
+// Berechnet das nächste Fälligkeitsdatum NACH heute
+function calcNextFutureDate(date, interval, recurringDay) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  while (next <= today) {
+    if (interval === 'weekly') {
+      next.setDate(next.getDate() + 7);
+    } else if (interval === 'monthly') {
+      next.setMonth(next.getMonth() + 1);
+      if (recurringDay) {
+        const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+        next.setDate(Math.min(recurringDay, maxDay));
+      }
+    } else if (interval === 'yearly') {
+      next.setFullYear(next.getFullYear() + 1);
+    }
+  }
+  return next;
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads')),
   filename: (req, file, cb) => cb(null, `receipt_${Date.now()}${path.extname(file.originalname)}`)
@@ -103,10 +125,23 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
 
-    // Erstes Fälligkeitsdatum = das Buchungsdatum selbst (Cron erstellt ab dann Kopien)
+    // recurringDay automatisch aus dem Datum ableiten wenn nicht explizit gesetzt
+    const effectiveRecurringDay = recurringDay ? parseInt(recurringDay) : (date ? new Date(date).getDate() : null);
+
+    // Fälligkeitsdatum berechnen
     let recurringNextDate = null;
+    let createImmediateCopy = false;
     if (isRecurring === 'true' && date) {
-      recurringNextDate = new Date(date);
+      const bookingDate = new Date(date);
+      bookingDate.setHours(0, 0, 0, 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (bookingDate <= today) {
+        // Datum in Vergangenheit/heute → sofort Buchung anlegen, nächstes Datum = Zukunft
+        createImmediateCopy = true;
+        recurringNextDate = calcNextFutureDate(bookingDate, recurringInterval, effectiveRecurringDay);
+      } else {
+        recurringNextDate = bookingDate;
+      }
     }
 
     // Quittungsbild verarbeiten (Dokument-Scan-Filter)
@@ -130,7 +165,7 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
       isConfirmed: isConfirmed !== 'false',
       isRecurring: isRecurring === 'true',
       recurringInterval: isRecurring === 'true' ? recurringInterval : null,
-      recurringDay: recurringDay ? parseInt(recurringDay) : null,
+      recurringDay: isRecurring === 'true' ? effectiveRecurringDay : null,
       recurringNextDate,
       isPersonal: isPersonal === 'true' || isPersonal === true,
       targetHouseholdId: type === 'transfer' ? targetHouseholdId : null,
@@ -147,6 +182,25 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
           description: s.description || null,
         })));
       }
+    }
+
+    // Sofortige Buchungskopie für vergangenes Datum anlegen
+    if (createImmediateCopy) {
+      await Transaction.create({
+        amount: parseFloat(amount),
+        description,
+        note,
+        date: date,
+        type: type || 'expense',
+        categoryId,
+        householdId,
+        userId: req.user.id,
+        merchant,
+        tags: tags ? JSON.parse(tags) : [],
+        isConfirmed: true,
+        isRecurring: false,
+        isPersonal: isPersonal === 'true' || isPersonal === true,
+      });
     }
 
     const full = await Transaction.findByPk(transaction.id, {
@@ -178,18 +232,43 @@ router.put('/:id', auth, async (req, res) => {
 
     const { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed, isRecurring, recurringInterval } = req.body;
     const updates = { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed };
+
+    const isRecurringBool = isRecurring !== undefined ? isRecurring : transaction.isRecurring;
     if (isRecurring !== undefined) {
       updates.isRecurring = isRecurring;
       updates.recurringInterval = isRecurring ? recurringInterval : null;
-      if (isRecurring && !transaction.isRecurring) {
-        // Neu als wiederkehrend markiert → nächstes Datum berechnen
-        const d = new Date(date || transaction.date);
-        if (recurringInterval === 'weekly') d.setDate(d.getDate() + 7);
-        else if (recurringInterval === 'yearly') d.setFullYear(d.getFullYear() + 1);
-        else d.setMonth(d.getMonth() + 1);
-        updates.recurringNextDate = d;
+      updates.recurringDay = isRecurring ? (date ? new Date(date).getDate() : transaction.recurringDay) : null;
+    }
+
+    // Bei Datum-Änderung auf einem Template: recurringNextDate neu berechnen
+    if (isRecurringBool && date) {
+      const bookingDate = new Date(date);
+      bookingDate.setHours(0, 0, 0, 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const interval = (isRecurring !== undefined ? recurringInterval : null) || transaction.recurringInterval;
+      const day = date ? new Date(date).getDate() : transaction.recurringDay;
+      if (bookingDate <= today) {
+        updates.recurringNextDate = calcNextFutureDate(bookingDate, interval, day);
+        // Sofortige Buchungskopie für das vergangene Datum
+        await Transaction.create({
+          amount: parseFloat(amount ?? transaction.amount),
+          description: description ?? transaction.description,
+          note: note ?? transaction.note,
+          date: date,
+          type: type ?? transaction.type,
+          categoryId: categoryId ?? transaction.categoryId,
+          householdId: transaction.householdId,
+          userId: transaction.userId,
+          merchant: merchant ?? transaction.merchant,
+          tags: tags ?? transaction.tags ?? [],
+          isConfirmed: true,
+          isRecurring: false,
+        });
+      } else {
+        updates.recurringNextDate = bookingDate;
       }
     }
+
     await transaction.update(updates);
 
     const full = await Transaction.findByPk(transaction.id, {
