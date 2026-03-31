@@ -15,10 +15,11 @@ async function processReceiptImage(inputPath) {
     .rotate() // EXIF-Rotation korrigieren
     .greyscale()
     .normalize()
-    .clahe({ width: 4, height: 4, maxSlope: 3 })
-    .sharpen({ sigma: 1.2 })
-    .threshold(140)
-    .jpeg({ quality: 92 })
+    .clahe({ width: 8, height: 8, maxSlope: 2 })
+    .sharpen({ sigma: 0.8, m1: 1.5, m2: 0.5 })
+    .gamma(1.3) // Hintergrund aufhellen → weiß statt grau
+    .threshold(165) // Höherer Wert → saubereres Weiß, feinere Schrift bleibt erhalten
+    .jpeg({ quality: 95 })
     .toBuffer();
   return buffer;
 }
