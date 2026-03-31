@@ -3,24 +3,49 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Verarbeitet ein Quittungsbild zu einem klaren Schwarz-Weiß-Scan:
- * 1. Graustufen
- * 2. Normalize (automatischer Kontrast)
- * 3. CLAHE (adaptives Histogram – gleicht ungleichmäßige Beleuchtung aus)
- * 4. Schärfen (Text klarer)
- * 5. Threshold (Binarisierung: Hintergrund weiß, Text schwarz)
+ * Verarbeitet ein Quittungsbild zu einem klaren Dokumenten-Scan:
+ * - Rand/Hintergrund: sauber weiß (via Threshold-Maske)
+ * - Textbereich: sanftere Verarbeitung für bessere Lesbarkeit
+ * Zwei Durchgänge werden per Compositing kombiniert.
  */
 async function processReceiptImage(inputPath) {
-  const buffer = await sharp(inputPath)
-    .rotate() // EXIF-Rotation korrigieren
-    .resize({ width: 1800, withoutEnlargement: true }) // Max 1800px breit → unter 5MB
+  // Basis: rotiert, skaliert, Graustufen, normalisiert, CLAHE
+  const base = await sharp(inputPath)
+    .rotate()
+    .resize({ width: 1800, withoutEnlargement: true })
     .greyscale()
-    .normalize() // Voller Dynamikumfang (0-255)
-    .clahe({ width: 4, height: 4, maxSlope: 3 }) // Adaptive Kontrastverbesserung
-    .sharpen({ sigma: 1.2 }) // Text kräftiger machen VOR Threshold
-    .threshold(140) // Originalwert — bewährt für saubere Schwarz-Weiß-Ergebnisse
+    .normalize()
+    .clahe({ width: 4, height: 4, maxSlope: 3 })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const { data, info } = base;
+
+  // Threshold-Maske: alles über 140 → weiß (255), Rest → schwarz (0)
+  const thresholdVal = 140;
+  const mask = Buffer.alloc(data.length);
+  // Sanfte Version: Kontrast erhöhen aber nicht binarisieren
+  const gentle = Buffer.alloc(data.length);
+
+  for (let i = 0; i < data.length; i++) {
+    const px = data[i];
+    if (px >= thresholdVal) {
+      // Hintergrund/Rand → rein weiß
+      gentle[i] = 255;
+      mask[i] = 255;
+    } else {
+      // Textbereich → sanft kontrastverstärkt (nicht binär schwarz)
+      // Kontrast-Stretch: 0..thresholdVal → 0..220 (nicht ganz schwarz, natürlicher)
+      gentle[i] = Math.round((px / thresholdVal) * 200);
+      mask[i] = 0;
+    }
+  }
+
+  const buffer = await sharp(gentle, { raw: { width: info.width, height: info.height, channels: 1 } })
+    .sharpen({ sigma: 1.0 })
     .jpeg({ quality: 92 })
     .toBuffer();
+
   return buffer;
 }
 
