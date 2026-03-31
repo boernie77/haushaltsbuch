@@ -57,9 +57,17 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 └── .github/workflows/deploy.yml   Auto-Deploy bei push auf main + workflow_dispatch
 ```
 
+## Begriffe: Haushalt vs. Haushaltsbuch
+| Begriff | Bedeutung | DB-Modell |
+|---------|-----------|-----------|
+| **Haushalt** | Eine Personengruppe (z.B. Familie). Daten verschiedener Haushalte müssen **STRIKT GETRENNT** bleiben. | Kein eigenes Modell — implizit durch HouseholdMember-Zugehörigkeiten |
+| **Haushaltsbuch** | Ein Budget-Buch innerhalb eines Haushalts. Ein User kann mehrere haben (z.B. "Unser Haushalt" + "Christian Privat"). | `Household` |
+
+⚠️ **KRITISCH:** NIEMALS Daten zwischen verschiedenen Haushalten (Personengruppen) verschieben oder teilen! Verschiebungen von Buchungen sind NUR zwischen den eigenen Haushaltsbüchern des angemeldeten Users erlaubt.
+
 ## Datenmodelle
 - **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted
-- **Household**: id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
+- **Household** (= Haushaltsbuch): id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
 - **HouseholdMember**: householdId, userId, role (admin/member/viewer)
 - **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
 - **Category**: name, nameDE, icon, color, isSystem, householdId (null = global Systemkategorie)

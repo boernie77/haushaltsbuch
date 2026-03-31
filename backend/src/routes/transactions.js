@@ -212,6 +212,41 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
+// PUT /api/transactions/:id/move — Buchung in anderes Haushaltsbuch verschieben
+router.put('/:id/move', auth, async (req, res) => {
+  try {
+    const transaction = await Transaction.findByPk(req.params.id);
+    if (!transaction) return res.status(404).json({ error: 'Not found' });
+
+    const sourceAccess = await checkHouseholdAccess(req.user.id, transaction.householdId);
+    if (!sourceAccess) return res.status(403).json({ error: 'Access denied' });
+
+    const { targetHouseholdId } = req.body;
+    if (!targetHouseholdId) return res.status(400).json({ error: 'targetHouseholdId required' });
+
+    const targetAccess = await checkHouseholdAccess(req.user.id, targetHouseholdId);
+    if (!targetAccess) return res.status(403).json({ error: 'Kein Zugriff auf Ziel-Haushaltsbuch' });
+
+    // Kategorie: Systemkategorien bleiben, benutzerdefinierte werden entfernt wenn nicht im Ziel verfügbar
+    let warning = null;
+    if (transaction.categoryId) {
+      const cat = await Category.findByPk(transaction.categoryId);
+      if (cat && !cat.isSystem && cat.householdId && cat.householdId !== targetHouseholdId) {
+        await transaction.update({ householdId: targetHouseholdId, categoryId: null });
+        warning = 'Kategorie wurde entfernt (nicht im Ziel-Haushaltsbuch verfügbar)';
+        const full = await Transaction.findByPk(transaction.id, { include: [{ model: Category }, { model: User, attributes: ['id', 'name', 'avatar'] }] });
+        return res.json({ transaction: full, warning });
+      }
+    }
+
+    await transaction.update({ householdId: targetHouseholdId });
+    res.json({ transaction });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to move transaction' });
+  }
+});
+
 // DELETE /api/transactions/:id
 router.delete('/:id', auth, async (req, res) => {
   try {
