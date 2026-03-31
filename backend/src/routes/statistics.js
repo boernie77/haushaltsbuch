@@ -25,6 +25,7 @@ function getOccurrencesInRange(nextDate, interval, recurringDay, rangeStart, ran
         r.setDate(Math.min(recurringDay, maxDay));
       }
     } else if (interval === 'yearly') r.setFullYear(r.getFullYear() + 1);
+    else r.setFullYear(r.getFullYear() + 100); // Unbekanntes Interval: weit in die Zukunft springen
     return r;
   }
 
@@ -38,15 +39,18 @@ function getOccurrencesInRange(nextDate, interval, recurringDay, rangeStart, ran
         r.setDate(Math.min(recurringDay, maxDay));
       }
     } else if (interval === 'yearly') r.setFullYear(r.getFullYear() - 1);
+    else r.setFullYear(r.getFullYear() - 100); // Unbekanntes Interval: weit in die Vergangenheit springen
     return r;
   }
 
   // Gehe von nextDate rückwärts bis wir vor rangeStart sind
   let cursor = new Date(nextDate); cursor.setHours(0, 0, 0, 0);
-  while (cursor >= start) cursor = stepBack(cursor);
+  let safetyBack = 0;
+  while (cursor >= start && safetyBack++ < 500) cursor = stepBack(cursor);
   // Jetzt vorwärts bis rangeEnd
   cursor = stepForward(cursor);
-  while (cursor <= end) {
+  let safetyFwd = 0;
+  while (cursor <= end && safetyFwd++ < 500) {
     if (cursor >= start) results.push(new Date(cursor));
     cursor = stepForward(cursor);
     if (results.length > 60) break; // Sicherheit
