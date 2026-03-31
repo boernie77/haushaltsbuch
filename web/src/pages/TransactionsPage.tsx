@@ -196,9 +196,11 @@ export default function TransactionsPage() {
       const { data } = await transactionAPI.move(moveDialog.id, moveTargetId);
       if (data.warning) toast(data.warning, { icon: '⚠️', duration: 5000 });
       else toast.success('Buchung verschoben');
+      const movedId = moveDialog.id;
       setMoveDialog(null);
       setMoveTargetId('');
-      load();
+      setTransactions(prev => prev.filter(t => t.id !== movedId));
+      setRecurring(prev => prev.filter(r => r.id !== movedId));
     } catch { toast.error('Fehler beim Verschieben'); }
   };
 
