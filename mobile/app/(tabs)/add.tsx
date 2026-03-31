@@ -75,7 +75,7 @@ export default function AddTransactionScreen() {
 
   const discardReceipt = () => {
     setReceiptImage(null);
-    setShowPaperless(false);
+    setPaperlessData(null);
     setPaperlessDocType(null);
     setPaperlessCorrespondent(null);
     setPaperlessTags([]);
