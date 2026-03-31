@@ -217,8 +217,8 @@ router.get('/overview', auth, async (req, res) => {
     const previous = parseFloat(lastMonthExp) || 0;
     const income = parseFloat(thisMonthInc) || 0;
     const change = previous > 0 ? ((current - previous) / previous) * 100 : 0;
-    const daysInMonth = Math.round((curEnd - curStart) / (1000 * 60 * 60 * 24)) + 1;
-    const currentDay = Math.max(1, Math.round((now - curStart) / (1000 * 60 * 60 * 24)) + 1);
+    const daysInMonth = Math.floor((curEnd - curStart) / (1000 * 60 * 60 * 24)) + 1;
+    const currentDay = Math.max(1, Math.floor((now - curStart) / (1000 * 60 * 60 * 24)) + 1);
     const today = new Date(); today.setHours(0, 0, 0, 0);
 
     // Fixkosten (Wiederkehrende Buchungen): separat behandeln, nicht linear hochrechnen
