@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn, RefreshCw, ChevronDown, ChevronUp, Repeat, Pencil } from 'lucide-react';
+import { Plus, Search, Trash2, FileText, Tag, X, Receipt, ZoomIn, RefreshCw, Repeat, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { transactionAPI, categoryAPI, ocrAPI, paperlessAPI, recurringAPI, householdAPI } from '../services/api';
@@ -40,7 +40,7 @@ export default function TransactionsPage() {
   const [receiptModal, setReceiptModal] = useState<string | null>(null);
 
   const [recurring, setRecurring] = useState<any[]>([]);
-  const [showRecurring, setShowRecurring] = useState(false);
+
   const [paperlessUsers, setPaperlessUsers] = useState<any[]>([]);
 
   const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace('/api', '');
@@ -150,6 +150,8 @@ export default function TransactionsPage() {
           type: form.type,
           categoryId: form.categoryId || null,
           tags: [],
+          isRecurring: form.isRecurring,
+          recurringInterval: form.isRecurring ? form.recurringInterval : null,
         });
         toast.success('Buchung aktualisiert');
       } else {
@@ -236,10 +238,10 @@ export default function TransactionsPage() {
           <button type="submit" className="btn-primary px-3 shrink-0">Suchen</button>
         </form>
         <div className="flex gap-2">
-          {['all', 'expense', 'income'].map(f => (
+          {['all', 'expense', 'income', 'recurring'].map(f => (
             <button key={f} onClick={() => setTypeFilter(f)}
               className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${typeFilter === f ? 'bg-[var(--primary)] text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300'}`}>
-              {f === 'all' ? 'Alle' : f === 'expense' ? '💸 Ausgaben' : '💰 Einnahmen'}
+              {f === 'all' ? 'Alle' : f === 'expense' ? '💸 Ausgaben' : f === 'income' ? '💰 Einnahmen' : '🔄 Wiederkehrend'}
             </button>
           ))}
         </div>
@@ -384,6 +386,59 @@ export default function TransactionsPage() {
           <div className="flex items-center justify-center p-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]" />
           </div>
+        ) : typeFilter === 'recurring' ? (
+          recurring.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <div className="text-5xl mb-4">🔄</div>
+              <p>Keine wiederkehrenden Buchungen</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-slate-700">
+                <tr>
+                  {['Kategorie', 'Beschreibung', 'Betrag', 'Intervall', 'Nächste Buchung', ''].map(h => (
+                    <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                {recurring.map(r => (
+                  <tr key={r.id} className="hover:bg-pink-50/50 dark:hover:bg-slate-700/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-2 text-sm">
+                        <span className="text-base">{r.Category?.icon || '📦'}</span>
+                        <span className="text-gray-700 dark:text-gray-300">{r.Category?.nameDE || r.Category?.name || '—'}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-40 truncate">{r.description || r.merchant || '—'}</td>
+                    <td className={`px-4 py-3 text-sm font-bold ${r.type === 'income' ? 'text-green-600' : 'text-[var(--expense)]'}`}>
+                      {r.type === 'income' ? '+' : '-'}{parseFloat(r.amount).toFixed(2)} €
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {r.recurringInterval === 'weekly' ? 'Wöchentlich' : r.recurringInterval === 'monthly' ? 'Monatlich' : 'Jährlich'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {r.recurringNextDate ? format(new Date(r.recurringNextDate), 'dd.MM.yyyy') : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEdit(r)} className="text-gray-400 hover:text-[var(--primary)] transition-colors" title="Bearbeiten">
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm('Wiederkehrende Buchung beenden?')) return;
+                          await recurringAPI.stop(r.id);
+                          setRecurring(prev => prev.filter(x => x.id !== r.id));
+                        }} className="text-gray-400 hover:text-red-500 transition-colors" title="Beenden">
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
         ) : transactions.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <div className="text-5xl mb-4">📭</div>
@@ -418,26 +473,22 @@ export default function TransactionsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {t.receiptImage && (
-                        <button onClick={() => setReceiptModal(API_BASE + t.receiptImage)}
-                          title="Quittung anzeigen"
-                          className="text-gray-400 hover:text-[var(--primary)] transition-colors">
-                          <Receipt size={16} />
-                        </button>
-                      )}
                       <button onClick={() => openEdit(t)} className="text-gray-400 hover:text-[var(--primary)] transition-colors" title="Bearbeiten">
                         <Pencil size={15} />
                       </button>
+                      <button onClick={() => handleDelete(t.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Löschen">
+                        <Trash2 size={16} />
+                      </button>
+                      {t.receiptImage && (
+                        <button onClick={() => setReceiptModal(API_BASE + t.receiptImage)} title="Quittung anzeigen" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
+                          <Receipt size={16} />
+                        </button>
+                      )}
                       {t.receiptImage && hasPaperless && (
-                        <button onClick={() => openPaperlessDialog(t)}
-                          title={t.paperlessDocId ? 'Bereits in Paperless' : 'Zu Paperless hochladen'}
-                          className={`transition-colors ${t.paperlessDocId ? 'text-green-500' : 'text-gray-400 hover:text-[var(--primary)]'}`}>
+                        <button onClick={() => openPaperlessDialog(t)} title={t.paperlessDocId ? 'Bereits in Paperless' : 'Zu Paperless hochladen'} className={`transition-colors ${t.paperlessDocId ? 'text-green-500' : 'text-gray-400 hover:text-[var(--primary)]'}`}>
                           <FileText size={16} />
                         </button>
                       )}
-                      <button onClick={() => handleDelete(t.id)} className="text-gray-400 hover:text-red-500 transition-colors">
-                        <Trash2 size={16} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -446,60 +497,6 @@ export default function TransactionsPage() {
           </table>
         )}
       </div>
-
-      {/* Wiederkehrende Buchungen */}
-      {recurring.length > 0 && (
-        <div className="card overflow-hidden">
-          <button className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-slate-700/50"
-            onClick={() => setShowRecurring(!showRecurring)}>
-            <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-              <Repeat size={16} className="text-[var(--primary)]" />
-              Wiederkehrende Buchungen ({recurring.length})
-            </span>
-            {showRecurring ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-          {showRecurring && (
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700">
-                <tr>
-                  {['Kategorie', 'Beschreibung', 'Betrag', 'Intervall', 'Nächste Buchung', ''].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                {recurring.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-700/50">
-                    <td className="px-4 py-3">
-                      <span className="text-base">{r.Category?.icon || '📦'}</span>
-                      <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{r.Category?.nameDE || r.Category?.name || '—'}</span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{r.description || r.merchant || '—'}</td>
-                    <td className={`px-4 py-3 text-sm font-bold ${r.type === 'income' ? 'text-green-600' : 'text-[var(--expense)]'}`}>
-                      {r.type === 'income' ? '+' : '-'}{parseFloat(r.amount).toFixed(2)} €
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {r.recurringInterval === 'weekly' ? 'Wöchentlich' : r.recurringInterval === 'monthly' ? 'Monatlich' : 'Jährlich'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {r.recurringNextDate ? format(new Date(r.recurringNextDate), 'dd.MM.yyyy') : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={async () => {
-                        if (!confirm('Wiederkehrende Buchung beenden?')) return;
-                        await recurringAPI.stop(r.id);
-                        setRecurring(prev => prev.filter(x => x.id !== r.id));
-                      }} className="text-gray-400 hover:text-red-500 transition-colors" title="Beenden">
-                        <X size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
 
       {/* Quittungs-Vollbild-Modal */}
       {receiptModal && (

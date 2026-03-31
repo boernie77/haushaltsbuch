@@ -183,8 +183,21 @@ router.put('/:id', auth, async (req, res) => {
     const access = await checkHouseholdAccess(req.user.id, transaction.householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
 
-    const { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed } = req.body;
-    await transaction.update({ amount, description, note, date, type, categoryId, merchant, tags, isConfirmed });
+    const { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed, isRecurring, recurringInterval } = req.body;
+    const updates = { amount, description, note, date, type, categoryId, merchant, tags, isConfirmed };
+    if (isRecurring !== undefined) {
+      updates.isRecurring = isRecurring;
+      updates.recurringInterval = isRecurring ? recurringInterval : null;
+      if (isRecurring && !transaction.isRecurring) {
+        // Neu als wiederkehrend markiert → nächstes Datum berechnen
+        const d = new Date(date || transaction.date);
+        if (recurringInterval === 'weekly') d.setDate(d.getDate() + 7);
+        else if (recurringInterval === 'yearly') d.setFullYear(d.getFullYear() + 1);
+        else d.setMonth(d.getMonth() + 1);
+        updates.recurringNextDate = d;
+      }
+    }
+    await transaction.update(updates);
 
     const full = await Transaction.findByPk(transaction.id, {
       include: [
