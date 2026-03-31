@@ -493,11 +493,9 @@ export default function TransactionsPage() {
                       <button onClick={() => handleDelete(t.id)} className="text-gray-400 hover:text-red-500 transition-colors" title="Löschen">
                         <Trash2 size={16} />
                       </button>
-                      {allHouseholds.length > 1 && (
-                        <button onClick={() => { setMoveDialog({ id: t.id, description: t.description || t.merchant || 'Buchung' }); setMoveTargetId(''); }} className="text-gray-400 hover:text-blue-500 transition-colors" title="In anderes Haushaltsbuch verschieben">
-                          <ArrowRightLeft size={16} />
-                        </button>
-                      )}
+                      <button onClick={() => { setMoveDialog({ id: t.id, description: t.description || t.merchant || 'Buchung' }); setMoveTargetId(''); }} className="text-gray-400 hover:text-blue-500 transition-colors" title="In anderes Haushaltsbuch verschieben">
+                        <ArrowRightLeft size={16} />
+                      </button>
                       {t.receiptImage && (
                         <button onClick={() => setReceiptModal(API_BASE + t.receiptImage)} title="Quittung anzeigen" className="text-gray-400 hover:text-[var(--primary)] transition-colors">
                           <Receipt size={16} />
@@ -523,12 +521,16 @@ export default function TransactionsPage() {
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Buchung verschieben</h3>
             <p className="text-sm text-gray-500 mb-4">„{moveDialog.description}" in ein anderes Haushaltsbuch verschieben:</p>
-            <select className="input w-full mb-4" value={moveTargetId} onChange={e => setMoveTargetId(e.target.value)}>
-              <option value="">— Haushaltsbuch wählen —</option>
-              {allHouseholds.filter(h => h.id !== currentHousehold?.id).map(h => (
-                <option key={h.id} value={h.id}>{h.name}</option>
-              ))}
-            </select>
+            {allHouseholds.filter(h => h.id !== currentHousehold?.id).length === 0 ? (
+              <p className="text-sm text-gray-400 mb-4">Du hast nur ein Haushaltsbuch. Erstelle ein weiteres, um Buchungen verschieben zu können.</p>
+            ) : (
+              <select className="input w-full mb-4" value={moveTargetId} onChange={e => setMoveTargetId(e.target.value)}>
+                <option value="">— Haushaltsbuch wählen —</option>
+                {allHouseholds.filter(h => h.id !== currentHousehold?.id).map(h => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            )}
             <div className="flex gap-3 justify-end">
               <button onClick={() => setMoveDialog(null)} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 text-sm font-medium">
                 Abbrechen
