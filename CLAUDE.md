@@ -52,6 +52,9 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │       ├── services/offlineStore.ts  MMKV-Cache + Offline-Queue
 │       ├── store/authStore.ts      Zustand + SecureStore
 │       └── themes/index.ts         Feminine/Masculine Themes
+├── data/                           Bind Mounts (in .gitignore)
+│   ├── db/                         PostgreSQL-Daten
+│   └── uploads/                    Quittungsbilder
 ├── docker-compose.yml
 ├── CLAUDE.md
 └── .github/workflows/deploy.yml   Auto-Deploy bei push auf main + workflow_dispatch
@@ -124,10 +127,19 @@ module.exports = {
 | konfigurierbar | SFTP-Backup (täglich 02:00 / wöchentlich / monatlich) |
 
 ## Quittungs-Bildverarbeitung (`receiptProcessor.js`)
-Sharp-Pipeline: `rotate` → `greyscale` → `normalize` → `clahe({width:8,height:8,maxSlope:2})` → `sharpen({sigma:0.8})` → `gamma(1.3)` → `threshold(165)` → `jpeg({quality:95})`
+Zwei-Pass-Verfahren mit Pixel-Mapping:
+1. **Basis:** `rotate` → `resize(1800)` → `greyscale` → `normalize` → PNG-Buffer
+2. **Glattes Bild** (für Text): Basis + `linear(1.3, -30)` → raw (1 Kanal via `toColourspace('b-w')`)
+3. **Threshold-Maske** (für Hintergrund): Basis + `threshold(165)` → raw (1 Kanal)
+4. **Pixel-Mapping:** Maske weiß → rein weiß (Hintergrund); Maske schwarz → glatter Wert (Text mit Graustufen)
+5. **Ausgabe:** `jpeg({quality:92})`
+
 - Aufgerufen in `transactions.js` nach Multer-Upload (in-place)
 - Aufgerufen in `ocr.js` vor dem Claude-API-Call (als Buffer)
-- Ergebnis: Schwarz-Weiß Dokumenten-Scan-Optik für klare Quittungen
+- Ergebnis: Weißer Hintergrund/Rand + lesbarer Text mit Graustufen (nicht binär schwarz)
+- **Wichtig:** `resize(1800)` ist nötig für das 5MB Claude Vision API-Limit
+- **Wichtig:** `toColourspace('b-w')` erzwingen, da greyscale PNG trotzdem 3 RGB-Kanäle haben kann → sonst 3× zu großes Bild
+- **Kein CLAHE im Textbereich** — CLAHE erzeugt Embossing-Artefakte die nur durch Threshold verdeckt werden
 
 ## Wiederkehrende Buchungen
 - `isRecurring: true` → **Template-Buchung** (nur Template, erscheint NICHT in normaler Transaktionsliste)
@@ -137,7 +149,9 @@ Sharp-Pipeline: `rotate` → `greyscale` → `normalize` → `clahe({width:8,hei
 - `GET /api/transactions/recurring` + `DELETE /api/transactions/recurring/:id`
 - `PUT /api/transactions/:id` akzeptiert `isRecurring` + `recurringInterval`
 - Web: TransactionsPage — eigener Filter-Tab "Wiederkehrend" mit Bearbeiten/Beenden/Verschieben
+- Mobile: transactions.tsx — eigener Filter-Tab "Wiederkehrend" mit Beenden-Button
 - Mobile: add.tsx — Switch + Intervall-Chips
+- **API-Antwort:** `GET /api/transactions/recurring` gibt `{ recurring: [...] }` zurück (nicht direkt Array)
 
 ## Buchungen verschieben
 - `PUT /api/transactions/:id/move` — verschiebt Buchung in anderes Haushaltsbuch
@@ -227,8 +241,10 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 
 ## Statistiken & Dashboard
-- **Dashboard:** 4 Karten (Ausgaben, Einnahmen, Bilanz, Sparquote) + Monats-Prognose + Budgetanzeige + Kategorie-Pie-Chart
+- **Web-Dashboard:** 4 Karten (Ausgaben, Einnahmen, Bilanz, Sparquote) + Monats-Prognose + Budgetanzeige + Kategorie-Pie-Chart
+- **Mobile-Übersicht:** Monatsübersicht + Monats-Prognose + Monatsbudget + Top-Kategorie + Kategoriebudgets
 - **Statistiken:** 5 Tabs — Monat, Jahr, Trends (Durchschnittsausgaben nach Kategorie), Vermögen (kumulierte Bilanz), Personen (Ausgaben pro Person + Ausgleichsrechnung)
+- **Prognose-API:** `statsAPI.overview()` liefert `projectedExpenses`, `projectedRemaining`, `currentDay`, `daysInMonth`
 - API: `statsAPI.trends()`, `statsAPI.wealth()`, `statsAPI.byPerson()`
 
 ## Sparziele
@@ -241,6 +257,13 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - `GET /api/reports/monthly?householdId=&year=&month=` — HTML-Report zum Download
 - `POST /api/reports/monthly/send` — sendet Report per E-Mail an alle Mitglieder
 - Cron: 1. jeden Monats 08:00 — automatischer Versand an alle Haushalte mit `emailReportsEnabled`
+
+## Docker-Volumes (Bind Mounts)
+Persistente Daten liegen als Bind Mounts unter `./data/`:
+- **`./data/db/`** → PostgreSQL-Daten (`/var/lib/postgresql/data` im Container, UID 70)
+- **`./data/uploads/`** → Quittungsbilder (`/app/uploads` im Container)
+- `data/` ist in `.gitignore` (wird nicht committed)
+- Auf dem VPS: `/opt/haushaltsbuch/data/db/` und `/opt/haushaltsbuch/data/uploads/`
 
 ## Deployment
 ```bash
