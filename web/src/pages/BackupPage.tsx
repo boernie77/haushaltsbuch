@@ -89,11 +89,11 @@ export default function BackupPage() {
             </p>
             <div className="flex items-center gap-3">
               <select value={exportFormat} onChange={e => setExportFormat(e.target.value as 'json' | 'csv')}
-                className="input flex-none w-28 text-sm">
+                className="input text-sm" style={{ width: '8rem' }}>
                 <option value="json">JSON</option>
                 <option value="csv">CSV</option>
               </select>
-              <button onClick={handleExport} className="btn-primary flex items-center gap-2 text-sm">
+              <button onClick={handleExport} className="btn-primary flex items-center gap-2 text-sm flex-shrink-0">
                 <Download size={15} /> Exportieren
               </button>
             </div>
