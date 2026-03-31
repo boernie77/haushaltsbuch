@@ -26,7 +26,7 @@ router.get('/', auth, async (req, res) => {
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
 
-    const where = { householdId };
+    const where = { householdId, isRecurring: { [Op.ne]: true } };
     if (type) where.type = type;
     if (categoryId) where.categoryId = categoryId;
     if (search) where.description = { [Op.iLike]: `%${search}%` };
@@ -102,18 +102,10 @@ router.post('/', auth, upload.single('receipt'), async (req, res) => {
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) return res.status(403).json({ error: 'Access denied' });
 
-    // Erstes Fälligkeitsdatum berechnen
+    // Erstes Fälligkeitsdatum = das Buchungsdatum selbst (Cron erstellt ab dann Kopien)
     let recurringNextDate = null;
-    if (isRecurring === 'true' && recurringInterval && date) {
-      const { processRecurringTransactions: _, ...cronUtils } = require('../services/cronService');
-      const txDate = new Date(date);
-      if (recurringInterval === 'weekly') {
-        recurringNextDate = new Date(txDate); recurringNextDate.setDate(txDate.getDate() + 7);
-      } else if (recurringInterval === 'monthly') {
-        recurringNextDate = new Date(txDate); recurringNextDate.setMonth(txDate.getMonth() + 1);
-      } else if (recurringInterval === 'yearly') {
-        recurringNextDate = new Date(txDate); recurringNextDate.setFullYear(txDate.getFullYear() + 1);
-      }
+    if (isRecurring === 'true' && date) {
+      recurringNextDate = new Date(date);
     }
 
     // Quittungsbild verarbeiten (Dokument-Scan-Filter)
