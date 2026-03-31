@@ -26,9 +26,9 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial, 002-backup, 003-invite-type, 004-paperless-favorites,
-│       │                           005-recurring-transactions, 006-paperless-users,
-│       │                           007-paperless-unique-constraints, 008-transaction-paperless-metadata
+│       ├── migrations/             001-initial … 008-transaction-paperless-metadata,
+│       │                           009-savings-goals, 010-transaction-splits,
+│       │                           011-password-reset, 012-reports, 013-statistics
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -78,6 +78,9 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - **PaperlessConfig**: householdId, baseUrl, apiToken, isActive
 - **PaperlessDocumentType / PaperlessCorrespondent / PaperlessTag**: householdId, paperlessId, name, `isFavorite`, syncedAt
 - **PaperlessUser**: householdId, paperlessId (Integer), username, fullName, `isEnabled` (default true), syncedAt
+- **TransactionSplit**: transactionId, categoryId, amount, description
+- **SavingsGoal**: householdId, name, icon, targetAmount, currentAmount, deadline
+- **password_reset_tokens**: userId, token, expiresAt, createdAt
 
 ## Einladungs- und Registrierungslogik
 | Typ | Erstellt von | Effekt |
@@ -117,20 +120,44 @@ module.exports = {
 |------|-----|
 | täglich 06:00 | `processRecurringTransactions` — erstellt fällige Kopien wiederkehrender Buchungen |
 | alle 6h | `syncAllPaperless` — synchronisiert alle aktiven Paperless-Haushalte |
+| 1. jeden Monats 08:00 | `sendMonthlyReports` — HTML-Monatsberichte per E-Mail |
 | konfigurierbar | SFTP-Backup (täglich 02:00 / wöchentlich / monatlich) |
 
 ## Quittungs-Bildverarbeitung (`receiptProcessor.js`)
-Sharp-Pipeline: `rotate` → `greyscale` → `normalize` → `clahe({width:4,height:4,maxSlope:3})` → `sharpen({sigma:1.2})` → `threshold(140)` → `jpeg({quality:92})`
+Sharp-Pipeline: `rotate` → `greyscale` → `normalize` → `clahe({width:8,height:8,maxSlope:2})` → `sharpen({sigma:0.8})` → `gamma(1.3)` → `threshold(165)` → `jpeg({quality:95})`
 - Aufgerufen in `transactions.js` nach Multer-Upload (in-place)
 - Aufgerufen in `ocr.js` vor dem Claude-API-Call (als Buffer)
 - Ergebnis: Schwarz-Weiß Dokumenten-Scan-Optik für klare Quittungen
 
 ## Wiederkehrende Buchungen
-- `isRecurring: true` → Template-Buchung (bleibt bestehen), Cron erstellt Kopien
+- `isRecurring: true` → **Template-Buchung** (nur Template, erscheint NICHT in normaler Transaktionsliste)
+- `recurringNextDate` = Buchungsdatum beim Erstellen (Cron erstellt ab dann Kopien)
 - `recurringInterval`: `weekly` | `monthly` | `yearly`
+- `GET /api/transactions` filtert `isRecurring: true` automatisch aus
 - `GET /api/transactions/recurring` + `DELETE /api/transactions/recurring/:id`
-- Web: TransactionsPage — "Feste Ausgaben"-Sektion
+- `PUT /api/transactions/:id` akzeptiert `isRecurring` + `recurringInterval`
+- Web: TransactionsPage — eigener Filter-Tab "Wiederkehrend" mit Bearbeiten/Beenden/Verschieben
 - Mobile: add.tsx — Switch + Intervall-Chips
+
+## Buchungen verschieben
+- `PUT /api/transactions/:id/move` — verschiebt Buchung in anderes Haushaltsbuch
+- Prüft Zugriff auf Quell- UND Ziel-Haushaltsbuch (User muss Mitglied in beiden sein)
+- Benutzerdefinierte Kategorien werden entfernt wenn im Ziel nicht verfügbar
+- Web: ArrowRightLeft-Icon bei jeder Buchung, Modal mit Dropdown der eigenen Haushaltsbücher
+
+## Buchungen bearbeiten
+- `PUT /api/transactions/:id` — aktualisiert alle Felder inkl. isRecurring/recurringInterval
+- Web: Pencil-Icon bei jeder Buchung, befüllt das Erstellen-Formular mit `editingId`
+
+## Duplikat-Check
+- `POST /api/transactions/duplicate-check` — prüft auf ähnliche Buchungen (Betrag, Datum, Beschreibung)
+- Web: automatischer Check bei Blur auf Betrag/Datum/Beschreibung, Warnung wenn Duplikate gefunden
+
+## Passwort-Reset
+- `POST /api/auth/forgot-password` — sendet Reset-E-Mail mit Token (1h gültig)
+- `POST /api/auth/reset-password` — setzt Passwort mit Token
+- Web: ForgotPasswordPage + ResetPasswordPage
+- Mobile: Link auf Login-Seite öffnet Web-URL
 
 ## Backup-System
 **Haushalt-Backup:**
@@ -192,6 +219,29 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - Kaskadiert: Transactions, Budgets, Categories (non-system), InviteCodes, alle Paperless-Daten, HouseholdMembers
 - UI: Löschen-Button nur sichtbar wenn `households.length > 1`
 
+## E-Mail-Konfiguration
+- **SMTP:** smtp.strato.de, Port 465 (SSL)
+- **User:** christian@bernauer24.com
+- **Absender:** noreply@bernauer24.com (Strato-Alias)
+- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte
+- ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
+
+## Statistiken & Dashboard
+- **Dashboard:** 4 Karten (Ausgaben, Einnahmen, Bilanz, Sparquote) + Monats-Prognose + Budgetanzeige + Kategorie-Pie-Chart
+- **Statistiken:** 5 Tabs — Monat, Jahr, Trends (Durchschnittsausgaben nach Kategorie), Vermögen (kumulierte Bilanz), Personen (Ausgaben pro Person + Ausgleichsrechnung)
+- API: `statsAPI.trends()`, `statsAPI.wealth()`, `statsAPI.byPerson()`
+
+## Sparziele
+- `SavingsGoal`: householdId, name, icon, targetAmount, currentAmount, deadline
+- CRUD: `GET/POST/PUT/DELETE /api/savings-goals`
+- Web: BudgetPage — zweiter Tab "Sparziele" mit Fortschrittsbalken, Einzahlung, Icon-Picker
+- Mobile: budget.tsx — Sparziele-Sektion
+
+## Monatsberichte
+- `GET /api/reports/monthly?householdId=&year=&month=` — HTML-Report zum Download
+- `POST /api/reports/monthly/send` — sendet Report per E-Mail an alle Mitglieder
+- Cron: 1. jeden Monats 08:00 — automatischer Versand an alle Haushalte mit `emailReportsEnabled`
+
 ## Deployment
 ```bash
 # Automatisch bei push auf main (GitHub Actions)
@@ -246,3 +296,6 @@ cd mobile && expo prebuild --clean
 - Paperless: `paperlessId` (Integer) für Paperless-API, `id` (UUID) für interne DB — beim Upload immer `paperlessId` senden
 - React Native: Komponenten **nicht** innerhalb anderer Komponenten definieren (`const Foo = () =>`) — führt zu Remount bei jedem Render (Eingabefeld verliert Fokus). Stattdessen Render-Funktion (`const renderFoo = (...)`) verwenden.
 - React Native Modal vs Paper Portal: Paper `Portal`/`Modal` bricht `ScrollView` + `maximumZoomScale` auf iOS → für Vollbild-Zoom nativen `Modal as RNModal` aus `react-native` verwenden
+- **Tailwind `.input` Klasse:** Hat `@apply px-3` → überschreibt Utility-Klasse `pl-9`. Fix: `style={{ paddingLeft: '2.25rem' }}` inline
+- **Sequelize Association-Naming:** `h.HouseholdMembers` (Default), nicht `h.members`
+- **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
