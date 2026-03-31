@@ -305,6 +305,31 @@ cd mobile && expo prebuild --clean
 - Disk prüfen: `df -h /`
 - Bei vollem Disk: PostgreSQL schreibt keine Checkpoints mehr → DB-Container unhealthy → Backend-Fehler 500
 
+## Recherche-Tools
+- **Bibliotheken recherchieren:** Immer zuerst **DeepWiki** (`deepwiki.com`) verwenden — funktioniert nur für öffentliche GitHub-Repos
+- **Fallback:** Exa, wenn Repo nicht auf DeepWiki verfügbar
+- Nach jeder Recherche: Code auf veraltete Versionen prüfen und Upgrade-Empfehlung geben
+
+## Dependency-Status (Stand 2026-03-31)
+Minor-Updates eingespielt: `sequelize` 6.37.8, `pg` 8.20.0, `jsonwebtoken` 9.0.3, `sharp` 0.34.5, `axios` 1.14.0, `typescript` 5.8.3
+
+**Ausstehende Major-Upgrades** (bewusst zurückgestellt, nächste Session):
+| Paket | Von → Auf | Hauptproblem |
+|---|---|---|
+| `nodemailer` | 6 → 8 | ESM-only, kein `require()` mehr |
+| `node-cron` | 3 → 4 | Scheduler-API geändert |
+| `express` | 4 → 5 | `path-to-regexp` v8 |
+| `tailwindcss` | 3 → 4 | Kein `tailwind.config.js` mehr |
+| `react` + `react-router-dom` | 18+v6 → 19+v7 | Zusammen migrieren |
+| `recharts` | 2 → 3 | Neue Komponenten-API |
+| `@anthropic-ai/sdk` | 0.36 → 0.81 | Changelog prüfen |
+| `bcryptjs` | 2 → 3 | ESM/async-first |
+| `multer` | 1 (LTS) → 2 | Interne Umstrukturierung |
+| `ssh2-sftp-client` | 10 → 12 | Verbindungshandling |
+| `vite` | 5 → 6 | Neue Environment API |
+| `zustand` | 4 → 5 | Deprecated APIs entfernt |
+| `date-fns` | 3 → 4 | Locale-Änderungen |
+
 ## Wichtige Konventionen
 - VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
 - SSH-Key für VPS: `~/.ssh/emailrelay_vps`
