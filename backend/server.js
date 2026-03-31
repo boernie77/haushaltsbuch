@@ -51,7 +51,7 @@ async function checkConfig() {
     const configuredIds = new Set(paperlessConfigs.map(c => c.householdId));
 
     console.log('[config] ── Konfigurationscheck ──────────────────────');
-    console.log(`[config] Haushalte gesamt: ${households.length}`);
+    console.log(`[config] Haushaltsbücher gesamt: ${households.length}`);
 
     for (const h of households) {
       const hasPaperless = configuredIds.has(h.id);

@@ -163,7 +163,7 @@ export default function AdminPage() {
   const tabs = [
     { id: 'stats', label: 'Übersicht', icon: BarChart2 },
     { id: 'users', label: `Benutzer (${users.length})`, icon: Users },
-    { id: 'households', label: `Haushalte (${households.length})`, icon: Home },
+    { id: 'households', label: `Haushaltsbücher (${households.length})`, icon: Home },
     { id: 'invites', label: 'Einladungen', icon: Shield },
     { id: 'ai', label: 'KI-Verwaltung', icon: Bot },
     { id: 'backup', label: 'Backup', icon: Database },
@@ -195,7 +195,7 @@ export default function AdminPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { label: 'Benutzer gesamt', value: stats.userCount, icon: Users },
-                { label: 'Haushalte', value: stats.householdCount, icon: Home },
+                { label: 'Haushaltsbücher', value: stats.householdCount, icon: Home },
                 { label: 'Buchungen', value: stats.transactionCount, icon: BarChart2 },
               ].map(({ label, value, icon: Icon }) => (
                 <div key={label} className="card p-5 flex items-center gap-4">
@@ -222,7 +222,7 @@ export default function AdminPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-slate-700">
                   <tr>
-                    {['Name', 'E-Mail', 'Haushalte', 'Rolle', 'Status', 'KI-Zugriff', ''].map(h => (
+                    {['Name', 'E-Mail', 'Haushaltsbücher', 'Rolle', 'Status', 'KI-Zugriff', ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 py-3">{h}</th>
                     ))}
                   </tr>
@@ -275,7 +275,7 @@ export default function AdminPage() {
             <div className="space-y-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                <input className="input w-full" style={{ paddingLeft: '2.25rem' }} placeholder="Haushalt suchen (Name)..." value={householdSearch}
+                <input className="input w-full" style={{ paddingLeft: '2.25rem' }} placeholder="Haushaltsbuch suchen (Name)..." value={householdSearch}
                   onChange={e => setHouseholdSearch(e.target.value)} />
               </div>
               {households.filter(h => {
@@ -314,7 +314,7 @@ export default function AdminPage() {
                   )}
                 </div>
               ))}
-              {households.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushalte gefunden</p>}
+              {households.length === 0 && <p className="text-sm text-gray-500 text-center py-8">Keine Haushaltsbücher gefunden</p>}
             </div>
           )}
 
