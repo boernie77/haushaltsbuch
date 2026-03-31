@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { Household, HouseholdMember, User, InviteCode, Transaction, Budget, Category, PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag } = require('../models');
+const { Household, HouseholdMember, User, InviteCode, Transaction, Budget, Category, PaperlessConfig, PaperlessDocumentType, PaperlessCorrespondent, PaperlessTag, sequelize } = require('../models');
 const { auth } = require('../middleware/auth');
 const crypto = require('crypto');
 
@@ -178,19 +178,26 @@ router.delete('/:id', auth, async (req, res) => {
     const otherHouseholds = await HouseholdMember.count({ where: { userId: req.user.id, householdId: { [require('sequelize').Op.ne]: id } } });
     if (otherHouseholds === 0) return res.status(400).json({ error: 'Das letzte Haushaltsbuch kann nicht gelöscht werden' });
 
-    // Alle abhängigen Daten löschen
-    await Promise.all([
-      Transaction.destroy({ where: { householdId: id } }),
-      Budget.destroy({ where: { householdId: id } }),
-      Category.destroy({ where: { householdId: id, isSystem: false } }),
-      InviteCode.destroy({ where: { householdId: id } }),
-      PaperlessDocumentType.destroy({ where: { householdId: id } }),
-      PaperlessCorrespondent.destroy({ where: { householdId: id } }),
-      PaperlessTag.destroy({ where: { householdId: id } }),
-      PaperlessConfig.destroy({ where: { householdId: id } }),
-      HouseholdMember.destroy({ where: { householdId: id } }),
-    ]);
-    await household.destroy();
+    // Alle abhängigen Daten in einer DB-Transaktion löschen
+    const tx = await sequelize.transaction();
+    try {
+      await Promise.all([
+        Transaction.destroy({ where: { householdId: id }, transaction: tx }),
+        Budget.destroy({ where: { householdId: id }, transaction: tx }),
+        Category.destroy({ where: { householdId: id, isSystem: false }, transaction: tx }),
+        InviteCode.destroy({ where: { householdId: id }, transaction: tx }),
+        PaperlessDocumentType.destroy({ where: { householdId: id }, transaction: tx }),
+        PaperlessCorrespondent.destroy({ where: { householdId: id }, transaction: tx }),
+        PaperlessTag.destroy({ where: { householdId: id }, transaction: tx }),
+        PaperlessConfig.destroy({ where: { householdId: id }, transaction: tx }),
+        HouseholdMember.destroy({ where: { householdId: id }, transaction: tx }),
+      ]);
+      await household.destroy({ transaction: tx });
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
 
     res.json({ message: 'Haushalt gelöscht' });
   } catch (err) {

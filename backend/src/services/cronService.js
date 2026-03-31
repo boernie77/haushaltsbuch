@@ -2,6 +2,8 @@ const cron = require('node-cron');
 const { randomUUID } = require('crypto');
 let activeBackupJob = null;
 let recurringJob = null;
+let paperlessJob = null;
+let reportsJob = null;
 
 // ── Recurring Transactions ────────────────────────────────────────────────────
 
@@ -23,7 +25,7 @@ function calcNextDate(interval, recurringDay, fromDate) {
 
 async function processRecurringTransactions() {
   try {
-    const { Transaction } = require('../models');
+    const { Transaction, sequelize } = require('../models');
     const { Op } = require('sequelize');
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -39,26 +41,31 @@ async function processRecurringTransactions() {
     console.log(`[recurring] ${due.length} Buchung(en) fällig`);
 
     for (const t of due) {
-      // Kopie der Buchung erstellen (ohne isRecurring)
-      await Transaction.create({
-        amount: t.amount,
-        description: t.description,
-        note: t.note,
-        date: t.recurringNextDate,
-        type: t.type,
-        categoryId: t.categoryId,
-        householdId: t.householdId,
-        userId: t.userId,
-        merchant: t.merchant,
-        tags: t.tags || [],
-        isConfirmed: true,
-        isRecurring: false,
-      });
-
-      // Nächstes Fälligkeitsdatum berechnen
       const nextDate = calcNextDate(t.recurringInterval, t.recurringDay, t.recurringNextDate);
-      await t.update({ recurringNextDate: nextDate });
-      console.log(`[recurring] "${t.description || t.merchant}" → nächste Buchung: ${nextDate.toISOString().split('T')[0]}`);
+      // Kopie erstellen + Template aktualisieren in einer DB-Transaktion
+      const tx = await sequelize.transaction();
+      try {
+        await Transaction.create({
+          amount: t.amount,
+          description: t.description,
+          note: t.note,
+          date: t.recurringNextDate,
+          type: t.type,
+          categoryId: t.categoryId,
+          householdId: t.householdId,
+          userId: t.userId,
+          merchant: t.merchant,
+          tags: t.tags || [],
+          isConfirmed: true,
+          isRecurring: false,
+        }, { transaction: tx });
+        await t.update({ recurringNextDate: nextDate }, { transaction: tx });
+        await tx.commit();
+        console.log(`[recurring] "${t.description || t.merchant}" → nächste Buchung: ${nextDate.toISOString().split('T')[0]}`);
+      } catch (err) {
+        await tx.rollback();
+        console.error(`[recurring] Fehler bei "${t.description || t.merchant}": ${err.message}`);
+      }
     }
   } catch (err) {
     console.error('[recurring] Fehler:', err.message);
@@ -154,11 +161,11 @@ async function startCron() {
   console.log('[cron] Wiederkehrende Buchungen: täglich 06:00');
 
   // Paperless Auto-Sync: alle 6 Stunden
-  cron.schedule('0 */6 * * *', syncAllPaperless);
+  paperlessJob = cron.schedule('0 */6 * * *', syncAllPaperless);
   console.log('[cron] Paperless-Sync: alle 6 Stunden');
 
   // Monatsabschluss-Berichte: 1. jeden Monats um 08:00
-  cron.schedule('0 8 1 * *', sendMonthlyReports);
+  reportsJob = cron.schedule('0 8 1 * *', sendMonthlyReports);
   console.log('[cron] Monatsberichte: 1. jeden Monats 08:00');
 
   // Backup: aus Konfiguration
@@ -195,8 +202,10 @@ function scheduleJob(cronExpression) {
 }
 
 function stopCron() {
-  if (activeBackupJob) { activeBackupJob.destroy(); activeBackupJob = null; }
   if (recurringJob) { recurringJob.destroy(); recurringJob = null; }
+  if (paperlessJob) { paperlessJob.destroy(); paperlessJob = null; }
+  if (reportsJob) { reportsJob.destroy(); reportsJob = null; }
+  if (activeBackupJob) { activeBackupJob.destroy(); activeBackupJob = null; }
 }
 
 async function sendMonthlyReports() {
