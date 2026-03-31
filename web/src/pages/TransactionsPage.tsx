@@ -97,6 +97,7 @@ export default function TransactionsPage() {
   };
 
   const checkDuplicates = async () => {
+    if (editingId) return; // Beim Bearbeiten keinen Duplikat-Check
     if (!form.amount || !form.date || !currentHousehold) return;
     try {
       const { data } = await transactionAPI.duplicateCheck({
