@@ -182,6 +182,11 @@ const GlobalSettings = sequelize.define('GlobalSettings', {
     set(v) { this.setDataValue('anthropicApiKey', encrypt(v)); }
   },
   aiKeyPublic:         { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'If true, all users can use it; if false, only granted users' },
+  sshPublicKey:        { type: DataTypes.TEXT, allowNull: true },
+  sshPrivateKey:       { type: DataTypes.TEXT, allowNull: true,
+    get() { return decrypt(this.getDataValue('sshPrivateKey')); },
+    set(v) { this.setDataValue('sshPrivateKey', encrypt(v)); }
+  },
 }, { tableName: 'global_settings', timestamps: true });
 
 // ── SavingsGoal ───────────────────────────────────────────────────────────────

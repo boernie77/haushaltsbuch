@@ -111,6 +111,8 @@ export const adminAPI = {
   saveBackupConfig: (d: any) => api.put('/admin/backup/config', d),
   testBackup: (d: any) => api.post('/admin/backup/test', d),
   runBackup: () => api.post('/admin/backup/run'),
+  getSshPublicKey: () => api.get('/admin/backup/ssh-key'),
+  regenerateSshKey: () => api.post('/admin/backup/ssh-key/regenerate'),
 };
 
 export const savingsGoalAPI = {

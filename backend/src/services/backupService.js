@@ -149,7 +149,24 @@ async function importHouseholdData(householdId, rawData, userId) {
 async function uploadToSftp(config, buffer, filename) {
   const SftpClient = require('ssh2-sftp-client');
   const sftp = new SftpClient();
-  await sftp.connect({ host: config.sftpHost, port: config.sftpPort || 22, username: config.sftpUser, password: config.sftpPassword });
+
+  const connectOpts = {
+    host: config.sftpHost,
+    port: config.sftpPort || 22,
+    username: config.sftpUser,
+    readyTimeout: 15000,
+  };
+
+  if (config.sshPrivateKey) {
+    // SSH key auth (preferred)
+    connectOpts.privateKey = config.sshPrivateKey;
+  } else if (config.sftpPassword) {
+    connectOpts.password = config.sftpPassword;
+  } else {
+    throw new Error('Weder Passwort noch SSH-Key konfiguriert');
+  }
+
+  await sftp.connect(connectOpts);
   try {
     await sftp.mkdir(config.sftpPath, true).catch(() => {});
     await sftp.put(buffer, `${config.sftpPath}/${filename}`);
@@ -160,15 +177,21 @@ async function uploadToSftp(config, buffer, filename) {
 
 // ── Run global backup ─────────────────────────────────────────────────────────
 async function runGlobalBackup() {
-  const config = await BackupConfig.findOne({ order: [['createdAt', 'DESC']] });
+  const [config, globalSettings] = await Promise.all([
+    BackupConfig.findOne({ order: [['createdAt', 'DESC']] }),
+    GlobalSettings.findOne({ where: { id: 'global' } }),
+  ]);
   if (!config?.sftpHost) throw new Error('Keine Backup-Konfiguration vorhanden');
+
+  // Prefer SSH key auth over password
+  const sshPrivateKey = globalSettings?.sshPrivateKey || null;
 
   const data = await exportAllData();
   const compressed = zlib.gzipSync(Buffer.from(JSON.stringify(data, null, 2), 'utf8'));
   const date = new Date().toISOString().split('T')[0];
   const filename = `haushaltsbuch-backup-${date}.json.gz`;
 
-  await uploadToSftp(config, compressed, filename);
+  await uploadToSftp({ ...config.toJSON(), sshPrivateKey }, compressed, filename);
 
   await config.update({
     lastRunAt: new Date(), lastRunStatus: 'success',

@@ -200,6 +200,41 @@ router.get('/invite-codes', auth, superAdminGuard, async (req, res) => {
 
 // ── Backup routes ─────────────────────────────────────────────────────────────
 
+// GET /api/admin/backup/ssh-key — returns (and auto-generates) the server's SSH public key
+router.get('/backup/ssh-key', auth, superAdminGuard, async (req, res) => {
+  try {
+    let global = await GlobalSettings.findOne({ where: { id: 'global' } });
+    if (!global) global = await GlobalSettings.create({ id: 'global' });
+
+    if (!global.sshPublicKey) {
+      const { generateSshKeyPair } = require('../utils/sshKey');
+      const { privateKey, publicKey } = generateSshKeyPair();
+      await global.update({ sshPrivateKey: privateKey, sshPublicKey: publicKey });
+      global = await GlobalSettings.findOne({ where: { id: 'global' } });
+    }
+
+    res.json({ publicKey: global.sshPublicKey });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to get SSH key' });
+  }
+});
+
+// POST /api/admin/backup/ssh-key/regenerate — generates a new key pair
+router.post('/backup/ssh-key/regenerate', auth, superAdminGuard, async (req, res) => {
+  try {
+    const { generateSshKeyPair } = require('../utils/sshKey');
+    const { privateKey, publicKey } = generateSshKeyPair();
+    let global = await GlobalSettings.findOne({ where: { id: 'global' } });
+    if (!global) global = await GlobalSettings.create({ id: 'global' });
+    await global.update({ sshPrivateKey: privateKey, sshPublicKey: publicKey });
+    res.json({ publicKey });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to regenerate SSH key' });
+  }
+});
+
 // GET /api/admin/backup/config
 router.get('/backup/config', auth, superAdminGuard, async (req, res) => {
   try {
@@ -239,8 +274,16 @@ router.post('/backup/test', auth, superAdminGuard, async (req, res) => {
   try {
     const { sftpHost, sftpPort, sftpUser, sftpPassword, sftpPath } = req.body;
     const { uploadToSftp } = require('../services/backupService');
+
+    // Load SSH private key from GlobalSettings if no password given
+    let sshPrivateKey = null;
+    if (!sftpPassword) {
+      const global = await GlobalSettings.findOne({ where: { id: 'global' } });
+      sshPrivateKey = global?.sshPrivateKey || null;
+    }
+
     await uploadToSftp(
-      { sftpHost, sftpPort: sftpPort || 22, sftpUser, sftpPassword, sftpPath: sftpPath || '/backups' },
+      { sftpHost, sftpPort: sftpPort || 22, sftpUser, sftpPassword, sftpPath: sftpPath || '/backups', sshPrivateKey },
       Buffer.from('haushaltsbuch connection test\n'), 'connection-test.txt'
     );
     res.json({ success: true, message: 'Verbindung erfolgreich!' });

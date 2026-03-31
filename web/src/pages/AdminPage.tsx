@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Home, BarChart2, Shield, Plus, Trash2, Ban, CheckCircle, Bot, Eye, EyeOff, Globe, Database, Search, Play, Wifi } from 'lucide-react';
+import { Users, Home, BarChart2, Shield, Plus, Trash2, Ban, CheckCircle, Bot, Eye, EyeOff, Globe, Database, Search, Play, Wifi, Key, Copy, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
@@ -27,6 +27,9 @@ export default function AdminPage() {
   const [backupSaving, setBackupSaving] = useState(false);
   const [backupTesting, setBackupTesting] = useState(false);
   const [backupRunning, setBackupRunning] = useState(false);
+  const [sshPublicKey, setSshPublicKey] = useState<string | null>(null);
+  const [sshKeyLoading, setSshKeyLoading] = useState(false);
+  const [sshKeyRegenerating, setSshKeyRegenerating] = useState(false);
   const [householdSearch, setHouseholdSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
 
@@ -68,6 +71,29 @@ export default function AdminPage() {
       }
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { if (tab === 'backup') loadSshKey(); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadSshKey = async () => {
+    if (sshPublicKey) return;
+    setSshKeyLoading(true);
+    try {
+      const { data } = await adminAPI.getSshPublicKey();
+      setSshPublicKey(data.publicKey);
+    } catch { toast.error('SSH-Key konnte nicht geladen werden'); }
+    finally { setSshKeyLoading(false); }
+  };
+
+  const handleRegenerateSshKey = async () => {
+    if (!confirm('Wirklich einen neuen SSH-Key generieren? Der alte Key wird danach nicht mehr funktionieren — du musst den neuen Key auf deinem Homeserver eintragen.')) return;
+    setSshKeyRegenerating(true);
+    try {
+      const { data } = await adminAPI.regenerateSshKey();
+      setSshPublicKey(data.publicKey);
+      toast.success('Neuer SSH-Key generiert — bitte auf dem Homeserver eintragen!');
+    } catch { toast.error('Fehler beim Generieren'); }
+    finally { setSshKeyRegenerating(false); }
+  };
 
   const handleSaveAiSettings = async () => {
     setAiSaving(true);
@@ -419,6 +445,138 @@ export default function AdminPage() {
 
           {tab === 'backup' && (
             <div className="space-y-6 max-w-2xl">
+
+              {/* SSH Key Setup Card */}
+              <div className="card p-6 space-y-4">
+                <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Key size={18} className="text-[var(--primary)]" /> SSH-Key-Authentifizierung
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Mit einem SSH-Key kannst du dich ohne Passwort sicher mit deinem Homeserver verbinden.
+                  Einmal eingerichtet, reicht es, <strong>kein Passwort</strong> im Formular einzutragen — der Key wird automatisch verwendet.
+                </p>
+
+                {/* Public key display */}
+                {!sshPublicKey && (
+                  <button onClick={loadSshKey} disabled={sshKeyLoading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] text-sm font-medium hover:bg-[var(--primary)]/20 disabled:opacity-50 transition-colors">
+                    {sshKeyLoading
+                      ? <div className="animate-spin h-4 w-4 border-2 border-[var(--primary)] border-t-transparent rounded-full" />
+                      : <Key size={15} />}
+                    SSH-Key anzeigen
+                  </button>
+                )}
+
+                {sshPublicKey && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Öffentlicher Schlüssel (Public Key)</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => { navigator.clipboard?.writeText(sshPublicKey); toast.success('Key kopiert!'); }}
+                          className="flex items-center gap-1 text-xs text-[var(--primary)] hover:underline">
+                          <Copy size={12} /> Kopieren
+                        </button>
+                        <button onClick={handleRegenerateSshKey} disabled={sshKeyRegenerating}
+                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 disabled:opacity-50">
+                          <RefreshCw size={12} /> Neu generieren
+                        </button>
+                      </div>
+                    </div>
+                    <div className="font-mono text-xs p-3 rounded-xl bg-gray-50 dark:bg-slate-800 break-all border border-gray-200 dark:border-slate-700 select-all">
+                      {sshPublicKey}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step-by-step instructions */}
+                <details className="group">
+                  <summary className="cursor-pointer text-sm font-medium text-[var(--primary)] hover:underline flex items-center gap-1 select-none">
+                    <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+                    Schritt-für-Schritt-Anleitung: SSH-Key auf dem Homeserver einrichten
+                  </summary>
+                  <div className="mt-4 space-y-4 text-sm text-gray-700 dark:text-gray-300">
+
+                    <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                      <p className="font-semibold text-blue-800 dark:text-blue-300 mb-1">Was passiert hier?</p>
+                      <p className="text-blue-700 dark:text-blue-400 text-xs">
+                        Der Server (auf Hetzner) bekommt einen eindeutigen "Schlüssel". Deinem Homeserver sagst du einmalig:
+                        "Lass diesen Schlüssel rein". Danach können Backups automatisch übertragen werden — ohne Passwort.
+                      </p>
+                    </div>
+
+                    <ol className="space-y-4 list-none">
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">1</span>
+                        <div>
+                          <p className="font-semibold">Öffentlichen Key kopieren</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Klicke oben auf <strong>„Kopieren"</strong> neben dem Public Key. Der Key beginnt immer mit <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">ssh-ed25519</code>.</p>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">2</span>
+                        <div>
+                          <p className="font-semibold">Auf dem Homeserver anmelden</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Öffne ein Terminal auf deinem Computer und verbinde dich mit deinem Homeserver:</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">ssh systemv@100.106.190.68</pre>
+                          <p className="text-xs text-gray-500 mt-1">(Ersetze <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">systemv</code> durch deinen Benutzernamen und die IP durch deine Tailscale-IP)</p>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">3</span>
+                        <div>
+                          <p className="font-semibold">Ordner für SSH-Keys erstellen (falls noch nicht vorhanden)</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">mkdir -p ~/.ssh && chmod 700 ~/.ssh</pre>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">4</span>
+                        <div>
+                          <p className="font-semibold">Public Key in die authorized_keys-Datei eintragen</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Führe diesen Befehl aus und ersetze <code className="bg-gray-100 dark:bg-slate-700 px-1 rounded">HIER_DEN_KEY_EINFÜGEN</code> durch den kopierten Key (alles in einer Zeile!):</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto whitespace-pre-wrap">echo "HIER_DEN_KEY_EINFÜGEN" {'>>'}  ~/.ssh/authorized_keys</pre>
+                          <p className="text-xs text-gray-500 mt-1">Oder öffne die Datei direkt mit einem Texteditor und füge den Key als neue Zeile ein:</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">nano ~/.ssh/authorized_keys</pre>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">5</span>
+                        <div>
+                          <p className="font-semibold">Berechtigungen setzen</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">chmod 600 ~/.ssh/authorized_keys</pre>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">6</span>
+                        <div>
+                          <p className="font-semibold">Backup-Ordner erstellen</p>
+                          <p className="text-xs text-gray-500 mt-0.5">Erstelle den Ordner, in dem die Backups gespeichert werden sollen:</p>
+                          <pre className="mt-1 p-2 rounded-lg bg-slate-800 text-green-400 text-xs overflow-x-auto">mkdir -p ~/haushaltsbuch_backup</pre>
+                        </div>
+                      </li>
+
+                      <li className="flex gap-3">
+                        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-[var(--primary)] text-white text-xs font-bold flex items-center justify-center">7</span>
+                        <div>
+                          <p className="font-semibold">Verbindung testen</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Trage unten im Formular Host, Benutzer und Pfad ein — das Passwort-Feld kannst du <strong>leer lassen</strong>.
+                            Klicke dann auf <strong>„Verbindung testen"</strong>.
+                          </p>
+                          <div className="mt-1 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-400">
+                            <strong>Remote-Pfad:</strong> muss absolut sein, z.B. <code>/home/systemv/haushaltsbuch_backup</code> — nicht nur <code>haushaltsbuch_backup</code>
+                          </div>
+                        </div>
+                      </li>
+                    </ol>
+                  </div>
+                </details>
+              </div>
+
               <div className="card p-6 space-y-5">
                 <h2 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Database size={18} className="text-[var(--primary)]" /> Globales Backup (SFTP)
