@@ -31,7 +31,7 @@ export default function TransactionsScreen() {
     try {
       if (typeFilter === 'recurring') {
         const { data } = await recurringAPI.getAll(currentHousehold.id);
-        setRecurring(data);
+        setRecurring(data.recurring || []);
         setOffline(false);
       } else {
         const p = reset ? 1 : page;
@@ -73,8 +73,8 @@ export default function TransactionsScreen() {
     }
   }, [currentHousehold, typeFilter, search, page]);
 
-  useEffect(() => { load(true); }, [currentHousehold, typeFilter]);
-  useFocusEffect(useCallback(() => { load(true); }, [currentHousehold]));
+  useEffect(() => { setLoading(true); load(true); }, [currentHousehold, typeFilter]);
+  useFocusEffect(useCallback(() => { setLoading(true); load(true); }, [currentHousehold]));
 
   const onRefresh = () => { setRefreshing(true); load(true); };
 
