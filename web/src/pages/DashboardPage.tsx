@@ -91,7 +91,7 @@ export default function DashboardPage() {
             <TrendingUp className="text-[var(--income)]" size={18} />
           </div>
           <p className="text-2xl font-bold text-[var(--income)]">{fmt(overview?.thisMonthIncome || 0)}</p>
-          <p className="text-xs text-gray-500 mt-2">{overview?.transactionCount} Buchungen</p>
+          <p className="text-xs text-gray-500 mt-2">Vormonat: {fmt(overview?.lastMonth || 0)}</p>
         </div>
 
         <div className="card p-5">
