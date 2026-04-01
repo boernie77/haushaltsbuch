@@ -44,7 +44,7 @@ function calcNextFutureDate(date, interval, recurringDay) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) =>
-    cb(null, path.join(import.meta.dirname, "../../uploads")),
+    cb(null, path.join(__dirname, "../../uploads")),
   filename: (req, file, cb) =>
     cb(null, `receipt_${Date.now()}${path.extname(file.originalname)}`),
 });
