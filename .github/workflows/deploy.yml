@@ -39,10 +39,39 @@ jobs:
 
             docker-compose build --no-cache
             docker-compose up -d
-            sleep 8
+
+            # Build-Cache nach jedem Deploy bereinigen (verhindert Ansammlung von >20 GB)
+            docker builder prune -f
+
+            # Warten bis Backend wirklich bereit ist (max. 60s)
+            echo "Warte auf Backend..."
+            for i in $(seq 1 60); do
+              if curl -sf http://localhost:3001/api/health > /dev/null 2>&1; then
+                echo "Backend bereit nach ${i}s"
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "Backend-Start-Timeout nach 60s — Logs:"
+                docker-compose logs backend --tail=30
+                exit 1
+              fi
+              sleep 1
+            done
+
             docker-compose exec -T backend node src/utils/migrate.js
             docker-compose exec -T backend node -e "
               const { seedSystemCategories } = require('./src/utils/seedCategories');
               seedSystemCategories().then(() => process.exit(0)).catch(() => process.exit(0));
             "
-            echo "Done"
+
+            # Post-Deploy Health Check
+            echo "Finaler Health Check..."
+            HEALTH=$(curl -sf http://localhost:3001/api/health 2>/dev/null)
+            if echo "$HEALTH" | grep -q '"status":"ok"'; then
+              echo "Health Check OK: $HEALTH"
+            else
+              echo "Health Check FEHLGESCHLAGEN: $HEALTH"
+              exit 1
+            fi
+
+            echo "Deploy erfolgreich abgeschlossen"
