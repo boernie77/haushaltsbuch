@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -42,6 +42,7 @@ export default function TransactionsScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [offline, setOffline] = useState(false);
+  const isFetchingRef = useRef(false);
   const now = new Date();
   const startDay = currentHousehold?.monthStartDay || 1;
   const calcCurrentPeriod = (sd: number) => {
@@ -91,6 +92,10 @@ export default function TransactionsScreen() {
       if (!currentHousehold) {
         return;
       }
+      if (!reset && isFetchingRef.current) {
+        return;
+      }
+      isFetchingRef.current = true;
       const cacheKey = `transactions_${currentHousehold.id}`;
       try {
         if (typeFilter === "recurring") {
@@ -137,6 +142,7 @@ export default function TransactionsScreen() {
           console.error(err);
         }
       } finally {
+        isFetchingRef.current = false;
         setLoading(false);
         setRefreshing(false);
       }
@@ -505,7 +511,7 @@ export default function TransactionsScreen() {
             </View>
           }
           onEndReached={() => {
-            if (hasMore && !loading && !refreshing) {
+            if (hasMore && !isFetchingRef.current) {
               load();
             }
           }}
