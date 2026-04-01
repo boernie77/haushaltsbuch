@@ -131,12 +131,14 @@ export default function TransactionsPage() {
 
   const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace("/api", "");
 
+  const loadCountRef = useRef(0);
+
   const load = async () => {
     if (!currentHousehold) {
       return;
     }
+    const requestId = ++loadCountRef.current;
     setLoading(true);
-    setTransactions([]);
     try {
       const { data } = await transactionAPI.getAll({
         householdId: currentHousehold.id,
@@ -145,15 +147,21 @@ export default function TransactionsPage() {
         type: typeFilter === "all" ? undefined : typeFilter,
         search: search || undefined,
       });
+      if (requestId !== loadCountRef.current) {
+        return;
+      }
       setTransactions(data.transactions);
     } finally {
-      setLoading(false);
+      if (requestId === loadCountRef.current) {
+        setLoading(false);
+      }
     }
   };
 
-  // Reload transactions when period or filter changes
+  // Reload transactions when period or filter changes — clear list immediately to avoid stale data
   // biome-ignore lint/correctness/useExhaustiveDependencies: load is a closure over the listed deps
   useEffect(() => {
+    setTransactions([]);
     load();
   }, [currentHousehold, typeFilter, selectedMonth, selectedYear]);
 

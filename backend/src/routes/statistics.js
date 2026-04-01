@@ -297,40 +297,57 @@ router.get("/overview", auth, async (req, res) => {
     const lastMonthRange = { [Op.between]: [prevStart, prevEnd] };
 
     const nr = { isRecurring: { [Op.ne]: true } };
-    const [thisMonthExp, lastMonthExp, thisMonthInc, topCategory, recentCount] =
-      await Promise.all([
-        Transaction.sum("amount", {
-          where: { householdId, type: "expense", ...nr, date: thisMonthRange },
-        }),
-        Transaction.sum("amount", {
-          where: { householdId, type: "expense", ...nr, date: lastMonthRange },
-        }),
-        Transaction.sum("amount", {
-          where: { householdId, type: "income", ...nr, date: thisMonthRange },
-        }),
-        Transaction.findOne({
-          attributes: ["categoryId", [fn("SUM", col("amount")), "total"]],
-          where: {
-            householdId,
-            type: "expense",
-            ...nr,
-            date: thisMonthRange,
-            recurringSourceId: { [Op.is]: null },
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [
+      thisMonthExp,
+      lastMonthExp,
+      thisMonthInc,
+      topCategory,
+      recentCount,
+      recurringTemplates,
+    ] = await Promise.all([
+      Transaction.sum("amount", {
+        where: { householdId, type: "expense", ...nr, date: thisMonthRange },
+      }),
+      Transaction.sum("amount", {
+        where: { householdId, type: "expense", ...nr, date: lastMonthRange },
+      }),
+      Transaction.sum("amount", {
+        where: { householdId, type: "income", ...nr, date: thisMonthRange },
+      }),
+      Transaction.findOne({
+        attributes: ["categoryId", [fn("SUM", col("amount")), "total"]],
+        where: {
+          householdId,
+          type: "expense",
+          ...nr,
+          date: thisMonthRange,
+          recurringSourceId: { [Op.is]: null },
+        },
+        include: [
+          {
+            model: Category,
+            attributes: ["name", "nameDE", "icon", "color"],
           },
-          include: [
-            {
-              model: Category,
-              attributes: ["name", "nameDE", "icon", "color"],
-            },
-          ],
-          group: ["categoryId", "Category.id"],
-          order: [[literal("total"), "DESC"]],
-          limit: 1,
-        }),
-        Transaction.count({
-          where: { householdId, ...nr, date: thisMonthRange },
-        }),
-      ]);
+        ],
+        group: ["categoryId", "Category.id"],
+        order: [[literal("total"), "DESC"]],
+        limit: 1,
+      }),
+      Transaction.count({
+        where: { householdId, ...nr, date: thisMonthRange },
+      }),
+      Transaction.findAll({
+        where: { householdId, isRecurring: true, type: "expense" },
+        attributes: [
+          "amount",
+          "recurringInterval",
+          "recurringDay",
+          "recurringNextDate",
+        ],
+      }),
+    ]);
 
     const current = Number.parseFloat(thisMonthExp) || 0;
     const previous = Number.parseFloat(lastMonthExp) || 0;
@@ -342,19 +359,6 @@ router.get("/overview", auth, async (req, res) => {
       1,
       Math.floor((now - curStart) / (1000 * 60 * 60 * 24)) + 1
     );
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Fixkosten (Wiederkehrende Buchungen): separat behandeln, nicht linear hochrechnen
-    const recurringTemplates = await Transaction.findAll({
-      where: { householdId, isRecurring: true, type: "expense" },
-      attributes: [
-        "amount",
-        "recurringInterval",
-        "recurringDay",
-        "recurringNextDate",
-      ],
-    });
     let fixedAlreadyPaid = 0;
     let fixedYetToCome = 0;
     for (const t of recurringTemplates) {
