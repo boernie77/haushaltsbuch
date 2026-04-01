@@ -109,6 +109,7 @@ router.get("/", auth, async (req, res) => {
 
     const { count, rows } = await Transaction.findAndCountAll({
       where,
+      distinct: true,
       include: [
         {
           model: Category,
