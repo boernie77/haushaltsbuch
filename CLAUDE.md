@@ -219,8 +219,7 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - **Unique Constraints** (Migration 007): `(householdId, paperlessId)` auf document_types, correspondents, tags — `Model.upsert()` schlägt fehl → `findOrCreateLocal()`-Hilfsfunktion verwenden
 
 ## Offline-Modus (Mobile)
-- `mobile/src/services/offlineStore.ts`: MMKV-Cache + Offline-Queue
-- `react-native-mmkv` bereits in package.json, autolinking (kein Expo-Plugin nötig)
+- `mobile/src/services/offlineStore.ts`: **expo-file-system**-basierter Cache + Offline-Queue (kein MMKV!)
 - Cache-Keys: `overview_{householdId}`, `budgets_{householdId}`, `transactions_{householdId}`
 - Queue-Key: `offline_tx_queue` — Buchungen ohne Foto werden offline gespeichert
 - Auto-Sync: beim App-Start + bei Wechsel in den Vordergrund (`AppState` in `_layout.tsx`)
@@ -289,6 +288,8 @@ cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 - **Signing:** Automatic (Xcode verwaltet Provisioning Profile)
 - **Testgerät:** Physisches iPhone, App läuft als **Release-Build** (kein Metro!)
 - **Push Notifications:** NICHT aktiviert — `aps-environment` muss aus `.entitlements` entfernt bleiben, `expo-notifications` Plugin darf nicht in `app.json` stehen
+- **API-URL:** `https://haushalt.bernauer24.com/api` (in `mobile/src/services/api.ts`). Kein Fallback auf IP-Adressen — Domainname erzwingen!
+- **metro.config.cjs:** Dateiname `.cjs` erzwingen (nicht `.js`) — Biome würde `.js` anfassen und `__dirname` → `import.meta.dirname` umschreiben, was Metro crasht
 
 ### iOS neu bauen (nach JS-Änderungen):
 1. **⇧⌘K** — Clean Build Folder
@@ -298,6 +299,17 @@ cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 ```bash
 cd mobile && expo prebuild --clean
 # Danach in Xcode: Team + Bundle ID prüfen, dann bauen
+```
+
+### Expo-Module als direkte Abhängigkeiten
+Expo-Module die nur transitive Dependencies sind (via expo-router etc.) werden von `use_expo_modules!` im Podfile **nicht** gelinkt → native Module fehlen → Runtime-Crash.
+Immer explizit in `mobile/package.json` aufnehmen und danach `pod install` ausführen:
+- `expo-linking` — muss direkte Dep sein, auch wenn expo-router es mitbringt
+
+### pod install Reihenfolge
+```bash
+cd mobile/ios && pod install
+# Danach in Xcode: ⌘R (KEIN erneutes ⇧⌘K nötig)
 ```
 
 ## VPS-Wartung
@@ -330,6 +342,25 @@ Minor-Updates eingespielt: `sequelize` 6.37.8, `pg` 8.20.0, `jsonwebtoken` 9.0.3
 | `vite` | 5 → 6 | Neue Environment API |
 | `zustand` | 4 → 5 | Deprecated APIs entfernt |
 | `date-fns` | 3 → 4 | Locale-Änderungen |
+
+## Biome + Backend (CJS) — Wichtige Fallstricke
+Das Backend ist **CommonJS** (`require`/`module.exports`), Biome/Ultracite ist auf ESM konfiguriert.
+
+### Regel `correctness.noGlobalDirnameFilename`
+Biome ersetzt `__dirname` → `import.meta.dirname` als **Safe Fix** (auch ohne `--unsafe`!).
+Das macht Node.js die Datei als ESM behandeln → alle `require()` crashen.
+**Fix:** In `biome.jsonc` ist ein Override für `backend/**` eingerichtet:
+```jsonc
+"overrides": [{ "includes": ["backend/**"], "linter": { "rules": { "correctness": { "noGlobalDirnameFilename": "off" } } } }]
+```
+
+### lint-staged nur für web/mobile
+`package.json` lint-staged läuft nur auf `{web,mobile}/**` und Root-JSON-Dateien.
+Backend-JS wird bewusst NICHT von Biome angefasst.
+
+### Nach fehlgeschlagenem Commit: Working Tree aufräumen
+Wenn lint-staged abbricht, kann Biome Backend-Dateien im Working Tree modifiziert haben.
+Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `git checkout -- backend/`
 
 ## Wichtige Konventionen
 - VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
