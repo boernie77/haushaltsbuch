@@ -1,28 +1,31 @@
-import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
+import axios from "axios";
+import * as SecureStore from "expo-secure-store";
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://37.27.193.27:3001/api';
-export const IMAGE_BASE_URL = BASE_URL.replace('/api', '');
+const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL || "https://haushalt.bernauer24.com/api";
+export const IMAGE_BASE_URL = BASE_URL.replace("/api", "");
 
 export const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
+  timeout: 30_000,
+  headers: { "Content-Type": "application/json" },
 });
 
 // Request interceptor
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('auth_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = await SecureStore.getItemAsync("auth_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
 // Response interceptor
 api.interceptors.response.use(
-  response => response,
-  error => {
+  (response) => response,
+  (error) => {
     if (error.response?.status === 401) {
-      SecureStore.deleteItemAsync('auth_token');
+      SecureStore.deleteItemAsync("auth_token");
     }
     return Promise.reject(error);
   }
@@ -30,81 +33,101 @@ api.interceptors.response.use(
 
 // ── Transaction API ───────────────────────────────────────────────────────────
 export const transactionAPI = {
-  getAll: (params: any) => api.get('/transactions', { params }),
-  create: (data: FormData) => api.post('/transactions', data, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  }),
+  getAll: (params: any) => api.get("/transactions", { params }),
+  create: (data: FormData) =>
+    api.post("/transactions", data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
 };
 
 // ── Statistics API ────────────────────────────────────────────────────────────
 export const statsAPI = {
-  monthly: (params: any) => api.get('/statistics/monthly', { params }),
-  yearly: (params: any) => api.get('/statistics/yearly', { params }),
-  overview: (householdId: string) => api.get('/statistics/overview', { params: { householdId } }),
+  monthly: (params: any) => api.get("/statistics/monthly", { params }),
+  yearly: (params: any) => api.get("/statistics/yearly", { params }),
+  overview: (householdId: string) =>
+    api.get("/statistics/overview", { params: { householdId } }),
 };
 
 // ── Budget API ────────────────────────────────────────────────────────────────
 export const budgetAPI = {
-  getAll: (params: any) => api.get('/budgets', { params }),
-  create: (data: any) => api.post('/budgets', data),
+  getAll: (params: any) => api.get("/budgets", { params }),
+  create: (data: any) => api.post("/budgets", data),
   update: (id: string, data: any) => api.put(`/budgets/${id}`, data),
   delete: (id: string) => api.delete(`/budgets/${id}`),
 };
 
 // ── Category API ──────────────────────────────────────────────────────────────
 export const categoryAPI = {
-  getAll: (householdId?: string) => api.get('/categories', { params: { householdId } }),
-  create: (data: any) => api.post('/categories', data),
+  getAll: (householdId?: string) =>
+    api.get("/categories", { params: { householdId } }),
+  create: (data: any) => api.post("/categories", data),
 };
 
 // ── Household API ─────────────────────────────────────────────────────────────
 export const householdAPI = {
-  getAll: () => api.get('/households'),
-  create: (data: any) => api.post('/households', data),
+  getAll: () => api.get("/households"),
+  create: (data: any) => api.post("/households", data),
   update: (id: string, data: any) => api.put(`/households/${id}`, data),
   getMembers: (id: string) => api.get(`/households/${id}/members`),
-  createInvite: (id: string, data: any) => api.post(`/households/${id}/invite`, data),
+  createInvite: (id: string, data: any) =>
+    api.post(`/households/${id}/invite`, data),
   remove: (id: string) => api.delete(`/households/${id}`),
-  removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
+  removeMember: (id: string, userId: string) =>
+    api.delete(`/households/${id}/members/${userId}`),
   getAiSettings: (id: string) => api.get(`/households/${id}/ai-settings`),
-  saveAiSettings: (id: string, data: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, data),
+  saveAiSettings: (id: string, data: { aiEnabled: boolean; apiKey: string }) =>
+    api.put(`/households/${id}/ai-settings`, data),
 };
 
 // ── OCR API ───────────────────────────────────────────────────────────────────
 export const ocrAPI = {
   analyze: (imageUri: string, householdId?: string) => {
     const form = new FormData();
-    form.append('receipt', { uri: imageUri, type: 'image/jpeg', name: 'receipt.jpg' } as any);
-    if (householdId) form.append('householdId', householdId);
-    return api.post('/ocr/analyze', form, { headers: { 'Content-Type': 'multipart/form-data' } });
-  }
+    form.append("receipt", {
+      uri: imageUri,
+      type: "image/jpeg",
+      name: "receipt.jpg",
+    } as any);
+    if (householdId) {
+      form.append("householdId", householdId);
+    }
+    return api.post("/ocr/analyze", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
 };
 
 // ── Paperless API ─────────────────────────────────────────────────────────────
 export const paperlessAPI = {
-  check: (householdId: string, type: string, name: string) => api.get('/paperless/check', { params: { householdId, type, name } }),
-  getConfig: (householdId: string) => api.get(`/paperless/config/${householdId}`),
-  saveConfig: (data: any) => api.post('/paperless/config', data),
+  check: (householdId: string, type: string, name: string) =>
+    api.get("/paperless/check", { params: { householdId, type, name } }),
+  getConfig: (householdId: string) =>
+    api.get(`/paperless/config/${householdId}`),
+  saveConfig: (data: any) => api.post("/paperless/config", data),
   sync: (householdId: string) => api.post(`/paperless/sync/${householdId}`),
   getData: (householdId: string) => api.get(`/paperless/data/${householdId}`),
-  createDocType: (data: any) => api.post('/paperless/create-type', data),
-  createCorrespondent: (data: any) => api.post('/paperless/create-correspondent', data),
-  createTag: (data: any) => api.post('/paperless/create-tag', data),
-  toggleFavorite: (data: { type: string; id: string; isFavorite: boolean }) => api.put('/paperless/favorite', data),
-  upload: (data: any) => api.post('/paperless/upload', data),
+  createDocType: (data: any) => api.post("/paperless/create-type", data),
+  createCorrespondent: (data: any) =>
+    api.post("/paperless/create-correspondent", data),
+  createTag: (data: any) => api.post("/paperless/create-tag", data),
+  toggleFavorite: (data: { type: string; id: string; isFavorite: boolean }) =>
+    api.put("/paperless/favorite", data),
+  upload: (data: any) => api.post("/paperless/upload", data),
   getUsers: (householdId: string) => api.get(`/paperless/users/${householdId}`),
 };
 
 export const recurringAPI = {
-  getAll: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  getAll: (householdId: string) =>
+    api.get("/transactions/recurring", { params: { householdId } }),
   stop: (id: string) => api.delete(`/transactions/recurring/${id}`),
 };
 
 export const savingsGoalAPI = {
-  getAll: (householdId: string) => api.get('/savings-goals', { params: { householdId } }),
-  create: (data: any) => api.post('/savings-goals', data),
+  getAll: (householdId: string) =>
+    api.get("/savings-goals", { params: { householdId } }),
+  create: (data: any) => api.post("/savings-goals", data),
   update: (id: string, data: any) => api.put(`/savings-goals/${id}`, data),
   delete: (id: string) => api.delete(`/savings-goals/${id}`),
 };
