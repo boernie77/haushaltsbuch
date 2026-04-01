@@ -505,7 +505,7 @@ export default function TransactionsScreen() {
             </View>
           }
           onEndReached={() => {
-            if (hasMore) {
+            if (hasMore && !loading && !refreshing) {
               load();
             }
           }}
