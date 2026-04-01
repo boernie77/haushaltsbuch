@@ -144,15 +144,17 @@ export default function TransactionsScreen() {
     [currentHousehold, typeFilter, search, page, selectedMonth, selectedYear]
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is a closure over these deps
   useEffect(() => {
     setLoading(true);
     load(true);
-  }, [load]);
+  }, [currentHousehold, typeFilter, selectedMonth, selectedYear]);
   useFocusEffect(
+    // biome-ignore lint/correctness/useExhaustiveDependencies: intentional focus reload
     useCallback(() => {
       setLoading(true);
       load(true);
-    }, [load])
+    }, [currentHousehold])
   );
 
   const onRefresh = () => {

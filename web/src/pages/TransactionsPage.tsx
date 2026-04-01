@@ -135,6 +135,8 @@ export default function TransactionsPage() {
     if (!currentHousehold) {
       return;
     }
+    setLoading(true);
+    setTransactions([]);
     try {
       const { data } = await transactionAPI.getAll({
         householdId: currentHousehold.id,
@@ -149,29 +151,36 @@ export default function TransactionsPage() {
     }
   };
 
+  // Reload transactions when period or filter changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load is a closure over the listed deps
   useEffect(() => {
     load();
-    if (currentHousehold) {
-      categoryAPI
-        .getAll(currentHousehold.id)
-        .then(({ data }) => setCategories(data.categories));
-      paperlessAPI
-        .getData(currentHousehold.id)
-        .then(({ data }) => {
-          setPaperlessData(data);
-          setPaperlessUsers((data.users || []).filter((u: any) => u.isEnabled));
-        })
-        .catch(() => {});
-      recurringAPI
-        .getAll(currentHousehold.id)
-        .then(({ data }) => setRecurring(data.recurring || []))
-        .catch(() => {});
-      householdAPI
-        .getAll()
-        .then(({ data }) => setAllHouseholds(data.households || []))
-        .catch(() => {});
+  }, [currentHousehold, typeFilter, selectedMonth, selectedYear]);
+
+  // Load static data only when household changes
+  useEffect(() => {
+    if (!currentHousehold) {
+      return;
     }
-  }, [currentHousehold, load]);
+    categoryAPI
+      .getAll(currentHousehold.id)
+      .then(({ data }) => setCategories(data.categories));
+    paperlessAPI
+      .getData(currentHousehold.id)
+      .then(({ data }) => {
+        setPaperlessData(data);
+        setPaperlessUsers((data.users || []).filter((u: any) => u.isEnabled));
+      })
+      .catch(() => {});
+    recurringAPI
+      .getAll(currentHousehold.id)
+      .then(({ data }) => setRecurring(data.recurring || []))
+      .catch(() => {});
+    householdAPI
+      .getAll()
+      .then(({ data }) => setAllHouseholds(data.households || []))
+      .catch(() => {});
+  }, [currentHousehold]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

@@ -80,9 +80,10 @@ export default function HomeScreen() {
   };
 
   useFocusEffect(
+    // biome-ignore lint/correctness/useExhaustiveDependencies: intentional focus reload
     useCallback(() => {
       load();
-    }, [load])
+    }, [currentHousehold])
   );
 
   const onRefresh = () => {
