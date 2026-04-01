@@ -11,7 +11,10 @@
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+    "{web,mobile}/**/*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+      "npx biome check --write"
+    ],
+    "*.{json,jsonc}": [
       "npx biome check --write"
     ]
   }

@@ -159,11 +159,18 @@ export default function TransactionsPage() {
   };
 
   // Reload transactions when period or filter changes — clear list immediately to avoid stale data
-  // biome-ignore lint/correctness/useExhaustiveDependencies: load is a closure over the listed deps
   useEffect(() => {
     setTransactions([]);
     load();
   }, [currentHousehold, typeFilter, selectedMonth, selectedYear]);
+
+  // Debounced live search — waits 350ms after typing before reloading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      load();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Load static data only when household changes
   useEffect(() => {
@@ -189,11 +196,6 @@ export default function TransactionsPage() {
       .then(({ data }) => setAllHouseholds(data.households || []))
       .catch(() => {});
   }, [currentHousehold]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    load();
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -508,24 +510,31 @@ export default function TransactionsPage() {
             </button>
           )}
         </div>
-        <form className="flex flex-1 gap-2" onSubmit={handleSearch}>
-          <div className="relative min-w-0 flex-1">
-            <Search
-              className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400"
-              size={16}
-            />
-            <input
-              className="input w-full"
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Suchen..."
-              style={{ paddingLeft: "2.25rem" }}
-              value={search}
-            />
-          </div>
-          <button className="btn-primary shrink-0 px-3" type="submit">
-            Suchen
-          </button>
-        </form>
+        <div className="relative min-w-0 flex-1">
+          <Search
+            className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400"
+            size={16}
+          />
+          <input
+            className="input w-full"
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Suchen..."
+            style={{
+              paddingLeft: "2.25rem",
+              paddingRight: search ? "2.25rem" : undefined,
+            }}
+            value={search}
+          />
+          {search && (
+            <button
+              className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setSearch("")}
+              type="button"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
         <div className="flex gap-2">
           {["all", "expense", "income", "recurring"].map((f) => (
             <button
