@@ -101,6 +101,12 @@ router.put("/users/:id", auth, superAdminGuard, async (req, res) => {
     }
 
     const { name, role, isActive } = req.body;
+
+    // Superadmin darf sich nicht selbst deaktivieren
+    if (user.id === req.user.id && isActive === false) {
+      return res.status(400).json({ error: "Cannot deactivate yourself" });
+    }
+
     await user.update({ name, role, isActive });
     const { password: _, ...userData } = user.toJSON();
     res.json({ user: userData });

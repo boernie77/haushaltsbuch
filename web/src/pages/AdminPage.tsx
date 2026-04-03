@@ -256,6 +256,10 @@ export default function AdminPage() {
   };
 
   const handleToggleUser = async (u: any) => {
+    if (u.id === user?.id) {
+      toast.error("Du kannst dein eigenes Konto nicht deaktivieren.");
+      return;
+    }
     try {
       await adminAPI.updateUser(u.id, { isActive: !u.isActive });
       setUsers((prev) =>
