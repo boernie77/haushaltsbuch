@@ -526,12 +526,30 @@ export default function AdminPage() {
                                   ? format(new Date(u.createdAt), "dd.MM.yyyy")
                                   : "—"}
                             </div>
-                            {u.trialEndsAt && (
-                              <div className="text-gray-400 text-xs">
-                                Testabo bis{" "}
-                                {format(new Date(u.trialEndsAt), "dd.MM.yyyy")}
-                              </div>
-                            )}
+                            {u.trialEndsAt &&
+                              !u.subscriptionActive &&
+                              (() => {
+                                const daysLeft = Math.ceil(
+                                  (new Date(u.trialEndsAt).getTime() -
+                                    Date.now()) /
+                                    (1000 * 60 * 60 * 24)
+                                );
+                                return (
+                                  <div
+                                    className={`text-xs ${daysLeft <= 2 ? "font-semibold text-red-500" : daysLeft <= 5 ? "font-semibold text-orange-500" : "text-gray-400"}`}
+                                  >
+                                    {daysLeft > 0
+                                      ? `noch ${daysLeft} Tag${daysLeft === 1 ? "" : "e"}`
+                                      : "abgelaufen"}{" "}
+                                    (
+                                    {format(
+                                      new Date(u.trialEndsAt),
+                                      "dd.MM.yy"
+                                    )}
+                                    )
+                                  </div>
+                                );
+                              })()}
                           </td>
                           <td className="px-4 py-3">
                             <span

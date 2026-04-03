@@ -118,6 +118,73 @@ async function deactivateExpiredTrials() {
   }
 }
 
+async function sendTrialExpiryReminders() {
+  try {
+    if (!process.env.SMTP_HOST) {
+      return;
+    }
+    const { User } = require("../models");
+    const { Op } = require("sequelize");
+    const nodemailer = require("nodemailer");
+    const mailer = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number.parseInt(process.env.SMTP_PORT || "587", 10),
+      secure: process.env.SMTP_SECURE === "true",
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+
+    // Check for trials expiring in exactly 5 or 2 days (window: today 07:00–07:59)
+    for (const daysAhead of [5, 2]) {
+      const from = new Date();
+      from.setDate(from.getDate() + daysAhead);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(from);
+      to.setHours(23, 59, 59, 999);
+
+      const users = await User.findAll({
+        where: {
+          isActive: true,
+          subscriptionActive: false,
+          trialEndsAt: { [Op.between]: [from, to] },
+          role: { [Op.ne]: "superadmin" },
+        },
+      });
+
+      for (const u of users) {
+        const endDate = new Date(u.trialEndsAt).toLocaleDateString("de-DE");
+        try {
+          await mailer.sendMail({
+            from: process.env.SMTP_FROM || process.env.SMTP_USER,
+            to: u.email,
+            subject: `Haushaltsbuch – Dein Testabo läuft in ${daysAhead} Tagen ab`,
+            html: `
+              <div style="font-family:sans-serif;max-width:500px;margin:0 auto">
+                <h2 style="color:#E91E8C">Testabo läuft bald ab</h2>
+                <p>Hallo ${u.name},</p>
+                <p>dein kostenloses Testabo endet in <strong>${daysAhead} Tagen</strong> am <strong>${endDate}</strong>.</p>
+                <p>Danach wird dein Konto automatisch deaktiviert.</p>
+                <p>Wenn du weiterhin Zugriff möchtest, wende dich bitte an den Administrator.</p>
+                <hr style="border:none;border-top:1px solid #eee;margin:24px 0" />
+                <p style="color:#999;font-size:12px">Diese E-Mail wurde automatisch von Haushaltsbuch gesendet.</p>
+              </div>
+            `,
+          });
+          console.log(
+            `[subscription] Erinnerung (${daysAhead} Tage) gesendet an: ${u.email}`
+          );
+        } catch (err) {
+          console.error(
+            `[subscription] E-Mail-Fehler für ${u.email}:`,
+            err.message
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[subscription] Fehler bei Erinnerungs-Cron:", err.message);
+  }
+}
+
 // ── Backup Cron ───────────────────────────────────────────────────────────────
 
 // ── Paperless Auto-Sync ───────────────────────────────────────────────────────
@@ -334,6 +401,10 @@ async function startCron() {
   // Testabo-Ablauf: täglich um 07:00
   cron.schedule("0 7 * * *", deactivateExpiredTrials);
   console.log("[cron] Testabo-Ablauf: täglich 07:00");
+
+  // Testabo-Erinnerungen: täglich um 07:30 (5 Tage + 2 Tage vor Ablauf)
+  cron.schedule("30 7 * * *", sendTrialExpiryReminders);
+  console.log("[cron] Testabo-Erinnerungen: täglich 07:30");
 
   // Paperless Auto-Sync: alle 6 Stunden
   paperlessJob = cron.schedule("0 */6 * * *", syncAllPaperless);
