@@ -1,9 +1,7 @@
 import { format } from "date-fns";
 import {
-  Ban,
   BarChart2,
   Bot,
-  CheckCircle,
   Copy,
   CreditCard,
   Database,
@@ -559,11 +557,13 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 font-medium text-xs ${u.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                            <button
+                              className={`rounded-full px-2 py-0.5 font-medium text-xs ${u.isActive ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
+                              onClick={() => handleToggleUser(u)}
+                              title={u.isActive ? "Deaktivieren" : "Aktivieren"}
                             >
                               {u.isActive ? "Aktiv" : "Deaktiviert"}
-                            </span>
+                            </button>
                           </td>
                           <td className="px-4 py-3">
                             <button
@@ -597,17 +597,7 @@ export default function AdminPage() {
                               {u.aiKeyGranted ? "Gewährt" : "Kein Zugriff"}
                             </button>
                           </td>
-                          <td className="flex gap-2 px-4 py-3">
-                            <button
-                              className="text-gray-400 hover:text-blue-500"
-                              onClick={() => handleToggleUser(u)}
-                            >
-                              {u.isActive ? (
-                                <Ban size={16} />
-                              ) : (
-                                <CheckCircle size={16} />
-                              )}
-                            </button>
+                          <td className="px-4 py-3">
                             <button
                               className="text-gray-400 hover:text-red-500"
                               onClick={() => handleDeleteUser(u.id)}
