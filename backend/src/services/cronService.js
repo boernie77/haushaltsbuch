@@ -87,6 +87,37 @@ async function processRecurringTransactions() {
   }
 }
 
+// ── Trial Expiry ──────────────────────────────────────────────────────────────
+
+async function deactivateExpiredTrials() {
+  try {
+    const { User } = require("../models");
+    const { Op } = require("sequelize");
+    const now = new Date();
+    const expired = await User.findAll({
+      where: {
+        isActive: true,
+        subscriptionActive: false,
+        trialEndsAt: { [Op.lt]: now },
+        role: { [Op.ne]: "superadmin" },
+      },
+    });
+    for (const u of expired) {
+      await u.update({ isActive: false });
+      console.log(
+        `[subscription] Testabo abgelaufen, Konto deaktiviert: ${u.email}`
+      );
+    }
+    if (expired.length > 0) {
+      console.log(
+        `[subscription] ${expired.length} abgelaufene Testabos deaktiviert`
+      );
+    }
+  } catch (err) {
+    console.error("[subscription] Fehler bei Trial-Prüfung:", err.message);
+  }
+}
+
 // ── Backup Cron ───────────────────────────────────────────────────────────────
 
 // ── Paperless Auto-Sync ───────────────────────────────────────────────────────
@@ -299,6 +330,10 @@ async function startCron() {
   // Recurring: täglich um 06:00
   recurringJob = cron.schedule("0 6 * * *", processRecurringTransactions);
   console.log("[cron] Wiederkehrende Buchungen: täglich 06:00");
+
+  // Testabo-Ablauf: täglich um 07:00
+  cron.schedule("0 7 * * *", deactivateExpiredTrials);
+  console.log("[cron] Testabo-Ablauf: täglich 07:00");
 
   // Paperless Auto-Sync: alle 6 Stunden
   paperlessJob = cron.schedule("0 */6 * * *", syncAllPaperless);

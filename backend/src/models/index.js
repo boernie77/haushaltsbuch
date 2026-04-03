@@ -41,6 +41,18 @@ const User = sequelize.define(
       defaultValue: false,
       comment: "Admin hat diesem User den globalen AI-Key freigegeben",
     },
+    subscriptionType: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      comment: "trial | monthly | null",
+    },
+    trialStartedAt: { type: DataTypes.DATE, allowNull: true },
+    trialEndsAt: { type: DataTypes.DATE, allowNull: true },
+    subscriptionActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: "Superadmin hat Abo manuell aktiviert",
+    },
   },
   { tableName: "users", timestamps: true }
 );

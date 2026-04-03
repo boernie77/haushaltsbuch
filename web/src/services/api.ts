@@ -1,143 +1,180 @@
-import axios from 'axios';
+import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 export const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000,
+  timeout: 30_000,
 });
 
-api.interceptors.request.use(config => {
-  const token = localStorage.getItem('auth_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("auth_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
 api.interceptors.response.use(
-  res => res,
-  err => {
+  (res) => res,
+  (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      localStorage.removeItem("auth_token");
+      window.location.href = "/login";
     }
     return Promise.reject(err);
   }
 );
 
 export const transactionAPI = {
-  getAll: (params: any) => api.get('/transactions', { params }),
-  create: (data: FormData) => api.post('/transactions', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  getAll: (params: any) => api.get("/transactions", { params }),
+  create: (data: FormData) =>
+    api.post("/transactions", data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
-  move: (id: string, targetHouseholdId: string) => api.put(`/transactions/${id}/move`, { targetHouseholdId }),
-  getRecurring: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  move: (id: string, targetHouseholdId: string) =>
+    api.put(`/transactions/${id}/move`, { targetHouseholdId }),
+  getRecurring: (householdId: string) =>
+    api.get("/transactions/recurring", { params: { householdId } }),
   stopRecurring: (id: string) => api.delete(`/transactions/recurring/${id}`),
-  duplicateCheck: (d: any) => api.post('/transactions/duplicate-check', d),
+  duplicateCheck: (d: any) => api.post("/transactions/duplicate-check", d),
 };
 
 export const statsAPI = {
-  monthly: (p: any) => api.get('/statistics/monthly', { params: p }),
-  yearly: (p: any) => api.get('/statistics/yearly', { params: p }),
-  overview: (householdId: string) => api.get('/statistics/overview', { params: { householdId } }),
-  trends: (householdId: string, months: number) => api.get('/statistics/trends', { params: { householdId, months } }),
-  wealth: (householdId: string) => api.get('/statistics/wealth', { params: { householdId } }),
-  byPerson: (p: any) => api.get('/statistics/by-person', { params: p }),
+  monthly: (p: any) => api.get("/statistics/monthly", { params: p }),
+  yearly: (p: any) => api.get("/statistics/yearly", { params: p }),
+  overview: (householdId: string) =>
+    api.get("/statistics/overview", { params: { householdId } }),
+  trends: (householdId: string, months: number) =>
+    api.get("/statistics/trends", { params: { householdId, months } }),
+  wealth: (householdId: string) =>
+    api.get("/statistics/wealth", { params: { householdId } }),
+  byPerson: (p: any) => api.get("/statistics/by-person", { params: p }),
 };
 
 export const budgetAPI = {
-  getAll: (p: any) => api.get('/budgets', { params: p }),
-  create: (d: any) => api.post('/budgets', d),
+  getAll: (p: any) => api.get("/budgets", { params: p }),
+  create: (d: any) => api.post("/budgets", d),
   update: (id: string, d: any) => api.put(`/budgets/${id}`, d),
   delete: (id: string) => api.delete(`/budgets/${id}`),
 };
 
 export const categoryAPI = {
-  getAll: (householdId?: string) => api.get('/categories', { params: { householdId } }),
-  create: (d: any) => api.post('/categories', d),
+  getAll: (householdId?: string) =>
+    api.get("/categories", { params: { householdId } }),
+  create: (d: any) => api.post("/categories", d),
 };
 
 export const householdAPI = {
-  getAll: () => api.get('/households'),
-  create: (d: any) => api.post('/households', d),
+  getAll: () => api.get("/households"),
+  create: (d: any) => api.post("/households", d),
   update: (id: string, d: any) => api.put(`/households/${id}`, d),
   getMembers: (id: string) => api.get(`/households/${id}/members`),
   createInvite: (id: string, d: any) => api.post(`/households/${id}/invite`, d),
   remove: (id: string) => api.delete(`/households/${id}`),
-  removeMember: (id: string, userId: string) => api.delete(`/households/${id}/members/${userId}`),
+  removeMember: (id: string, userId: string) =>
+    api.delete(`/households/${id}/members/${userId}`),
   getAiSettings: (id: string) => api.get(`/households/${id}/ai-settings`),
-  saveAiSettings: (id: string, d: { aiEnabled: boolean; apiKey: string }) => api.put(`/households/${id}/ai-settings`, d),
+  saveAiSettings: (id: string, d: { aiEnabled: boolean; apiKey: string }) =>
+    api.put(`/households/${id}/ai-settings`, d),
 };
 
 export const recurringAPI = {
-  getAll: (householdId: string) => api.get('/transactions/recurring', { params: { householdId } }),
+  getAll: (householdId: string) =>
+    api.get("/transactions/recurring", { params: { householdId } }),
   stop: (id: string) => api.delete(`/transactions/recurring/${id}`),
 };
 
 export const ocrAPI = {
-  status: () => api.get('/ocr/status'),
+  status: () => api.get("/ocr/status"),
   analyze: (file: File) => {
     const fd = new FormData();
-    fd.append('receipt', file);
-    return api.post('/ocr/analyze', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    fd.append("receipt", file);
+    return api.post("/ocr/analyze", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
   },
 };
 
 export const paperlessAPI = {
-  check: (householdId: string, type: string, name: string) => api.get('/paperless/check', { params: { householdId, type, name } }),
+  check: (householdId: string, type: string, name: string) =>
+    api.get("/paperless/check", { params: { householdId, type, name } }),
   getConfig: (hid: string) => api.get(`/paperless/config/${hid}`),
-  saveConfig: (d: any) => api.post('/paperless/config', d),
+  saveConfig: (d: any) => api.post("/paperless/config", d),
   sync: (hid: string) => api.post(`/paperless/sync/${hid}`),
   getData: (hid: string) => api.get(`/paperless/data/${hid}`),
-  createDocType: (d: any) => api.post('/paperless/create-type', d),
-  createCorrespondent: (d: any) => api.post('/paperless/create-correspondent', d),
-  createTag: (d: any) => api.post('/paperless/create-tag', d),
-  toggleFavorite: (d: { type: string; id: string; isFavorite: boolean }) => api.put('/paperless/favorite', d),
-  upload: (d: any) => api.post('/paperless/upload', d),
+  createDocType: (d: any) => api.post("/paperless/create-type", d),
+  createCorrespondent: (d: any) =>
+    api.post("/paperless/create-correspondent", d),
+  createTag: (d: any) => api.post("/paperless/create-tag", d),
+  toggleFavorite: (d: { type: string; id: string; isFavorite: boolean }) =>
+    api.put("/paperless/favorite", d),
+  upload: (d: any) => api.post("/paperless/upload", d),
   getUsers: (householdId: string) => api.get(`/paperless/users/${householdId}`),
 };
 
 export const adminAPI = {
-  getStats: () => api.get('/admin/stats'),
-  getUsers: (p?: any) => api.get('/admin/users', { params: p }),
+  getStats: () => api.get("/admin/stats"),
+  getUsers: (p?: any) => api.get("/admin/users", { params: p }),
   updateUser: (id: string, d: any) => api.put(`/admin/users/${id}`, d),
   deleteUser: (id: string) => api.delete(`/admin/users/${id}`),
-  getHouseholds: (p?: any) => api.get('/admin/households', { params: p }),
-  createInviteCode: (d: any) => api.post('/admin/invite-codes', d),
-  getInviteCodes: () => api.get('/admin/invite-codes'),
-  getAiSettings: () => api.get('/admin/ai-settings'),
-  saveAiSettings: (d: { apiKey: string; aiKeyPublic: boolean }) => api.put('/admin/ai-settings', d),
+  getHouseholds: (p?: any) => api.get("/admin/households", { params: p }),
+  createInviteCode: (d: any) => api.post("/admin/invite-codes", d),
+  getInviteCodes: () => api.get("/admin/invite-codes"),
+  getAiSettings: () => api.get("/admin/ai-settings"),
+  saveAiSettings: (d: { apiKey: string; aiKeyPublic: boolean }) =>
+    api.put("/admin/ai-settings", d),
   toggleAiGrant: (id: string) => api.put(`/admin/users/${id}/ai-grant`),
-  getBackupConfig: () => api.get('/admin/backup/config'),
-  saveBackupConfig: (d: any) => api.put('/admin/backup/config', d),
-  testBackup: (d: any) => api.post('/admin/backup/test', d),
-  runBackup: () => api.post('/admin/backup/run'),
-  getSshPublicKey: () => api.get('/admin/backup/ssh-key'),
-  regenerateSshKey: () => api.post('/admin/backup/ssh-key/regenerate'),
-  previewRestore: (file: File) => { const fd = new FormData(); fd.append('backup', file); return api.post('/admin/backup/restore/preview', fd); },
-  restoreBackup:  (file: File) => { const fd = new FormData(); fd.append('backup', file); return api.post('/admin/backup/restore', fd, { timeout: 120000 }); },
+  setSubscription: (id: string, subscriptionActive: boolean) =>
+    api.put(`/admin/users/${id}/subscription`, { subscriptionActive }),
+  getBackupConfig: () => api.get("/admin/backup/config"),
+  saveBackupConfig: (d: any) => api.put("/admin/backup/config", d),
+  testBackup: (d: any) => api.post("/admin/backup/test", d),
+  runBackup: () => api.post("/admin/backup/run"),
+  getSshPublicKey: () => api.get("/admin/backup/ssh-key"),
+  regenerateSshKey: () => api.post("/admin/backup/ssh-key/regenerate"),
+  previewRestore: (file: File) => {
+    const fd = new FormData();
+    fd.append("backup", file);
+    return api.post("/admin/backup/restore/preview", fd);
+  },
+  restoreBackup: (file: File) => {
+    const fd = new FormData();
+    fd.append("backup", file);
+    return api.post("/admin/backup/restore", fd, { timeout: 120_000 });
+  },
 };
 
 export const savingsGoalAPI = {
-  getAll: (householdId: string) => api.get('/savings-goals', { params: { householdId } }),
-  create: (d: any) => api.post('/savings-goals', d),
+  getAll: (householdId: string) =>
+    api.get("/savings-goals", { params: { householdId } }),
+  create: (d: any) => api.post("/savings-goals", d),
   update: (id: string, d: any) => api.put(`/savings-goals/${id}`, d),
   delete: (id: string) => api.delete(`/savings-goals/${id}`),
 };
 
 export const reportsAPI = {
   downloadMonthly: (householdId: string, year: number, month: number) =>
-    api.get('/reports/monthly', { params: { householdId, year, month }, responseType: 'blob' }),
+    api.get("/reports/monthly", {
+      params: { householdId, year, month },
+      responseType: "blob",
+    }),
   sendMonthly: (householdId: string, year: number, month: number) =>
-    api.post('/reports/send-monthly', { householdId, year, month }),
+    api.post("/reports/send-monthly", { householdId, year, month }),
 };
 
 export const backupAPI = {
-  export: (householdId: string, format: 'json' | 'csv') =>
-    api.get('/backup/export', { params: { householdId, format }, responseType: 'blob' }),
+  export: (householdId: string, format: "json" | "csv") =>
+    api.get("/backup/export", {
+      params: { householdId, format },
+      responseType: "blob",
+    }),
   import: (householdId: string, file: File) => {
     const fd = new FormData();
-    fd.append('file', file);
-    fd.append('householdId', householdId);
-    return api.post('/backup/import', fd);
+    fd.append("file", file);
+    fd.append("householdId", householdId);
+    return api.post("/backup/import", fd);
   },
 };
