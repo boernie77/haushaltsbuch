@@ -26,9 +26,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 008-transaction-paperless-metadata,
-│       │                           009-savings-goals, 010-transaction-splits,
-│       │                           011-password-reset, 012-reports, 013-statistics
+│       ├── migrations/             001-initial … 018-recurring-source-id,
+│       │                           019-subscription
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -43,7 +42,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │       ├── pages/                  Alle Seiten
 │       ├── services/api.ts         Axios-Wrapper
 │       ├── store/authStore.ts      Zustand Store
-│       └── components/Layout.tsx  Sidebar + Household-Switcher
+│       └── components/Layout.tsx  Sidebar + Household-Switcher + User-Dropdown-Menü
 ├── mobile/
 │   ├── app/                        expo-router Screens
 │   ├── ios/                        Natives iOS-Projekt (nach expo prebuild generiert)
@@ -69,7 +68,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 ⚠️ **KRITISCH:** NIEMALS Daten zwischen verschiedenen Haushalten (Personengruppen) verschieben oder teilen! Verschiebungen von Buchungen sind NUR zwischen den eigenen Haushaltsbüchern des angemeldeten Users erlaubt.
 
 ## Datenmodelle
-- **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted
+- **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted, `subscriptionType` (trial|monthly|null), `trialStartedAt`, `trialEndsAt`, `subscriptionActive`
 - **Household** (= Haushaltsbuch): id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
 - **HouseholdMember**: householdId, userId, role (admin/member/viewer)
 - **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
@@ -94,6 +93,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - Erster User → automatisch superadmin + Haushalt, kein Code nötig
 - Alle weiteren User → Einladungscode zwingend
 - Admin sieht nur Statistiken, verwaltet keine fremden Haushalte
+- Registrierung mit Einladungscode startet automatisch 31-tägiges Testabo (→ Abonnement-System)
 
 ## Migrations-System
 Eigener leichtgewichtiger Runner (`src/utils/migrate.js`):
@@ -122,6 +122,8 @@ module.exports = {
 | Zeit | Job |
 |------|-----|
 | täglich 06:00 | `processRecurringTransactions` — erstellt fällige Kopien wiederkehrender Buchungen |
+| täglich 07:00 | `deactivateExpiredTrials` — deaktiviert Konten mit abgelaufenem Testabo |
+| täglich 07:30 | `sendTrialExpiryReminders` — E-Mail-Erinnerung 5 Tage + 2 Tage vor Testabo-Ablauf |
 | alle 6h | `syncAllPaperless` — synchronisiert alle aktiven Paperless-Haushalte |
 | 1. jeden Monats 08:00 | `sendMonthlyReports` — HTML-Monatsberichte per E-Mail |
 | konfigurierbar | SFTP-Backup (täglich 02:00 / wöchentlich / monatlich) |
@@ -167,11 +169,24 @@ Zwei-Pass-Verfahren mit Pixel-Mapping:
 - `POST /api/transactions/duplicate-check` — prüft auf ähnliche Buchungen (Betrag, Datum, Beschreibung)
 - Web: automatischer Check bei Blur auf Betrag/Datum/Beschreibung, Warnung wenn Duplikate gefunden
 
-## Passwort-Reset
+## Passwort-Reset & -Änderung
 - `POST /api/auth/forgot-password` — sendet Reset-E-Mail mit Token (1h gültig)
 - `POST /api/auth/reset-password` — setzt Passwort mit Token
-- Web: ForgotPasswordPage + ResetPasswordPage
+- `PUT /api/auth/password` — ändert Passwort (auth required, prüft currentPassword)
+- Web: ForgotPasswordPage + ResetPasswordPage + Modal in Layout (User-Menü)
 - Mobile: Link auf Login-Seite öffnet Web-URL
+
+## Abonnement-System
+- **Testabo:** Startet automatisch bei Registrierung mit Einladungscode (31 Tage)
+  - `subscriptionType = 'trial'`, `trialStartedAt = now`, `trialEndsAt = now + 31d`
+  - Superadmin (erster User) bekommt kein Testabo
+- **Ablauf:** Login prüft Ablauf + deaktiviert Konto automatisch; Cron 07:00 räumt auf
+- **Erinnerungen:** Cron 07:30 schickt E-Mail 5 Tage + 2 Tage vor Ablauf
+- **Monatsabo:** Superadmin setzt `subscriptionActive = true` → Konto bleibt aktiv, reaktiviert falls deaktiviert
+- **API:** `PUT /api/admin/users/:id/subscription` — `{ subscriptionActive: bool }`
+- **AdminPage:** Spalte "Registriert / Testabo" zeigt Registrierungsdatum + Restlaufzeit (grau → orange ≤5d → rot ≤2d)
+  - Status-Badge und Abo-Badge sind direkt anklickbar zum Umschalten
+- **Schutz:** Superadmin kann sich nicht selbst deaktivieren (Frontend + Backend)
 
 ## Backup-System
 **Haushalt-Backup:**
@@ -236,7 +251,7 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - **SMTP:** smtp.strato.de, Port 465 (SSL)
 - **User:** christian@bernauer24.com
 - **Absender:** noreply@bernauer24.com (Strato-Alias)
-- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte
+- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte, Testabo-Ablauf-Erinnerungen
 - ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 
 ## Statistiken & Dashboard
