@@ -15,12 +15,15 @@ module.exports = {
       ALTER TABLE transactions
         ADD COLUMN IF NOT EXISTS "targetHouseholdId" UUID REFERENCES households(id) ON DELETE SET NULL
     `);
-    // Extend ENUM for transfer type
+    // Extend ENUM for transfer type (nur wenn die Spalte als PostgreSQL-ENUM angelegt wurde;
+    // bei frischen Installs ist sie VARCHAR und kann 'transfer' direkt speichern)
     await sequelize.query(`
       DO $$ BEGIN
-        ALTER TYPE "enum_transactions_type" ADD VALUE IF NOT EXISTS 'transfer';
+        IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_transactions_type') THEN
+          ALTER TYPE "enum_transactions_type" ADD VALUE IF NOT EXISTS 'transfer';
+        END IF;
       EXCEPTION WHEN duplicate_object THEN null;
       END $$;
     `);
-  }
+  },
 };
