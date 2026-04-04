@@ -21,7 +21,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { api, householdAPI } from "../services/api";
+import { api, configAPI, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
 const navItems = [
@@ -218,6 +218,7 @@ export default function Layout() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [familyMode, setFamilyMode] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -229,6 +230,10 @@ export default function Layout() {
           setCurrentHousehold(data.households[0]);
         }
       })
+      .catch(() => {});
+    configAPI
+      .get()
+      .then(({ data }) => setFamilyMode(data.familyMode))
       .catch(() => {});
   }, []);
 
@@ -360,22 +365,23 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {(user?.role === "admin" || user?.role === "superadmin") && (
-            <NavLink
-              className={({ isActive }) =>
-                clsx(
-                  "mx-2 mb-1 flex items-center gap-3 rounded-xl px-4 py-3 font-medium text-sm transition-all",
-                  isActive
-                    ? "bg-[var(--primary)] text-white"
-                    : "text-gray-600 hover:bg-pink-50 dark:text-gray-400 dark:hover:bg-slate-700"
-                )
-              }
-              to="/admin"
-            >
-              <Shield className="shrink-0" size={20} />
-              {sidebarOpen && "Administration"}
-            </NavLink>
-          )}
+          {!familyMode &&
+            (user?.role === "admin" || user?.role === "superadmin") && (
+              <NavLink
+                className={({ isActive }) =>
+                  clsx(
+                    "mx-2 mb-1 flex items-center gap-3 rounded-xl px-4 py-3 font-medium text-sm transition-all",
+                    isActive
+                      ? "bg-[var(--primary)] text-white"
+                      : "text-gray-600 hover:bg-pink-50 dark:text-gray-400 dark:hover:bg-slate-700"
+                  )
+                }
+                to="/admin"
+              >
+                <Shield className="shrink-0" size={20} />
+                {sidebarOpen && "Administration"}
+              </NavLink>
+            )}
         </nav>
 
         {/* User */}
@@ -413,16 +419,18 @@ export default function Layout() {
                     <KeyRound className="text-gray-400" size={15} />
                     Passwort ändern
                   </button>
-                  <button
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-gray-700 text-sm hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      setShowSubscriptionModal(true);
-                    }}
-                  >
-                    <CreditCard className="text-gray-400" size={15} />
-                    Abonnement
-                  </button>
+                  {!familyMode && (
+                    <button
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-gray-700 text-sm hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setShowSubscriptionModal(true);
+                      }}
+                    >
+                      <CreditCard className="text-gray-400" size={15} />
+                      Abonnement
+                    </button>
+                  )}
                   <div className="border-pink-100 border-t dark:border-slate-600" />
                   <button
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-gray-700 text-sm hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"

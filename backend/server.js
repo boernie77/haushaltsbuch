@@ -36,6 +36,14 @@ app.use("/api/backup", require("./src/routes/backup"));
 app.use("/api/savings-goals", require("./src/routes/savingsGoals"));
 app.use("/api/reports", require("./src/routes/reports").router);
 
+// App config — gibt öffentliche Konfigurationsflags zurück
+app.get("/api/config", (req, res) => {
+  res.json({
+    familyMode: process.env.FAMILY_MODE === "true",
+    appUrl: process.env.APP_URL || "",
+  });
+});
+
 // Health check — DB-Verbindung wird verifiziert
 app.get("/api/health", async (req, res) => {
   try {

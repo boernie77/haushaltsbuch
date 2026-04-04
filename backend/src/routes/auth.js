@@ -73,8 +73,10 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 12);
-      const trialStartedAt = isFirst ? null : new Date();
-      const trialEndsAt = isFirst
+      const isFamilyMode = process.env.FAMILY_MODE === "true";
+      const noTrial = isFirst || isFamilyMode;
+      const trialStartedAt = noTrial ? null : new Date();
+      const trialEndsAt = noTrial
         ? null
         : new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
       const user = await User.create({
@@ -82,7 +84,7 @@ router.post(
         email,
         password: hashedPassword,
         role: isFirst ? "superadmin" : "member",
-        subscriptionType: isFirst ? null : "trial",
+        subscriptionType: noTrial ? null : "trial",
         trialStartedAt,
         trialEndsAt,
       });
@@ -160,8 +162,9 @@ router.post(
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      // Auto-deactivate expired trials
+      // Auto-deactivate expired trials (not in family mode)
       if (
+        process.env.FAMILY_MODE !== "true" &&
         user.isActive &&
         !user.subscriptionActive &&
         user.trialEndsAt &&
@@ -272,7 +275,7 @@ router.post(
         { replacements: { userId: user.id, token, expiresAt } }
       );
 
-      const resetUrl = `${process.env.APP_URL || "https://haushalt.bernauer24.com"}/reset-password?token=${token}`;
+      const resetUrl = `${process.env.APP_URL || "http://localhost:8080"}/reset-password?token=${token}`;
       await mailer.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         to: user.email,

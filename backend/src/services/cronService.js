@@ -398,13 +398,15 @@ async function startCron() {
   recurringJob = cron.schedule("0 6 * * *", processRecurringTransactions);
   console.log("[cron] Wiederkehrende Buchungen: täglich 06:00");
 
-  // Testabo-Ablauf: täglich um 07:00
-  cron.schedule("0 7 * * *", deactivateExpiredTrials);
-  console.log("[cron] Testabo-Ablauf: täglich 07:00");
+  if (process.env.FAMILY_MODE !== "true") {
+    // Testabo-Ablauf: täglich um 07:00
+    cron.schedule("0 7 * * *", deactivateExpiredTrials);
+    console.log("[cron] Testabo-Ablauf: täglich 07:00");
 
-  // Testabo-Erinnerungen: täglich um 07:30 (5 Tage + 2 Tage vor Ablauf)
-  cron.schedule("30 7 * * *", sendTrialExpiryReminders);
-  console.log("[cron] Testabo-Erinnerungen: täglich 07:30");
+    // Testabo-Erinnerungen: täglich um 07:30 (5 Tage + 2 Tage vor Ablauf)
+    cron.schedule("30 7 * * *", sendTrialExpiryReminders);
+    console.log("[cron] Testabo-Erinnerungen: täglich 07:30");
+  }
 
   // Paperless Auto-Sync: alle 6 Stunden
   paperlessJob = cron.schedule("0 */6 * * *", syncAllPaperless);

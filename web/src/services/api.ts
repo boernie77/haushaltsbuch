@@ -178,3 +178,10 @@ export const backupAPI = {
     return api.post("/backup/import", fd);
   },
 };
+
+export const configAPI = {
+  get: () =>
+    api.get<{ familyMode: boolean; appUrl: string }>("/config", {
+      // Kein Auth-Token nötig — öffentlicher Endpunkt
+    }),
+};
