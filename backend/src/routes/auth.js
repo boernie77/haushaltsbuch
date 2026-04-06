@@ -201,7 +201,14 @@ router.put(
   auth,
   [
     body("name").optional().trim().notEmpty(),
-    body("theme").optional().isIn(["feminine", "masculine"]),
+    body("theme")
+      .optional()
+      .isIn([
+        "feminine",
+        "masculine",
+        "professional-light",
+        "professional-dark",
+      ]),
   ],
   async (req, res) => {
     try {

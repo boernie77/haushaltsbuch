@@ -10,7 +10,7 @@ interface User {
   role: "superadmin" | "admin" | "member";
   subscriptionActive: boolean;
   subscriptionType: "trial" | "monthly" | null;
-  theme: "feminine" | "masculine";
+  theme: "feminine" | "masculine" | "professional-light" | "professional-dark";
   trialEndsAt: string | null;
   trialStartedAt: string | null;
 }

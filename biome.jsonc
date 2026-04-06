@@ -36,7 +36,8 @@
         "noExplicitAny": "off",
         "noArrayIndexKey": "off",
         "useAwait": "off",
-        "noAlert": "off"
+        "noAlert": "off",
+        "noUnknownAtRules": "off"
       },
       "correctness": {
         "noUnusedFunctionParameters": "off",

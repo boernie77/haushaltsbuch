@@ -8,7 +8,7 @@ interface User {
   id: string;
   name: string;
   role: "superadmin" | "admin" | "member";
-  theme: "feminine" | "masculine";
+  theme: "feminine" | "masculine" | "professional-light" | "professional-dark";
 }
 
 interface Household {
@@ -39,7 +39,9 @@ interface AuthState {
   setCurrentHousehold: (household: Household) => void;
   setHouseholds: (households: Household[]) => void;
   token: string | null;
-  updateTheme: (theme: "feminine" | "masculine") => void;
+  updateTheme: (
+    theme: "feminine" | "masculine" | "professional-light" | "professional-dark"
+  ) => void;
   user: User | null;
 }
 

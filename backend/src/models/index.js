@@ -29,7 +29,12 @@ const User = sequelize.define(
       defaultValue: "member",
     },
     theme: {
-      type: DataTypes.ENUM("feminine", "masculine"),
+      type: DataTypes.ENUM(
+        "feminine",
+        "masculine",
+        "professional-light",
+        "professional-dark"
+      ),
       defaultValue: "feminine",
     },
     avatar: { type: DataTypes.STRING, allowNull: true },

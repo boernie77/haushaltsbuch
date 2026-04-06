@@ -1,6 +1,7 @@
 import { clsx } from "clsx";
 import {
   BarChart2,
+  Check,
   ChevronDown,
   CreditCard,
   FileText,
@@ -11,6 +12,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  Palette,
   Receipt,
   Shield,
   Sun,
@@ -21,6 +23,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { applyThemeClasses } from "../App";
 import { api, configAPI, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
@@ -256,21 +259,16 @@ export default function Layout() {
     navigate("/login");
   };
 
-  const handleThemeToggle = async () => {
-    const newTheme = user?.theme === "masculine" ? "feminine" : "masculine";
+  const handleThemeChange = async (newTheme: string) => {
     try {
       await api.put("/auth/profile", { theme: newTheme });
-      updateUser({ theme: newTheme });
-      if (newTheme === "masculine") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      updateUser({ theme: newTheme as any });
+      applyThemeClasses(newTheme);
     } catch {}
   };
 
   return (
-    <div className="flex h-screen bg-pink-50 dark:bg-slate-900">
+    <div className="layout-bg flex h-screen bg-pink-50 dark:bg-slate-900">
       {/* Modals */}
       {showPasswordModal && (
         <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
@@ -432,22 +430,45 @@ export default function Layout() {
                     </button>
                   )}
                   <div className="border-pink-100 border-t dark:border-slate-600" />
-                  <button
-                    className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-gray-700 text-sm hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      handleThemeToggle();
-                    }}
-                  >
-                    {user?.theme === "masculine" ? (
-                      <Sun className="text-gray-400" size={15} />
-                    ) : (
-                      <Moon className="text-gray-400" size={15} />
-                    )}
-                    {user?.theme === "masculine"
-                      ? "Helles Design"
-                      : "Dunkles Design"}
-                  </button>
+                  <p className="px-4 pt-2 pb-1 font-medium text-gray-400 text-xs uppercase tracking-wide">
+                    Design
+                  </p>
+                  {(
+                    [
+                      { v: "feminine", icon: Sun, label: "Rosa (Hell)" },
+                      { v: "masculine", icon: Moon, label: "Dunkel Blau" },
+                      {
+                        v: "professional-light",
+                        icon: Palette,
+                        label: "Professional Hell",
+                      },
+                      {
+                        v: "professional-dark",
+                        icon: Palette,
+                        label: "Professional Dunkel",
+                      },
+                    ] as const
+                  ).map(({ v, icon: Icon, label }) => (
+                    <button
+                      className={clsx(
+                        "flex w-full items-center gap-2 px-4 py-2 text-left text-sm",
+                        user?.theme === v
+                          ? "font-medium text-[var(--primary)]"
+                          : "sidebar-hover text-gray-700 hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"
+                      )}
+                      key={v}
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        handleThemeChange(v);
+                      }}
+                    >
+                      <Icon className="text-gray-400" size={15} />
+                      {label}
+                      {user?.theme === v && (
+                        <Check className="ml-auto" size={13} />
+                      )}
+                    </button>
+                  ))}
                   <button
                     className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-red-500 text-sm hover:bg-red-50 dark:hover:bg-red-900/20"
                     onClick={() => {
@@ -465,13 +486,13 @@ export default function Layout() {
             <div className="flex flex-col items-center gap-3">
               <button
                 className="text-gray-400 hover:text-[var(--primary)]"
-                onClick={handleThemeToggle}
+                onClick={() => {
+                  setSidebarOpen(true);
+                  setUserMenuOpen(true);
+                }}
+                title="Design wechseln"
               >
-                {user?.theme === "masculine" ? (
-                  <Sun size={20} />
-                ) : (
-                  <Moon size={20} />
-                )}
+                <Palette size={20} />
               </button>
               <button
                 className="text-gray-400 hover:text-red-500"
