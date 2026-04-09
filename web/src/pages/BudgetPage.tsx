@@ -1,185 +1,372 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, AlertTriangle, Target, PiggyBank } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { useAuthStore } from '../store/authStore';
-import { budgetAPI, categoryAPI, savingsGoalAPI } from '../services/api';
+import { AlertTriangle, PiggyBank, Plus, Target, Trash2 } from "lucide-react";
+import type React from "react";
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { budgetAPI, categoryAPI, savingsGoalAPI } from "../services/api";
+import { useAuthStore } from "../store/authStore";
 
-type Tab = 'budgets' | 'goals';
+type Tab = "budgets" | "goals";
 
-const GOAL_ICONS = ['🎯', '🏠', '✈️', '🚗', '💻', '🎓', '💍', '🏖️', '🛋️', '📱', '🎸', '⛵'];
+const GOAL_ICONS = [
+  "🎯",
+  "🏠",
+  "✈️",
+  "🚗",
+  "💻",
+  "🎓",
+  "💍",
+  "🏖️",
+  "🛋️",
+  "📱",
+  "🎸",
+  "⛵",
+];
 
 export default function BudgetPage() {
   const { currentHousehold } = useAuthStore();
-  const [tab, setTab] = useState<Tab>('budgets');
+  const [tab, setTab] = useState<Tab>("budgets");
 
   // Budgets
   const [budgets, setBudgets] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [showBudgetForm, setShowBudgetForm] = useState(false);
-  const [budgetForm, setBudgetForm] = useState({ categoryId: '', limitAmount: '', warningAt: '80', month: '', year: String(new Date().getFullYear()) });
+  const [budgetForm, setBudgetForm] = useState({
+    categoryId: "",
+    limitAmount: "",
+    warningAt: "80",
+    month: "",
+    year: String(new Date().getFullYear()),
+  });
 
   // Sparziele
   const [goals, setGoals] = useState<any[]>([]);
   const [showGoalForm, setShowGoalForm] = useState(false);
-  const [goalForm, setGoalForm] = useState({ name: '', targetAmount: '', savedAmount: '0', targetDate: '', icon: '🎯', color: '#E91E8C' });
+  const [goalForm, setGoalForm] = useState({
+    name: "",
+    targetAmount: "",
+    savedAmount: "0",
+    targetDate: "",
+    icon: "🎯",
+    color: "#E91E8C",
+  });
   const [depositGoalId, setDepositGoalId] = useState<string | null>(null);
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState("");
 
   const now = new Date();
 
-  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { style: 'currency', currency: currentHousehold?.currency || 'EUR' }).format(n);
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency: currentHousehold?.currency || "EUR",
+    }).format(n);
 
   const loadBudgets = async () => {
-    if (!currentHousehold) return;
-    const { data } = await budgetAPI.getAll({ householdId: currentHousehold.id, month: now.getMonth() + 1, year: now.getFullYear() });
+    if (!currentHousehold) {
+      return;
+    }
+    const { data } = await budgetAPI.getAll({
+      householdId: currentHousehold.id,
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+    });
     setBudgets(data.budgets);
   };
 
   const loadGoals = async () => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     const { data } = await savingsGoalAPI.getAll(currentHousehold.id);
     setGoals(data.goals);
   };
 
   useEffect(() => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     loadBudgets();
     loadGoals();
-    categoryAPI.getAll(currentHousehold.id).then(({ data }) => setCategories(data.categories));
+    categoryAPI
+      .getAll(currentHousehold.id)
+      .then(({ data }) => setCategories(data.categories));
   }, [currentHousehold]);
 
   const handleSaveBudget = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     try {
-      await budgetAPI.create({ ...budgetForm, householdId: currentHousehold.id, month: budgetForm.month || null });
-      toast.success('Budget gesetzt');
+      await budgetAPI.create({
+        ...budgetForm,
+        householdId: currentHousehold.id,
+        month: budgetForm.month || null,
+      });
+      toast.success("Budget gesetzt");
       setShowBudgetForm(false);
       loadBudgets();
-    } catch { toast.error('Fehler'); }
+    } catch {
+      toast.error("Fehler");
+    }
   };
 
   const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     try {
-      await savingsGoalAPI.create({ ...goalForm, householdId: currentHousehold.id, targetAmount: parseFloat(goalForm.targetAmount), savedAmount: parseFloat(goalForm.savedAmount || '0') });
-      toast.success('Sparziel erstellt');
+      await savingsGoalAPI.create({
+        ...goalForm,
+        householdId: currentHousehold.id,
+        targetAmount: Number.parseFloat(goalForm.targetAmount),
+        savedAmount: Number.parseFloat(goalForm.savedAmount || "0"),
+      });
+      toast.success("Sparziel erstellt");
       setShowGoalForm(false);
-      setGoalForm({ name: '', targetAmount: '', savedAmount: '0', targetDate: '', icon: '🎯', color: '#E91E8C' });
+      setGoalForm({
+        name: "",
+        targetAmount: "",
+        savedAmount: "0",
+        targetDate: "",
+        icon: "🎯",
+        color: "#E91E8C",
+      });
       loadGoals();
-    } catch { toast.error('Fehler'); }
+    } catch {
+      toast.error("Fehler");
+    }
   };
 
   const handleDeposit = async (goalId: string) => {
-    const amount = parseFloat(depositAmount);
-    if (!amount || amount <= 0) return;
+    const amount = Number.parseFloat(depositAmount);
+    if (!amount || amount <= 0) {
+      return;
+    }
     try {
-      const goal = goals.find(g => g.id === goalId);
-      await savingsGoalAPI.update(goalId, { savedAmount: (parseFloat(goal.savedAmount) || 0) + amount });
-      toast.success('Eingezahlt!');
+      const goal = goals.find((g) => g.id === goalId);
+      await savingsGoalAPI.update(goalId, {
+        savedAmount: (Number.parseFloat(goal.savedAmount) || 0) + amount,
+      });
+      toast.success("Eingezahlt!");
       setDepositGoalId(null);
-      setDepositAmount('');
+      setDepositAmount("");
       loadGoals();
-    } catch { toast.error('Fehler'); }
+    } catch {
+      toast.error("Fehler");
+    }
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Budget & Sparziele</h1>
+    <div className="space-y-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
+          Budget & Sparziele
+        </h1>
         <div className="flex gap-2">
-          <button onClick={() => setTab('budgets')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${tab === 'budgets' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300'}`}>
+          <button
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 font-medium text-sm transition-all ${tab === "budgets" ? "bg-[var(--primary)] text-white" : "bg-white text-gray-700 dark:bg-slate-800 dark:text-gray-300"}`}
+            onClick={() => setTab("budgets")}
+          >
             <AlertTriangle size={15} /> Budgets
           </button>
-          <button onClick={() => setTab('goals')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${tab === 'goals' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-300'}`}>
+          <button
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 font-medium text-sm transition-all ${tab === "goals" ? "bg-[var(--primary)] text-white" : "bg-white text-gray-700 dark:bg-slate-800 dark:text-gray-300"}`}
+            onClick={() => setTab("goals")}
+          >
             <Target size={15} /> Sparziele
           </button>
         </div>
       </div>
 
       {/* ── Budgets ── */}
-      {tab === 'budgets' && (
+      {tab === "budgets" && (
         <>
-          <button className="btn-primary flex items-center gap-2" onClick={() => setShowBudgetForm(true)}>
+          <button
+            className="btn-primary flex items-center gap-2"
+            onClick={() => setShowBudgetForm(true)}
+          >
             <Plus size={18} /> Neues Budget
           </button>
 
           {showBudgetForm && (
             <div className="card p-6">
-              <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Budget hinzufügen</h2>
-              <form onSubmit={handleSaveBudget} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h2 className="mb-4 font-semibold text-gray-900 dark:text-white">
+                Budget hinzufügen
+              </h2>
+              <form
+                className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                onSubmit={handleSaveBudget}
+              >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Kategorie (leer = Gesamtbudget)</label>
-                  <select className="input" value={budgetForm.categoryId} onChange={e => setBudgetForm(f => ({ ...f, categoryId: e.target.value }))}>
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Kategorie (leer = Gesamtbudget)
+                  </label>
+                  <select
+                    className="input"
+                    onChange={(e) =>
+                      setBudgetForm((f) => ({
+                        ...f,
+                        categoryId: e.target.value,
+                      }))
+                    }
+                    value={budgetForm.categoryId}
+                  >
                     <option value="">Gesamtes Haushaltbudget</option>
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.nameDE || c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Limit (€) *</label>
-                  <input type="number" step="0.01" className="input" value={budgetForm.limitAmount}
-                    onChange={e => setBudgetForm(f => ({ ...f, limitAmount: e.target.value }))} required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Warnung bei (%)</label>
-                  <input type="number" min="1" max="100" className="input" value={budgetForm.warningAt}
-                    onChange={e => setBudgetForm(f => ({ ...f, warningAt: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Gültig für Monat</label>
-                  <select className="input" value={budgetForm.month} onChange={e => setBudgetForm(f => ({ ...f, month: e.target.value }))}>
-                    <option value="">Ganzes Jahr (alle Monate)</option>
-                    {['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'].map((m, i) => (
-                      <option key={i} value={String(i+1)}>{m}</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.nameDE || c.name}
+                      </option>
                     ))}
                   </select>
                 </div>
-                <div className="md:col-span-2 flex gap-3 justify-end">
-                  <button type="button" onClick={() => setShowBudgetForm(false)} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium">Abbrechen</button>
-                  <button type="submit" className="btn-primary">Speichern</button>
+                <div>
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Limit (€) *
+                  </label>
+                  <input
+                    className="input"
+                    onChange={(e) =>
+                      setBudgetForm((f) => ({
+                        ...f,
+                        limitAmount: e.target.value,
+                      }))
+                    }
+                    required
+                    step="0.01"
+                    type="number"
+                    value={budgetForm.limitAmount}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Warnung bei (%)
+                  </label>
+                  <input
+                    className="input"
+                    max="100"
+                    min="1"
+                    onChange={(e) =>
+                      setBudgetForm((f) => ({
+                        ...f,
+                        warningAt: e.target.value,
+                      }))
+                    }
+                    type="number"
+                    value={budgetForm.warningAt}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Gültig für Monat
+                  </label>
+                  <select
+                    className="input"
+                    onChange={(e) =>
+                      setBudgetForm((f) => ({ ...f, month: e.target.value }))
+                    }
+                    value={budgetForm.month}
+                  >
+                    <option value="">Ganzes Jahr (alle Monate)</option>
+                    {[
+                      "Januar",
+                      "Februar",
+                      "März",
+                      "April",
+                      "Mai",
+                      "Juni",
+                      "Juli",
+                      "August",
+                      "September",
+                      "Oktober",
+                      "November",
+                      "Dezember",
+                    ].map((m, i) => (
+                      <option key={i} value={String(i + 1)}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-3 md:col-span-2">
+                  <button
+                    className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-sm dark:bg-slate-700"
+                    onClick={() => setShowBudgetForm(false)}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button className="btn-primary" type="submit">
+                    Speichern
+                  </button>
                 </div>
               </form>
             </div>
           )}
 
           <div className="space-y-4">
-            {budgets.map(budget => (
-              <div key={budget.id} className="card p-5">
-                <div className="flex items-start justify-between mb-3">
+            {budgets.map((budget) => (
+              <div className="card p-5" key={budget.id}>
+                <div className="mb-3 flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">
-                      {budget.Category ? `${budget.Category.icon} ${budget.Category.nameDE || budget.Category.name}` : '🏠 Gesamthaushalt'}
+                      {budget.Category
+                        ? `${budget.Category.icon} ${budget.Category.nameDE || budget.Category.name}`
+                        : "🏠 Gesamthaushalt"}
                     </h3>
-                    <p className="text-sm text-gray-500">Limit: {fmt(parseFloat(budget.limitAmount))}</p>
+                    <p className="text-gray-500 text-sm">
+                      Limit: {fmt(Number.parseFloat(budget.limitAmount))}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    {budget.isWarning && <AlertTriangle className="text-orange-500" size={18} />}
-                    <span className={`text-lg font-bold ${budget.isOver ? 'text-red-500' : budget.isWarning ? 'text-orange-500' : 'text-gray-900 dark:text-white'}`}>
+                    {budget.isWarning && (
+                      <AlertTriangle className="text-orange-500" size={18} />
+                    )}
+                    <span
+                      className={`font-bold text-lg ${budget.isOver ? "text-red-500" : budget.isWarning ? "text-orange-500" : "text-gray-900 dark:text-white"}`}
+                    >
                       {budget.percentage}%
                     </span>
-                    <button onClick={() => { budgetAPI.delete(budget.id).then(() => { toast.success('Gelöscht'); loadBudgets(); }); }} className="text-gray-400 hover:text-red-500">
+                    <button
+                      className="text-gray-400 hover:text-red-500"
+                      onClick={() => {
+                        budgetAPI.delete(budget.id).then(() => {
+                          toast.success("Gelöscht");
+                          loadBudgets();
+                        });
+                      }}
+                    >
                       <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
-                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                <div className="mb-2 flex justify-between text-gray-600 text-sm dark:text-gray-400">
                   <span>Ausgegeben: {fmt(budget.spent || 0)}</span>
-                  <span>Noch frei: {fmt((budget.limitAmount - (budget.spent || 0)))}</span>
+                  <span>
+                    Noch frei: {fmt(budget.limitAmount - (budget.spent || 0))}
+                  </span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-3">
-                  <div className={`h-3 rounded-full transition-all ${budget.isOver ? 'bg-red-500' : budget.isWarning ? 'bg-orange-500' : 'bg-[var(--primary)]'}`}
-                    style={{ width: `${Math.min(budget.percentage, 100)}%` }} />
+                <div className="h-3 w-full rounded-full bg-gray-200 dark:bg-slate-600">
+                  <div
+                    className={`h-3 rounded-full transition-all ${budget.isOver ? "bg-red-500" : budget.isWarning ? "bg-orange-500" : "bg-[var(--primary)]"}`}
+                    style={{ width: `${Math.min(budget.percentage, 100)}%` }}
+                  />
                 </div>
-                {budget.isOver && <p className="text-red-500 text-sm mt-2">⚠️ Budget überschritten!</p>}
-                {budget.isWarning && !budget.isOver && <p className="text-orange-500 text-sm mt-2">⚠️ Über {budget.warningAt}% des Budgets verbraucht</p>}
+                {budget.isOver && (
+                  <p className="mt-2 text-red-500 text-sm">
+                    ⚠️ Budget überschritten!
+                  </p>
+                )}
+                {budget.isWarning && !budget.isOver && (
+                  <p className="mt-2 text-orange-500 text-sm">
+                    ⚠️ Über {budget.warningAt}% des Budgets verbraucht
+                  </p>
+                )}
               </div>
             ))}
             {budgets.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
-                <div className="text-5xl mb-4">💰</div>
+              <div className="py-12 text-center text-gray-400">
+                <div className="mb-4 text-5xl">💰</div>
                 <p>Noch keine Budgets gesetzt</p>
               </div>
             )}
@@ -188,102 +375,229 @@ export default function BudgetPage() {
       )}
 
       {/* ── Sparziele ── */}
-      {tab === 'goals' && (
+      {tab === "goals" && (
         <>
-          <button className="btn-primary flex items-center gap-2" onClick={() => setShowGoalForm(true)}>
+          <button
+            className="btn-primary flex items-center gap-2"
+            onClick={() => setShowGoalForm(true)}
+          >
             <Plus size={18} /> Neues Sparziel
           </button>
 
           {showGoalForm && (
             <div className="card p-6">
-              <h2 className="font-semibold text-gray-900 dark:text-white mb-4">Sparziel erstellen</h2>
-              <form onSubmit={handleSaveGoal} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <h2 className="mb-4 font-semibold text-gray-900 dark:text-white">
+                Sparziel erstellen
+              </h2>
+              <form
+                className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                onSubmit={handleSaveGoal}
+              >
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
-                  <input className="input" value={goalForm.name} onChange={e => setGoalForm(f => ({ ...f, name: e.target.value }))} placeholder="z.B. Urlaub Mallorca" required />
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Name *
+                  </label>
+                  <input
+                    className="input"
+                    onChange={(e) =>
+                      setGoalForm((f) => ({ ...f, name: e.target.value }))
+                    }
+                    placeholder="z.B. Urlaub Mallorca"
+                    required
+                    value={goalForm.name}
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zielbetrag (€) *</label>
-                  <input type="number" step="0.01" className="input" value={goalForm.targetAmount}
-                    onChange={e => setGoalForm(f => ({ ...f, targetAmount: e.target.value }))} required />
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Zielbetrag (€) *
+                  </label>
+                  <input
+                    className="input"
+                    onChange={(e) =>
+                      setGoalForm((f) => ({
+                        ...f,
+                        targetAmount: e.target.value,
+                      }))
+                    }
+                    required
+                    step="0.01"
+                    type="number"
+                    value={goalForm.targetAmount}
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bereits gespart (€)</label>
-                  <input type="number" step="0.01" className="input" value={goalForm.savedAmount}
-                    onChange={e => setGoalForm(f => ({ ...f, savedAmount: e.target.value }))} />
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Bereits gespart (€)
+                  </label>
+                  <input
+                    className="input"
+                    onChange={(e) =>
+                      setGoalForm((f) => ({
+                        ...f,
+                        savedAmount: e.target.value,
+                      }))
+                    }
+                    step="0.01"
+                    type="number"
+                    value={goalForm.savedAmount}
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zieldatum (optional)</label>
-                  <input type="date" className="input" value={goalForm.targetDate}
-                    onChange={e => setGoalForm(f => ({ ...f, targetDate: e.target.value }))} />
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Zieldatum (optional)
+                  </label>
+                  <input
+                    className="input"
+                    onChange={(e) =>
+                      setGoalForm((f) => ({ ...f, targetDate: e.target.value }))
+                    }
+                    type="date"
+                    value={goalForm.targetDate}
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Icon</label>
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Icon
+                  </label>
                   <div className="flex flex-wrap gap-2">
-                    {GOAL_ICONS.map(icon => (
-                      <button key={icon} type="button" onClick={() => setGoalForm(f => ({ ...f, icon }))}
-                        className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center ${goalForm.icon === icon ? 'bg-[var(--primary)] text-white' : 'bg-gray-100 dark:bg-slate-700'}`}>
+                    {GOAL_ICONS.map((icon) => (
+                      <button
+                        className={`flex h-9 w-9 items-center justify-center rounded-lg text-lg ${goalForm.icon === icon ? "bg-[var(--primary)] text-white" : "bg-gray-100 dark:bg-slate-700"}`}
+                        key={icon}
+                        onClick={() => setGoalForm((f) => ({ ...f, icon }))}
+                        type="button"
+                      >
                         {icon}
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="md:col-span-2 flex gap-3 justify-end">
-                  <button type="button" onClick={() => setShowGoalForm(false)} className="px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium">Abbrechen</button>
-                  <button type="submit" className="btn-primary">Erstellen</button>
+                <div className="flex justify-end gap-3 md:col-span-2">
+                  <button
+                    className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-sm dark:bg-slate-700"
+                    onClick={() => setShowGoalForm(false)}
+                    type="button"
+                  >
+                    Abbrechen
+                  </button>
+                  <button className="btn-primary" type="submit">
+                    Erstellen
+                  </button>
                 </div>
               </form>
             </div>
           )}
 
           <div className="space-y-4">
-            {goals.map(goal => {
-              const pct = goal.targetAmount > 0 ? Math.min((goal.savedAmount / goal.targetAmount) * 100, 100) : 0;
+            {goals.map((goal) => {
+              const pct =
+                goal.targetAmount > 0
+                  ? Math.min((goal.savedAmount / goal.targetAmount) * 100, 100)
+                  : 0;
               const remaining = goal.targetAmount - goal.savedAmount;
               return (
-                <div key={goal.id} className={`card p-5 ${goal.isCompleted ? 'border-2 border-green-400' : ''}`}>
-                  <div className="flex items-start justify-between mb-3">
+                <div
+                  className={`card p-5 ${goal.isCompleted ? "border-2 border-green-400" : ""}`}
+                  key={goal.id}
+                >
+                  <div className="mb-3 flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-3xl">{goal.icon}</span>
                       <div>
-                        <h3 className="font-semibold text-gray-900 dark:text-white">{goal.name}</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">
+                          {goal.name}
+                        </h3>
                         {goal.targetDate && (
-                          <p className="text-xs text-gray-500">Zieldatum: {new Date(goal.targetDate).toLocaleDateString('de-DE')}</p>
+                          <p className="text-gray-500 text-xs">
+                            Zieldatum:{" "}
+                            {new Date(goal.targetDate).toLocaleDateString(
+                              "de-DE"
+                            )}
+                          </p>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {goal.isCompleted && <span className="text-green-500 text-sm font-medium">✅ Erreicht!</span>}
-                      <button onClick={() => savingsGoalAPI.delete(goal.id).then(() => { toast.success('Gelöscht'); loadGoals(); })}
-                        className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                      {goal.isCompleted && (
+                        <span className="font-medium text-green-500 text-sm">
+                          ✅ Erreicht!
+                        </span>
+                      )}
+                      <button
+                        className="text-gray-400 hover:text-red-500"
+                        onClick={() =>
+                          savingsGoalAPI.delete(goal.id).then(() => {
+                            toast.success("Gelöscht");
+                            loadGoals();
+                          })
+                        }
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    <span className="flex items-center gap-1"><PiggyBank size={14} /> {fmt(goal.savedAmount)} gespart</span>
+                  <div className="mb-2 flex justify-between text-gray-600 text-sm dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <PiggyBank size={14} /> {fmt(goal.savedAmount)} gespart
+                    </span>
                     <span>Ziel: {fmt(goal.targetAmount)}</span>
                   </div>
-                  <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-3 mb-2">
-                    <div className="h-3 rounded-full transition-all" style={{ width: `${pct}%`, background: goal.isCompleted ? '#22c55e' : 'var(--primary)' }} />
+                  <div className="mb-2 h-3 w-full rounded-full bg-gray-200 dark:bg-slate-600">
+                    <div
+                      className="h-3 rounded-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        background: goal.isCompleted
+                          ? "#22c55e"
+                          : "var(--primary)",
+                      }}
+                    />
                   </div>
-                  <div className="flex justify-between items-center text-xs text-gray-500">
+                  <div className="flex items-center justify-between text-gray-500 text-xs">
                     <span>{pct.toFixed(1)}% erreicht</span>
-                    {!goal.isCompleted && <span>Noch {fmt(remaining)} fehlend</span>}
+                    {!goal.isCompleted && (
+                      <span>Noch {fmt(remaining)} fehlend</span>
+                    )}
                   </div>
 
                   {!goal.isCompleted && (
                     <div className="mt-3">
                       {depositGoalId === goal.id ? (
-                        <div className="flex gap-2 mt-2">
-                          <input type="number" step="0.01" className="input flex-1" placeholder="Betrag" value={depositAmount}
-                            onChange={e => setDepositAmount(e.target.value)} autoFocus />
-                          <button onClick={() => handleDeposit(goal.id)} className="btn-primary text-sm px-3">Einzahlen</button>
-                          <button onClick={() => { setDepositGoalId(null); setDepositAmount(''); }}
-                            className="px-3 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm">✕</button>
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            autoFocus
+                            className="input flex-1"
+                            onChange={(e) => setDepositAmount(e.target.value)}
+                            placeholder="Betrag"
+                            step="0.01"
+                            type="number"
+                            value={depositAmount}
+                          />
+                          <button
+                            className="btn-primary px-3 text-sm"
+                            onClick={() => handleDeposit(goal.id)}
+                          >
+                            Einzahlen
+                          </button>
+                          <button
+                            className="rounded-xl bg-gray-100 px-3 py-2 text-sm dark:bg-slate-700"
+                            onClick={() => {
+                              setDepositGoalId(null);
+                              setDepositAmount("");
+                            }}
+                          >
+                            ✕
+                          </button>
                         </div>
                       ) : (
-                        <button onClick={() => { setDepositGoalId(goal.id); setDepositAmount(''); }}
-                          className="mt-2 px-4 py-2 rounded-xl bg-[var(--primary-light,#fce4ec)] text-[var(--primary)] text-sm font-medium hover:opacity-90 transition-opacity">
+                        <button
+                          className="mt-2 rounded-xl bg-[var(--primary-light,#fce4ec)] px-4 py-2 font-medium text-[var(--primary)] text-sm transition-opacity hover:opacity-90"
+                          onClick={() => {
+                            setDepositGoalId(goal.id);
+                            setDepositAmount("");
+                          }}
+                        >
                           + Einzahlen
                         </button>
                       )}
@@ -293,8 +607,8 @@ export default function BudgetPage() {
               );
             })}
             {goals.length === 0 && (
-              <div className="text-center py-12 text-gray-400">
-                <div className="text-5xl mb-4">🎯</div>
+              <div className="py-12 text-center text-gray-400">
+                <div className="mb-4 text-5xl">🎯</div>
                 <p>Noch keine Sparziele erstellt</p>
               </div>
             )}

@@ -93,6 +93,7 @@ export default function TransactionsPage() {
     receiptFile: null as File | null,
     isRecurring: false,
     recurringInterval: "monthly",
+    recurringEndDate: "",
     targetHouseholdId: "",
     tip: "",
   });
@@ -255,6 +256,7 @@ export default function TransactionsPage() {
       receiptFile: null,
       isRecurring: false,
       recurringInterval: "monthly",
+      recurringEndDate: "",
       targetHouseholdId: "",
       tip: "",
     });
@@ -275,6 +277,7 @@ export default function TransactionsPage() {
       receiptFile: null,
       isRecurring: t.isRecurring,
       recurringInterval: t.recurringInterval || "monthly",
+      recurringEndDate: t.recurringEndDate || "",
       targetHouseholdId: t.targetHouseholdId || "",
       tip: tipVal > 0 ? tipVal.toFixed(2) : "",
     });
@@ -306,6 +309,10 @@ export default function TransactionsPage() {
           tags: [],
           isRecurring: form.isRecurring,
           recurringInterval: form.isRecurring ? form.recurringInterval : null,
+          recurringEndDate:
+            form.isRecurring && form.recurringEndDate
+              ? form.recurringEndDate
+              : null,
         });
         toast.success("Buchung aktualisiert");
       } else {
@@ -335,6 +342,9 @@ export default function TransactionsPage() {
         if (form.isRecurring) {
           fd.append("isRecurring", "true");
           fd.append("recurringInterval", form.recurringInterval);
+          if (form.recurringEndDate) {
+            fd.append("recurringEndDate", form.recurringEndDate);
+          }
         }
         if (form.type === "transfer" && form.targetHouseholdId) {
           fd.append("targetHouseholdId", form.targetHouseholdId);
@@ -858,29 +868,47 @@ export default function TransactionsPage() {
                 </span>
               </label>
               {form.isRecurring && (
-                <div className="mt-2 flex gap-2">
-                  {["weekly", "monthly", "yearly"].map((iv) => (
-                    <button
-                      className={`rounded-xl px-3 py-1.5 font-medium text-xs transition-all ${form.recurringInterval === iv ? "bg-[var(--primary)] text-white" : "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300"}`}
-                      key={iv}
-                      onClick={() =>
-                        setForm((f) => ({ ...f, recurringInterval: iv }))
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    {["weekly", "monthly", "yearly"].map((iv) => (
+                      <button
+                        className={`rounded-xl px-3 py-1.5 font-medium text-xs transition-all ${form.recurringInterval === iv ? "bg-[var(--primary)] text-white" : "bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300"}`}
+                        key={iv}
+                        onClick={() =>
+                          setForm((f) => ({ ...f, recurringInterval: iv }))
+                        }
+                        type="button"
+                      >
+                        {iv === "weekly"
+                          ? "Wöchentlich"
+                          : iv === "monthly"
+                            ? "Monatlich"
+                            : "Jährlich"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="whitespace-nowrap text-gray-600 text-xs dark:text-gray-400">
+                      Enddatum (optional):
+                    </label>
+                    <input
+                      className="input text-sm"
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          recurringEndDate: e.target.value,
+                        }))
                       }
-                      type="button"
-                    >
-                      {iv === "weekly"
-                        ? "Wöchentlich"
-                        : iv === "monthly"
-                          ? "Monatlich"
-                          : "Jährlich"}
-                    </button>
-                  ))}
+                      type="date"
+                      value={form.recurringEndDate}
+                    />
+                  </div>
                 </div>
               )}
             </div>
             <div className="flex justify-end gap-3 md:col-span-2">
               <button
-                className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-gray-700 text-sm dark:bg-slate-700 dark:text-gray-300"
+                className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-gray-700 dark:bg-slate-700 dark:text-gray-300"
                 onClick={() => {
                   setShowForm(false);
                   setEditingId(null);
@@ -920,6 +948,7 @@ export default function TransactionsPage() {
                     "Betrag",
                     "Intervall",
                     "Nächste Buchung",
+                    "Enddatum",
                     "",
                   ].map((h) => (
                     <th
@@ -966,6 +995,11 @@ export default function TransactionsPage() {
                     <td className="px-4 py-3 text-gray-500 text-sm">
                       {r.recurringNextDate
                         ? format(new Date(r.recurringNextDate), "dd.MM.yyyy")
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-sm">
+                      {r.recurringEndDate
+                        ? format(new Date(r.recurringEndDate), "dd.MM.yyyy")
                         : "—"}
                     </td>
                     <td className="px-4 py-3">

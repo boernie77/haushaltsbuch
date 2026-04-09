@@ -10,11 +10,11 @@
  * @returns {{ start: Date, end: Date }}
  */
 function getMonthBounds(year, month, startDay = 1) {
-  const day = (startDay >= 1 && startDay <= 28) ? startDay : 1;
+  const day = startDay >= 1 && startDay <= 28 ? startDay : 1;
   if (day === 1) {
     return {
       start: new Date(year, month - 1, 1),
-      end: new Date(year, month, 0, 23, 59, 59, 999)
+      end: new Date(year, month, 0, 23, 59, 59, 999),
     };
   }
   const start = new Date(year, month - 1, day);
@@ -36,7 +36,7 @@ function getMonthBounds(year, month, startDay = 1) {
  */
 function getPeriodForDate(date, startDay = 1) {
   const d = new Date(date);
-  const day = (startDay >= 1 && startDay <= 28) ? startDay : 1;
+  const day = startDay >= 1 && startDay <= 28 ? startDay : 1;
   if (day === 1 || d.getDate() >= day) {
     return { year: d.getFullYear(), month: d.getMonth() + 1 };
   }

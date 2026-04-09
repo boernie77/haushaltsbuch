@@ -36,10 +36,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "de.haushaltsbuch.app",
-      "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE"
-      ]
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
     },
     "web": {
       "favicon": "./assets/favicon.png"

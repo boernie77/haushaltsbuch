@@ -1,19 +1,46 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Save, RefreshCw, FileText, Users, Tag, Star, Search, UserCheck, UserX, Plus, Check, AlertCircle, Loader } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { useAuthStore } from '../store/authStore';
-import { paperlessAPI } from '../services/api';
+import {
+  AlertCircle,
+  Check,
+  FileText,
+  Loader,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Star,
+  Tag,
+  UserCheck,
+  Users,
+  UserX,
+} from "lucide-react";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { paperlessAPI } from "../services/api";
+import { useAuthStore } from "../store/authStore";
 
 export default function PaperlessPage() {
   const { currentHousehold } = useAuthStore();
-  const [config, setConfig] = useState({ baseUrl: '', apiToken: '' });
+  const [config, setConfig] = useState({ baseUrl: "", apiToken: "" });
   const [data, setData] = useState<any>(null);
   const [connected, setConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [search, setSearch] = useState({ doctype: '', correspondent: '', tag: '', user: '' });
-  const [newItem, setNewItem] = useState({ doctype: '', correspondent: '', tag: '', tagColor: '#6B7280' });
-  const [checkResult, setCheckResult] = useState<Record<string, { exists: boolean; checking: boolean }>>({
+  const [search, setSearch] = useState({
+    doctype: "",
+    correspondent: "",
+    tag: "",
+    user: "",
+  });
+  const [newItem, setNewItem] = useState({
+    doctype: "",
+    correspondent: "",
+    tag: "",
+    tagColor: "#6B7280",
+  });
+  const [checkResult, setCheckResult] = useState<
+    Record<string, { exists: boolean; checking: boolean }>
+  >({
     doctype: { exists: false, checking: false },
     correspondent: { exists: false, checking: false },
     tag: { exists: false, checking: false },
@@ -27,322 +54,575 @@ export default function PaperlessPage() {
   };
 
   useEffect(() => {
-    if (!currentHousehold) return;
-    paperlessAPI.getConfig(currentHousehold.id).then(({ data: d }) => {
-      if (d.config) { setConfig({ baseUrl: d.config.baseUrl, apiToken: '' }); setConnected(true); }
-    }).catch(() => {});
+    if (!currentHousehold) {
+      return;
+    }
+    paperlessAPI
+      .getConfig(currentHousehold.id)
+      .then(({ data: d }) => {
+        if (d.config) {
+          setConfig({ baseUrl: d.config.baseUrl, apiToken: "" });
+          setConnected(true);
+        }
+      })
+      .catch(() => {});
     loadData(currentHousehold.id).catch(() => {});
   }, [currentHousehold]);
 
   const handleSave = async () => {
-    if (!config.baseUrl || !config.apiToken || !currentHousehold) return;
+    if (!(config.baseUrl && config.apiToken && currentHousehold)) {
+      return;
+    }
     setSaving(true);
     try {
-      await paperlessAPI.saveConfig({ ...config, householdId: currentHousehold.id });
+      await paperlessAPI.saveConfig({
+        ...config,
+        householdId: currentHousehold.id,
+      });
       setConnected(true);
-      toast.success('Paperless verbunden!');
+      toast.success("Paperless verbunden!");
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Verbindung fehlgeschlagen');
-    } finally { setSaving(false); }
+      toast.error(err.response?.data?.error || "Verbindung fehlgeschlagen");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSync = async () => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     setSyncing(true);
     try {
       const { data: d } = await paperlessAPI.sync(currentHousehold.id);
       await loadData(currentHousehold.id);
-      toast.success(`Synchronisiert: ${d.synced.documentTypes} Typen, ${d.synced.correspondents} Korrespondenten, ${d.synced.tags} Tags`);
+      toast.success(
+        `Synchronisiert: ${d.synced.documentTypes} Typen, ${d.synced.correspondents} Korrespondenten, ${d.synced.tags} Tags`
+      );
     } catch (err: any) {
-      toast.error('Sync fehlgeschlagen: ' + (err.response?.data?.error || err.message));
-    } finally { setSyncing(false); }
+      toast.error(
+        `Sync fehlgeschlagen: ${err.response?.data?.error || err.message}`
+      );
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const toggleFavorite = async (type: string, id: string, current: boolean) => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     try {
       await paperlessAPI.toggleFavorite({ type, id, isFavorite: !current });
       setData((prev: any) => {
-        const key = type === 'doctype' ? 'documentTypes' : type === 'correspondent' ? 'correspondents' : 'tags';
-        return { ...prev, [key]: prev[key].map((item: any) => item.id === id ? { ...item, isFavorite: !current } : item) };
+        const key =
+          type === "doctype"
+            ? "documentTypes"
+            : type === "correspondent"
+              ? "correspondents"
+              : "tags";
+        return {
+          ...prev,
+          [key]: prev[key].map((item: any) =>
+            item.id === id ? { ...item, isFavorite: !current } : item
+          ),
+        };
       });
     } catch {
-      toast.error('Fehler beim Speichern');
+      toast.error("Fehler beim Speichern");
     }
   };
 
   const toggleUserEnabled = async (id: string, current: boolean) => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     try {
-      await paperlessAPI.toggleFavorite({ type: 'user', id, isFavorite: !current, isEnabled: !current } as any);
+      await paperlessAPI.toggleFavorite({
+        type: "user",
+        id,
+        isFavorite: !current,
+        isEnabled: !current,
+      } as any);
       setData((prev: any) => ({
         ...prev,
-        users: (prev.users || []).map((u: any) => u.id === id ? { ...u, isEnabled: !current } : u),
+        users: (prev.users || []).map((u: any) =>
+          u.id === id ? { ...u, isEnabled: !current } : u
+        ),
       }));
     } catch {
-      toast.error('Fehler beim Speichern');
+      toast.error("Fehler beim Speichern");
     }
   };
 
-  const handleNameChange = (type: 'doctype' | 'correspondent' | 'tag', value: string) => {
-    setNewItem(n => ({ ...n, [type]: value }));
-    setCheckResult(r => ({ ...r, [type]: { exists: false, checking: !!value.trim() } }));
+  const handleNameChange = (
+    type: "doctype" | "correspondent" | "tag",
+    value: string
+  ) => {
+    setNewItem((n) => ({ ...n, [type]: value }));
+    setCheckResult((r) => ({
+      ...r,
+      [type]: { exists: false, checking: !!value.trim() },
+    }));
     clearTimeout(checkTimers.current[type]);
-    if (!value.trim() || !currentHousehold) return;
+    if (!(value.trim() && currentHousehold)) {
+      return;
+    }
     checkTimers.current[type] = setTimeout(async () => {
       try {
-        const { data: d } = await paperlessAPI.check(currentHousehold.id, type, value.trim());
-        setCheckResult(r => ({ ...r, [type]: { exists: d.exists, checking: false } }));
+        const { data: d } = await paperlessAPI.check(
+          currentHousehold.id,
+          type,
+          value.trim()
+        );
+        setCheckResult((r) => ({
+          ...r,
+          [type]: { exists: d.exists, checking: false },
+        }));
       } catch {
-        setCheckResult(r => ({ ...r, [type]: { exists: false, checking: false } }));
+        setCheckResult((r) => ({
+          ...r,
+          [type]: { exists: false, checking: false },
+        }));
       }
     }, 350);
   };
 
-  const handleCreate = async (type: 'doctype' | 'correspondent' | 'tag') => {
-    if (!currentHousehold || !newItem[type].trim()) return;
-    setCreating(c => ({ ...c, [type]: true }));
+  const handleCreate = async (type: "doctype" | "correspondent" | "tag") => {
+    if (!(currentHousehold && newItem[type].trim())) {
+      return;
+    }
+    setCreating((c) => ({ ...c, [type]: true }));
     try {
-      if (type === 'doctype') await paperlessAPI.createDocType({ householdId: currentHousehold.id, name: newItem[type].trim() });
-      else if (type === 'correspondent') await paperlessAPI.createCorrespondent({ householdId: currentHousehold.id, name: newItem[type].trim() });
-      else await paperlessAPI.createTag({ householdId: currentHousehold.id, name: newItem[type].trim(), color: newItem.tagColor });
-      setNewItem(n => ({ ...n, [type]: '' }));
-      setCheckResult(r => ({ ...r, [type]: { exists: false, checking: false } }));
+      if (type === "doctype") {
+        await paperlessAPI.createDocType({
+          householdId: currentHousehold.id,
+          name: newItem[type].trim(),
+        });
+      } else if (type === "correspondent") {
+        await paperlessAPI.createCorrespondent({
+          householdId: currentHousehold.id,
+          name: newItem[type].trim(),
+        });
+      } else {
+        await paperlessAPI.createTag({
+          householdId: currentHousehold.id,
+          name: newItem[type].trim(),
+          color: newItem.tagColor,
+        });
+      }
+      setNewItem((n) => ({ ...n, [type]: "" }));
+      setCheckResult((r) => ({
+        ...r,
+        [type]: { exists: false, checking: false },
+      }));
       await loadData(currentHousehold.id);
-      toast.success('Erstellt!');
+      toast.success("Erstellt!");
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Fehler beim Erstellen');
+      toast.error(err.response?.data?.error || "Fehler beim Erstellen");
     } finally {
-      setCreating(c => ({ ...c, [type]: false }));
+      setCreating((c) => ({ ...c, [type]: false }));
     }
   };
 
-  const renderCreateForm = (type: 'doctype' | 'correspondent' | 'tag', placeholder: string, extra?: React.ReactNode) => {
+  const renderCreateForm = (
+    type: "doctype" | "correspondent" | "tag",
+    placeholder: string,
+    extra?: React.ReactNode
+  ) => {
     const cr = checkResult[type];
     const val = newItem[type];
     return (
-      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700">
-        <div className="flex gap-2 items-center">
+      <div className="mt-3 border-gray-100 border-t pt-3 dark:border-slate-700">
+        <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <input
-              type="text"
-              className="input py-1.5 text-sm pr-8"
+              className="input py-1.5 pr-8 text-sm"
+              onChange={(e) => handleNameChange(type, e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" &&
+                !cr.exists &&
+                val.trim() &&
+                handleCreate(type)
+              }
               placeholder={placeholder}
+              type="text"
               value={val}
-              onChange={e => handleNameChange(type, e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !cr.exists && val.trim() && handleCreate(type)}
             />
             {val.trim() && (
-              <span className="absolute right-2 top-1/2 -translate-y-1/2">
-                {cr.checking ? <Loader size={13} className="animate-spin text-gray-400" /> :
-                  cr.exists ? <AlertCircle size={13} className="text-amber-500" /> :
-                  <Check size={13} className="text-green-500" />}
+              <span className="absolute top-1/2 right-2 -translate-y-1/2">
+                {cr.checking ? (
+                  <Loader className="animate-spin text-gray-400" size={13} />
+                ) : cr.exists ? (
+                  <AlertCircle className="text-amber-500" size={13} />
+                ) : (
+                  <Check className="text-green-500" size={13} />
+                )}
               </span>
             )}
           </div>
           {extra}
           <button
-            onClick={() => handleCreate(type)}
+            className="flex shrink-0 items-center gap-1 rounded-xl bg-[var(--primary)] px-3 py-1.5 font-medium text-white text-xs transition-opacity hover:opacity-90 disabled:opacity-40"
             disabled={!val.trim() || cr.exists || cr.checking || creating[type]}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--primary)] text-white text-xs font-medium disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0"
+            onClick={() => handleCreate(type)}
           >
-            {creating[type] ? <Loader size={12} className="animate-spin" /> : <Plus size={12} />}
-            {cr.exists ? 'Existiert' : 'Erstellen'}
+            {creating[type] ? (
+              <Loader className="animate-spin" size={12} />
+            ) : (
+              <Plus size={12} />
+            )}
+            {cr.exists ? "Existiert" : "Erstellen"}
           </button>
         </div>
         {val.trim() && cr.exists && (
-          <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-            <AlertCircle size={11} /> Bereits vorhanden — wird beim Speichern verknüpft statt neu angelegt.
+          <p className="mt-1 flex items-center gap-1 text-amber-600 text-xs">
+            <AlertCircle size={11} /> Bereits vorhanden — wird beim Speichern
+            verknüpft statt neu angelegt.
           </p>
         )}
       </div>
     );
   };
 
-  const renderFavoriteList = (items: any[], type: string, searchKey: keyof typeof search, renderItem: (item: any) => React.ReactNode) => {
+  const renderFavoriteList = (
+    items: any[],
+    type: string,
+    searchKey: keyof typeof search,
+    renderItem: (item: any) => React.ReactNode
+  ) => {
     const q = search[searchKey].toLowerCase();
-    const filtered = q ? items.filter((i: any) => i.name.toLowerCase().includes(q)) : items;
-    return (<>
-      <div className="relative mb-2">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          className="input py-1.5 text-sm" style={{ paddingLeft: '2rem' }}
-          placeholder="Suchen..."
-          value={search[searchKey]}
-          onChange={e => setSearch(s => ({ ...s, [searchKey]: e.target.value }))}
-        />
-      </div>
-      <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-      {filtered.length === 0 && (
-        <p className="text-sm text-gray-400 text-center py-4">{q ? 'Keine Treffer' : 'Noch keine Daten — zuerst synchronisieren'}</p>
-      )}
-      {filtered.map((item: any) => (
-        <div key={item.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 group">
-          <div className="flex-1 min-w-0">{renderItem(item)}</div>
-          <button
-            onClick={() => toggleFavorite(type, item.id, item.isFavorite)}
-            className={`ml-2 shrink-0 transition-colors ${item.isFavorite ? 'text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`}
-            title={item.isFavorite ? 'Aus Favoriten entfernen' : 'Als Favorit markieren'}
-          >
-            <Star size={15} fill={item.isFavorite ? 'currentColor' : 'none'} />
-          </button>
+    const filtered = q
+      ? items.filter((i: any) => i.name.toLowerCase().includes(q))
+      : items;
+    return (
+      <>
+        <div className="relative mb-2">
+          <Search
+            className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400"
+            size={13}
+          />
+          <input
+            className="input py-1.5 text-sm"
+            onChange={(e) =>
+              setSearch((s) => ({ ...s, [searchKey]: e.target.value }))
+            }
+            placeholder="Suchen..."
+            style={{ paddingLeft: "2rem" }}
+            type="text"
+            value={search[searchKey]}
+          />
         </div>
-      ))}
-      </div>
-    </>);
+        <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+          {filtered.length === 0 && (
+            <p className="py-4 text-center text-gray-400 text-sm">
+              {q
+                ? "Keine Treffer"
+                : "Noch keine Daten — zuerst synchronisieren"}
+            </p>
+          )}
+          {filtered.map((item: any) => (
+            <div
+              className="group flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-slate-700/50"
+              key={item.id}
+            >
+              <div className="min-w-0 flex-1">{renderItem(item)}</div>
+              <button
+                className={`ml-2 shrink-0 transition-colors ${item.isFavorite ? "text-yellow-400" : "text-gray-300 hover:text-yellow-400"}`}
+                onClick={() => toggleFavorite(type, item.id, item.isFavorite)}
+                title={
+                  item.isFavorite
+                    ? "Aus Favoriten entfernen"
+                    : "Als Favorit markieren"
+                }
+              >
+                <Star
+                  fill={item.isFavorite ? "currentColor" : "none"}
+                  size={15}
+                />
+              </button>
+            </div>
+          ))}
+        </div>
+      </>
+    );
   };
 
-  const favorites = data ? {
-    documentTypes: data.documentTypes.filter((x: any) => x.isFavorite),
-    correspondents: data.correspondents.filter((x: any) => x.isFavorite),
-    tags: data.tags.filter((x: any) => x.isFavorite),
-  } : null;
+  const favorites = data
+    ? {
+        documentTypes: data.documentTypes.filter((x: any) => x.isFavorite),
+        correspondents: data.correspondents.filter((x: any) => x.isFavorite),
+        tags: data.tags.filter((x: any) => x.isFavorite),
+      }
+    : null;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Paperless-ngx Integration</h1>
+    <div className="space-y-6 p-6">
+      <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
+        Paperless-ngx Integration
+      </h1>
 
       {/* Verbindung */}
       <div className="card p-6">
-        <h2 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-          <FileText size={18} className="text-[var(--primary)]" /> Verbindung
-          {connected && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">● Verbunden</span>}
+        <h2 className="mb-4 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+          <FileText className="text-[var(--primary)]" size={18} /> Verbindung
+          {connected && (
+            <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-green-700 text-xs">
+              ● Verbunden
+            </span>
+          )}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Paperless URL</label>
-            <input type="url" className="input" placeholder="https://paperless.example.com"
-              value={config.baseUrl} onChange={e => setConfig(c => ({ ...c, baseUrl: e.target.value }))} />
+            <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+              Paperless URL
+            </label>
+            <input
+              className="input"
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, baseUrl: e.target.value }))
+              }
+              placeholder="https://paperless.example.com"
+              type="url"
+              value={config.baseUrl}
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Token</label>
-            <input type="password" className="input" placeholder="Token aus Paperless Einstellungen"
-              value={config.apiToken} onChange={e => setConfig(c => ({ ...c, apiToken: e.target.value }))} />
+            <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+              API Token
+            </label>
+            <input
+              className="input"
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, apiToken: e.target.value }))
+              }
+              placeholder="Token aus Paperless Einstellungen"
+              type="password"
+              value={config.apiToken}
+            />
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">
-            <Save size={16} /> {saving ? 'Speichert...' : 'Verbinden'}
+          <button
+            className="btn-primary flex items-center gap-2"
+            disabled={saving}
+            onClick={handleSave}
+          >
+            <Save size={16} /> {saving ? "Speichert..." : "Verbinden"}
           </button>
           {connected && (
-            <button onClick={handleSync} disabled={syncing} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
-              <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Synchronisiert...' : 'Von Paperless synchronisieren'}
+            <button
+              className="flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 font-medium text-sm transition-colors hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600"
+              disabled={syncing}
+              onClick={handleSync}
+            >
+              <RefreshCw className={syncing ? "animate-spin" : ""} size={16} />
+              {syncing ? "Synchronisiert..." : "Von Paperless synchronisieren"}
             </button>
           )}
         </div>
         {connected && (
-          <p className="text-xs text-gray-400 mt-2">
-            Tipp: Synchronisiere zunächst alle Daten aus Paperless, dann markiere deine Favoriten mit ⭐ — diese stehen beim Quittungs-Upload zur Auswahl.
+          <p className="mt-2 text-gray-400 text-xs">
+            Tipp: Synchronisiere zunächst alle Daten aus Paperless, dann
+            markiere deine Favoriten mit ⭐ — diese stehen beim Quittungs-Upload
+            zur Auswahl.
           </p>
         )}
       </div>
 
       {/* Favoriten-Übersicht */}
-      {favorites && (favorites.documentTypes.length > 0 || favorites.correspondents.length > 0 || favorites.tags.length > 0) && (
-        <div className="card p-5 border border-yellow-200 dark:border-yellow-800">
-          <h2 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-            <Star size={16} className="text-yellow-400" fill="currentColor" /> Aktive Favoriten
-            <span className="text-xs text-gray-400 font-normal">(stehen beim Upload zur Auswahl)</span>
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {favorites.documentTypes.map((x: any) => (
-              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center gap-1">
-                <FileText size={10} /> {x.name}
+      {favorites &&
+        (favorites.documentTypes.length > 0 ||
+          favorites.correspondents.length > 0 ||
+          favorites.tags.length > 0) && (
+          <div className="card border border-yellow-200 p-5 dark:border-yellow-800">
+            <h2 className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+              <Star className="text-yellow-400" fill="currentColor" size={16} />{" "}
+              Aktive Favoriten
+              <span className="font-normal text-gray-400 text-xs">
+                (stehen beim Upload zur Auswahl)
               </span>
-            ))}
-            {favorites.correspondents.map((x: any) => (
-              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 flex items-center gap-1">
-                <Users size={10} /> {x.name}
-              </span>
-            ))}
-            {favorites.tags.map((x: any) => (
-              <span key={x.id} className="px-2.5 py-1 rounded-full text-xs text-white flex items-center gap-1"
-                style={{ background: x.color || '#9CA3AF' }}>
-                <Tag size={10} /> {x.name}
-              </span>
-            ))}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {favorites.documentTypes.map((x: any) => (
+                <span
+                  className="flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 text-xs dark:bg-blue-900/40 dark:text-blue-300"
+                  key={x.id}
+                >
+                  <FileText size={10} /> {x.name}
+                </span>
+              ))}
+              {favorites.correspondents.map((x: any) => (
+                <span
+                  className="flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-1 text-purple-700 text-xs dark:bg-purple-900/40 dark:text-purple-300"
+                  key={x.id}
+                >
+                  <Users size={10} /> {x.name}
+                </span>
+              ))}
+              {favorites.tags.map((x: any) => (
+                <span
+                  className="flex items-center gap-1 rounded-full px-2.5 py-1 text-white text-xs"
+                  key={x.id}
+                  style={{ background: x.color || "#9CA3AF" }}
+                >
+                  <Tag size={10} /> {x.name}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Alle Daten mit Stern-Buttons */}
       {data && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           <div className="card p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <FileText size={16} className="text-[var(--primary)]" /> Dokumententypen
-              <span className="text-xs text-gray-400 font-normal">({data.documentTypes.length})</span>
+            <h3 className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+              <FileText className="text-[var(--primary)]" size={16} />{" "}
+              Dokumententypen
+              <span className="font-normal text-gray-400 text-xs">
+                ({data.documentTypes.length})
+              </span>
             </h3>
-            {renderFavoriteList(data.documentTypes, 'doctype', 'doctype', (item) => (
-              <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
-            ))}
-            {connected && renderCreateForm('doctype', 'Neuer Dokumententyp...')}
+            {renderFavoriteList(
+              data.documentTypes,
+              "doctype",
+              "doctype",
+              (item) => (
+                <span className="text-gray-700 text-sm dark:text-gray-300">
+                  {item.name}
+                </span>
+              )
+            )}
+            {connected && renderCreateForm("doctype", "Neuer Dokumententyp...")}
           </div>
 
           <div className="card p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Users size={16} className="text-[var(--primary)]" /> Korrespondenten
-              <span className="text-xs text-gray-400 font-normal">({data.correspondents.length})</span>
+            <h3 className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+              <Users className="text-[var(--primary)]" size={16} />{" "}
+              Korrespondenten
+              <span className="font-normal text-gray-400 text-xs">
+                ({data.correspondents.length})
+              </span>
             </h3>
-            {renderFavoriteList(data.correspondents, 'correspondent', 'correspondent', (item) => (
-              <span className="text-sm text-gray-700 dark:text-gray-300">{item.name}</span>
-            ))}
-            {connected && renderCreateForm('correspondent', 'Neuer Korrespondent...')}
+            {renderFavoriteList(
+              data.correspondents,
+              "correspondent",
+              "correspondent",
+              (item) => (
+                <span className="text-gray-700 text-sm dark:text-gray-300">
+                  {item.name}
+                </span>
+              )
+            )}
+            {connected &&
+              renderCreateForm("correspondent", "Neuer Korrespondent...")}
           </div>
 
           <div className="card p-5">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-              <Tag size={16} className="text-[var(--primary)]" /> Tags
-              <span className="text-xs text-gray-400 font-normal">({data.tags.length})</span>
+            <h3 className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+              <Tag className="text-[var(--primary)]" size={16} /> Tags
+              <span className="font-normal text-gray-400 text-xs">
+                ({data.tags.length})
+              </span>
             </h3>
-            {renderFavoriteList(data.tags, 'tag', 'tag', (item) => (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                style={{ background: item.color || '#9CA3AF' }}>
+            {renderFavoriteList(data.tags, "tag", "tag", (item) => (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-white text-xs"
+                style={{ background: item.color || "#9CA3AF" }}
+              >
                 {item.name}
               </span>
             ))}
-            {connected && renderCreateForm('tag', 'Neuer Tag...',
-              <input type="color" value={newItem.tagColor} onChange={e => setNewItem(n => ({ ...n, tagColor: e.target.value }))}
-                className="w-8 h-8 rounded cursor-pointer border border-gray-200 dark:border-slate-600 shrink-0" title="Farbe wählen" />
-            )}
+            {connected &&
+              renderCreateForm(
+                "tag",
+                "Neuer Tag...",
+                <input
+                  className="h-8 w-8 shrink-0 cursor-pointer rounded border border-gray-200 dark:border-slate-600"
+                  onChange={(e) =>
+                    setNewItem((n) => ({ ...n, tagColor: e.target.value }))
+                  }
+                  title="Farbe wählen"
+                  type="color"
+                  value={newItem.tagColor}
+                />
+              )}
           </div>
         </div>
       )}
 
       {/* Paperless-Benutzer */}
-      {data && data.users && data.users.length > 0 && (
+      {data?.users && data.users.length > 0 && (
         <div className="card p-5">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-            <Users size={16} className="text-[var(--primary)]" /> Paperless-Benutzer
-            <span className="text-xs text-gray-400 font-normal">({data.users.length})</span>
+          <h3 className="mb-1 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+            <Users className="text-[var(--primary)]" size={16} />{" "}
+            Paperless-Benutzer
+            <span className="font-normal text-gray-400 text-xs">
+              ({data.users.length})
+            </span>
           </h3>
-          <p className="text-xs text-gray-400 mb-3">Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl (z.B. Admin-Konten).</p>
+          <p className="mb-3 text-gray-400 text-xs">
+            Deaktivierte Benutzer stehen beim Upload nicht zur Auswahl (z.B.
+            Admin-Konten).
+          </p>
           <div className="relative mb-2">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" className="input py-1.5 text-sm" style={{ paddingLeft: '2rem' }} placeholder="Suchen..."
-              value={search.user} onChange={e => setSearch(s => ({ ...s, user: e.target.value }))} />
+            <Search
+              className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-400"
+              size={13}
+            />
+            <input
+              className="input py-1.5 text-sm"
+              onChange={(e) =>
+                setSearch((s) => ({ ...s, user: e.target.value }))
+              }
+              placeholder="Suchen..."
+              style={{ paddingLeft: "2rem" }}
+              type="text"
+              value={search.user}
+            />
           </div>
-          <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
             {data.users
-              .filter((u: any) => !search.user || u.fullName?.toLowerCase().includes(search.user.toLowerCase()) || u.username?.toLowerCase().includes(search.user.toLowerCase()))
+              .filter(
+                (u: any) =>
+                  !search.user ||
+                  u.fullName
+                    ?.toLowerCase()
+                    .includes(search.user.toLowerCase()) ||
+                  u.username?.toLowerCase().includes(search.user.toLowerCase())
+              )
               .map((u: any) => (
-                <div key={u.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className={`text-sm ${u.isEnabled ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 line-through'}`}>
+                <div
+                  className="flex items-center justify-between rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-slate-700/50"
+                  key={u.id}
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span
+                      className={`text-sm ${u.isEnabled ? "text-gray-700 dark:text-gray-300" : "text-gray-400 line-through"}`}
+                    >
                       {u.fullName || u.username}
                     </span>
                     {u.fullName && u.username !== u.fullName && (
-                      <span className="text-xs text-gray-400">@{u.username}</span>
+                      <span className="text-gray-400 text-xs">
+                        @{u.username}
+                      </span>
                     )}
                   </div>
                   <button
+                    className={`ml-2 shrink-0 transition-colors ${u.isEnabled ? "text-green-500 hover:text-red-400" : "text-gray-300 hover:text-green-500"}`}
                     onClick={() => toggleUserEnabled(u.id, u.isEnabled)}
-                    className={`ml-2 shrink-0 transition-colors ${u.isEnabled ? 'text-green-500 hover:text-red-400' : 'text-gray-300 hover:text-green-500'}`}
-                    title={u.isEnabled ? 'Deaktivieren (nicht mehr zur Auswahl)' : 'Aktivieren (zur Auswahl beim Upload)'}
+                    title={
+                      u.isEnabled
+                        ? "Deaktivieren (nicht mehr zur Auswahl)"
+                        : "Aktivieren (zur Auswahl beim Upload)"
+                    }
                   >
-                    {u.isEnabled ? <UserCheck size={16} /> : <UserX size={16} />}
+                    {u.isEnabled ? (
+                      <UserCheck size={16} />
+                    ) : (
+                      <UserX size={16} />
+                    )}
                   </button>
                 </div>
               ))}

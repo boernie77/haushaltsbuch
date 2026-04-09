@@ -10,5 +10,5 @@ module.exports = {
         "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
-  }
+  },
 };

@@ -14,5 +14,5 @@ module.exports = {
       CREATE INDEX IF NOT EXISTS idx_paperless_correspondents_household ON paperless_correspondents("householdId");
       CREATE INDEX IF NOT EXISTS idx_paperless_tags_household ON paperless_tags("householdId");
     `);
-  }
+  },
 };

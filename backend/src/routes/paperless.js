@@ -600,11 +600,7 @@ router.post("/upload", auth, async (req, res) => {
     ]);
 
     const form = new FormData();
-    const imagePath = path.join(
-      __dirname,
-      "../../",
-      transaction.receiptImage
-    );
+    const imagePath = path.join(__dirname, "../../", transaction.receiptImage);
     form.append("document", fs.createReadStream(imagePath));
     if (title) {
       form.append("title", title);

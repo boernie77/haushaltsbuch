@@ -44,6 +44,19 @@ async function processRecurringTransactions() {
     console.log(`[recurring] ${due.length} Buchung(en) fällig`);
 
     for (const t of due) {
+      // Enddatum prüfen: wenn gesetzt und überschritten → Template deaktivieren
+      if (t.recurringEndDate) {
+        const endDate = new Date(t.recurringEndDate);
+        endDate.setHours(0, 0, 0, 0);
+        if (today > endDate) {
+          await t.update({ isRecurring: false, recurringNextDate: null });
+          console.log(
+            `[recurring] "${t.description || t.merchant}" beendet (Enddatum ${t.recurringEndDate} erreicht)`
+          );
+          continue;
+        }
+      }
+
       const nextDate = calcNextDate(
         t.recurringInterval,
         t.recurringDay,

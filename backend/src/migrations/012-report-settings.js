@@ -4,5 +4,5 @@ module.exports = {
       ALTER TABLE households
         ADD COLUMN IF NOT EXISTS "emailReportsEnabled" BOOLEAN NOT NULL DEFAULT false
     `);
-  }
+  },
 };

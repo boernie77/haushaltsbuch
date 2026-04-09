@@ -1,22 +1,38 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TextInput as RNTextInput } from 'react-native';
-import { Text, Button, useTheme, ActivityIndicator, Divider, List, Chip } from 'react-native-paper';
-import { router } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '../src/store/authStore';
-import { householdAPI } from '../src/services/api';
-import Toast from 'react-native-toast-message';
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  TextInput as RNTextInput,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import {
+  ActivityIndicator,
+  Button,
+  Chip,
+  Divider,
+  List,
+  Text,
+  useTheme,
+} from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
+import { householdAPI } from "../src/services/api";
+import { useAuthStore } from "../src/store/authStore";
 
 export default function HouseholdScreen() {
   const theme = useTheme() as any;
   const insets = useSafeAreaInsets();
-  const { currentHousehold, households, setCurrentHousehold, setHouseholds } = useAuthStore();
+  const { currentHousehold, households, setCurrentHousehold, setHouseholds } =
+    useAuthStore();
 
-  const [name, setName] = useState(currentHousehold?.name || '');
-  const [currency, setCurrency] = useState(currentHousehold?.currency || 'EUR');
+  const [name, setName] = useState(currentHousehold?.name || "");
+  const [currency, setCurrency] = useState(currentHousehold?.currency || "EUR");
   const [monthlyBudget, setMonthlyBudget] = useState(
-    currentHousehold?.monthlyBudget ? String(currentHousehold.monthlyBudget) : ''
+    currentHousehold?.monthlyBudget
+      ? String(currentHousehold.monthlyBudget)
+      : ""
   );
   const [members, setMembers] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
@@ -24,17 +40,22 @@ export default function HouseholdScreen() {
 
   // Neues Haushaltsbuch
   const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newCurrency, setNewCurrency] = useState('EUR');
-  const [newBudget, setNewBudget] = useState('');
+  const [newName, setNewName] = useState("");
+  const [newCurrency, setNewCurrency] = useState("EUR");
+  const [newBudget, setNewBudget] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (currentHousehold) {
       setName(currentHousehold.name);
-      setCurrency(currentHousehold.currency || 'EUR');
-      setMonthlyBudget(currentHousehold.monthlyBudget ? String(currentHousehold.monthlyBudget) : '');
-      householdAPI.getMembers(currentHousehold.id)
+      setCurrency(currentHousehold.currency || "EUR");
+      setMonthlyBudget(
+        currentHousehold.monthlyBudget
+          ? String(currentHousehold.monthlyBudget)
+          : ""
+      );
+      householdAPI
+        .getMembers(currentHousehold.id)
         .then(({ data }) => setMembers(data.members || []))
         .catch(() => {})
         .finally(() => setLoadingMembers(false));
@@ -42,102 +63,150 @@ export default function HouseholdScreen() {
   }, [currentHousehold?.id]);
 
   const handleSave = async () => {
-    if (!currentHousehold || !name.trim()) return;
+    if (!(currentHousehold && name.trim())) {
+      return;
+    }
     setSaving(true);
     try {
       const { data } = await householdAPI.update(currentHousehold.id, {
         name: name.trim(),
         currency,
-        monthlyBudget: monthlyBudget ? parseFloat(monthlyBudget) : null,
+        monthlyBudget: monthlyBudget ? Number.parseFloat(monthlyBudget) : null,
       });
-      const updated = { ...currentHousehold, name: data.household.name, currency: data.household.currency, monthlyBudget: data.household.monthlyBudget };
+      const updated = {
+        ...currentHousehold,
+        name: data.household.name,
+        currency: data.household.currency,
+        monthlyBudget: data.household.monthlyBudget,
+      };
       setCurrentHousehold(updated);
-      setHouseholds(households.map(h => h.id === updated.id ? updated : h));
-      Toast.show({ type: 'success', text1: 'Haushalt gespeichert' });
+      setHouseholds(households.map((h) => (h.id === updated.id ? updated : h)));
+      Toast.show({ type: "success", text1: "Haushalt gespeichert" });
     } catch (err: any) {
-      Toast.show({ type: 'error', text1: err.response?.data?.message || 'Fehler beim Speichern' });
+      Toast.show({
+        type: "error",
+        text1: err.response?.data?.message || "Fehler beim Speichern",
+      });
     } finally {
       setSaving(false);
     }
   };
 
   const handleRemoveMember = (userId: string, memberName: string) => {
-    if (!currentHousehold) return;
-    Alert.alert('Mitglied entfernen', `${memberName} aus dem Haushalt entfernen?`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Entfernen', style: 'destructive', onPress: async () => {
-          try {
-            await householdAPI.removeMember(currentHousehold.id, userId);
-            setMembers(ms => ms.filter(m => m.userId !== userId));
-            Toast.show({ type: 'success', text1: 'Mitglied entfernt' });
-          } catch {
-            Toast.show({ type: 'error', text1: 'Fehler beim Entfernen' });
-          }
-        }
-      }
-    ]);
+    if (!currentHousehold) {
+      return;
+    }
+    Alert.alert(
+      "Mitglied entfernen",
+      `${memberName} aus dem Haushalt entfernen?`,
+      [
+        { text: "Abbrechen", style: "cancel" },
+        {
+          text: "Entfernen",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await householdAPI.removeMember(currentHousehold.id, userId);
+              setMembers((ms) => ms.filter((m) => m.userId !== userId));
+              Toast.show({ type: "success", text1: "Mitglied entfernt" });
+            } catch {
+              Toast.show({ type: "error", text1: "Fehler beim Entfernen" });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDelete = () => {
-    if (!currentHousehold || households.length <= 1) return;
+    if (!currentHousehold || households.length <= 1) {
+      return;
+    }
     Alert.alert(
-      'Haushaltsbuch löschen',
+      "Haushaltsbuch löschen",
       `„${currentHousehold.name}" wirklich löschen?\n\nAlle Buchungen, Budgets und Einstellungen werden unwiderruflich gelöscht!`,
       [
-        { text: 'Abbrechen', style: 'cancel' },
+        { text: "Abbrechen", style: "cancel" },
         {
-          text: 'Löschen', style: 'destructive', onPress: async () => {
+          text: "Löschen",
+          style: "destructive",
+          onPress: async () => {
             try {
               await householdAPI.remove(currentHousehold.id);
-              const remaining = households.filter(h => h.id !== currentHousehold.id);
+              const remaining = households.filter(
+                (h) => h.id !== currentHousehold.id
+              );
               setHouseholds(remaining);
               setCurrentHousehold(remaining[0] || null);
-              Toast.show({ type: 'success', text1: 'Haushaltsbuch gelöscht' });
+              Toast.show({ type: "success", text1: "Haushaltsbuch gelöscht" });
               router.back();
             } catch (err: any) {
-              Toast.show({ type: 'error', text1: err.response?.data?.error || 'Fehler beim Löschen' });
+              Toast.show({
+                type: "error",
+                text1: err.response?.data?.error || "Fehler beim Löschen",
+              });
             }
-          }
-        }
+          },
+        },
       ]
     );
   };
 
   const handleCreate = async () => {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      return;
+    }
     setCreating(true);
     try {
       await householdAPI.create({
         name: newName.trim(),
         currency: newCurrency,
-        monthlyBudget: newBudget ? parseFloat(newBudget) : null,
+        monthlyBudget: newBudget ? Number.parseFloat(newBudget) : null,
       });
       const { data } = await householdAPI.getAll();
       const all = data.households;
       setHouseholds(all);
-      const created = all.find((h: any) => h.name === newName.trim()) || all[all.length - 1];
+      const created =
+        all.find((h: any) => h.name === newName.trim()) || all.at(-1);
       setCurrentHousehold(created);
-      setNewName('');
-      setNewBudget('');
-      setNewCurrency('EUR');
+      setNewName("");
+      setNewBudget("");
+      setNewCurrency("EUR");
       setShowCreate(false);
-      Toast.show({ type: 'success', text1: 'Haushaltsbuch erstellt' });
+      Toast.show({ type: "success", text1: "Haushaltsbuch erstellt" });
     } catch (err: any) {
-      Toast.show({ type: 'error', text1: err.response?.data?.error || 'Fehler beim Erstellen' });
+      Toast.show({
+        type: "error",
+        text1: err.response?.data?.error || "Fehler beim Erstellen",
+      });
     } finally {
       setCreating(false);
     }
   };
 
-  const CURRENCIES = ['EUR', 'USD', 'CHF', 'GBP'];
+  const CURRENCIES = ["EUR", "USD", "CHF", "GBP"];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 12 }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: theme.colors.primary,
+            paddingTop: insets.top + 12,
+          },
+        ]}
+      >
         <View style={styles.headerRow}>
-          <Button icon="arrow-left" textColor="#fff" onPress={() => router.back()} compact>
+          <Button
+            compact
+            icon="arrow-left"
+            onPress={() => router.back()}
+            textColor="#fff"
+          >
             Zurück
           </Button>
           <Text style={styles.headerTitle}>Haushalt verwalten</Text>
@@ -149,15 +218,23 @@ export default function HouseholdScreen() {
         {/* Household switcher */}
         {households.length > 1 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Haushaltsbuch wechseln</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-              {households.map(h => (
+            <Text
+              style={[styles.sectionLabel, { color: theme.colors.primary }]}
+            >
+              Haushaltsbuch wechseln
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginTop: 8 }}
+            >
+              {households.map((h) => (
                 <Chip
                   key={h.id}
-                  selected={h.id === currentHousehold?.id}
                   onPress={() => setCurrentHousehold(h)}
-                  style={{ marginRight: 8 }}
+                  selected={h.id === currentHousehold?.id}
                   selectedColor={theme.colors.primary}
+                  style={{ marginRight: 8 }}
                 >
                   {h.name}
                 </Chip>
@@ -170,59 +247,96 @@ export default function HouseholdScreen() {
 
         {/* Neues Haushaltsbuch */}
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Neues Haushaltsbuch</Text>
-          {!showCreate ? (
-            <Button
-              mode="outlined"
-              icon="plus"
-              onPress={() => setShowCreate(true)}
-              style={{ borderColor: theme.colors.primary + '60' }}
-              textColor={theme.colors.primary}
-            >
-              Neues Haushaltsbuch anlegen
-            </Button>
-          ) : (
+          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
+            Neues Haushaltsbuch
+          </Text>
+          {showCreate ? (
             <>
-              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Name *</Text>
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+                Name *
+              </Text>
               <RNTextInput
-                style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
-                value={newName}
                 onChangeText={setNewName}
                 placeholder="z.B. Unser Haushalt"
-                placeholderTextColor={theme.colors.onSurface + '60'}
+                placeholderTextColor={`${theme.colors.onSurface}60`}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.colors.onSurface,
+                    borderColor: `${theme.colors.primary}40`,
+                    backgroundColor: theme.colors.cardBackground,
+                  },
+                ]}
+                value={newName}
               />
-              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Währung</Text>
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+                Währung
+              </Text>
               <View style={styles.chipRow}>
-                {CURRENCIES.map(c => (
+                {CURRENCIES.map((c) => (
                   <Chip
                     key={c}
-                    selected={newCurrency === c}
                     onPress={() => setNewCurrency(c)}
-                    style={{ marginRight: 8 }}
+                    selected={newCurrency === c}
                     selectedColor={theme.colors.primary}
+                    style={{ marginRight: 8 }}
                   >
                     {c}
                   </Chip>
                 ))}
               </View>
-              <Text style={[styles.label, { color: theme.colors.onSurface }]}>Monatsbudget (optional)</Text>
+              <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+                Monatsbudget (optional)
+              </Text>
               <RNTextInput
-                style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
-                value={newBudget}
+                keyboardType="decimal-pad"
                 onChangeText={setNewBudget}
                 placeholder="z.B. 2000"
-                placeholderTextColor={theme.colors.onSurface + '60'}
-                keyboardType="decimal-pad"
+                placeholderTextColor={`${theme.colors.onSurface}60`}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.colors.onSurface,
+                    borderColor: `${theme.colors.primary}40`,
+                    backgroundColor: theme.colors.cardBackground,
+                  },
+                ]}
+                value={newBudget}
               />
-              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                <Button mode="outlined" onPress={() => setShowCreate(false)} style={{ flex: 1 }} textColor={theme.colors.onSurface}>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                <Button
+                  mode="outlined"
+                  onPress={() => setShowCreate(false)}
+                  style={{ flex: 1 }}
+                  textColor={theme.colors.onSurface}
+                >
                   Abbrechen
                 </Button>
-                <Button mode="contained" onPress={handleCreate} disabled={creating || !newName.trim()} buttonColor={theme.colors.primary} style={{ flex: 1 }}>
-                  {creating ? <ActivityIndicator size={16} color="#fff" /> : 'Erstellen'}
+                <Button
+                  buttonColor={theme.colors.primary}
+                  disabled={creating || !newName.trim()}
+                  mode="contained"
+                  onPress={handleCreate}
+                  style={{ flex: 1 }}
+                >
+                  {creating ? (
+                    <ActivityIndicator color="#fff" size={16} />
+                  ) : (
+                    "Erstellen"
+                  )}
                 </Button>
               </View>
             </>
+          ) : (
+            <Button
+              icon="plus"
+              mode="outlined"
+              onPress={() => setShowCreate(true)}
+              style={{ borderColor: `${theme.colors.primary}60` }}
+              textColor={theme.colors.primary}
+            >
+              Neues Haushaltsbuch anlegen
+            </Button>
           )}
         </View>
 
@@ -230,44 +344,76 @@ export default function HouseholdScreen() {
 
         {/* Edit fields */}
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Haushalt bearbeiten</Text>
+          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
+            Haushalt bearbeiten
+          </Text>
 
-          <Text style={[styles.label, { color: theme.colors.onSurface }]}>Name</Text>
+          <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+            Name
+          </Text>
           <RNTextInput
-            style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
-            value={name}
             onChangeText={setName}
             placeholder="Name des Haushalts"
-            placeholderTextColor={theme.colors.onSurface + '60'}
+            placeholderTextColor={`${theme.colors.onSurface}60`}
+            style={[
+              styles.input,
+              {
+                color: theme.colors.onSurface,
+                borderColor: `${theme.colors.primary}40`,
+                backgroundColor: theme.colors.cardBackground,
+              },
+            ]}
+            value={name}
           />
 
-          <Text style={[styles.label, { color: theme.colors.onSurface }]}>Währung</Text>
+          <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+            Währung
+          </Text>
           <View style={styles.chipRow}>
-            {CURRENCIES.map(c => (
+            {CURRENCIES.map((c) => (
               <Chip
                 key={c}
-                selected={currency === c}
                 onPress={() => setCurrency(c)}
-                style={{ marginRight: 8 }}
+                selected={currency === c}
                 selectedColor={theme.colors.primary}
+                style={{ marginRight: 8 }}
               >
                 {c}
               </Chip>
             ))}
           </View>
 
-          <Text style={[styles.label, { color: theme.colors.onSurface }]}>Monatsbudget (optional)</Text>
+          <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+            Monatsbudget (optional)
+          </Text>
           <RNTextInput
-            style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.cardBackground }]}
-            value={monthlyBudget}
+            keyboardType="decimal-pad"
             onChangeText={setMonthlyBudget}
             placeholder="z.B. 2000"
-            placeholderTextColor={theme.colors.onSurface + '60'}
-            keyboardType="decimal-pad"
+            placeholderTextColor={`${theme.colors.onSurface}60`}
+            style={[
+              styles.input,
+              {
+                color: theme.colors.onSurface,
+                borderColor: `${theme.colors.primary}40`,
+                backgroundColor: theme.colors.cardBackground,
+              },
+            ]}
+            value={monthlyBudget}
           />
 
-          <Button mode="contained" onPress={handleSave} disabled={saving} buttonColor={theme.colors.primary} style={{ marginTop: 8 }}>
-            {saving ? <ActivityIndicator size={16} color="#fff" /> : 'Speichern'}
+          <Button
+            buttonColor={theme.colors.primary}
+            disabled={saving}
+            mode="contained"
+            onPress={handleSave}
+            style={{ marginTop: 8 }}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" size={16} />
+            ) : (
+              "Speichern"
+            )}
           </Button>
         </View>
 
@@ -275,29 +421,53 @@ export default function HouseholdScreen() {
 
         {/* Members */}
         <View style={styles.section}>
-          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Mitglieder</Text>
+          <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>
+            Mitglieder
+          </Text>
           {loadingMembers ? (
-            <ActivityIndicator style={{ marginTop: 16 }} color={theme.colors.primary} />
+            <ActivityIndicator
+              color={theme.colors.primary}
+              style={{ marginTop: 16 }}
+            />
           ) : (
-            members.map(member => (
+            members.map((member) => (
               <List.Item
+                description={
+                  member.role === "admin"
+                    ? "👑 Admin"
+                    : member.role === "viewer"
+                      ? "👁 Betrachter"
+                      : "👤 Mitglied"
+                }
+                descriptionStyle={{
+                  color: theme.colors.onSurface,
+                  opacity: 0.6,
+                }}
                 key={member.userId}
-                title={member.User?.name || 'Unbekannt'}
-                description={member.role === 'admin' ? '👑 Admin' : member.role === 'viewer' ? '👁 Betrachter' : '👤 Mitglied'}
+                left={() => (
+                  <List.Icon color={theme.colors.primary} icon="account" />
+                )}
+                right={() =>
+                  member.role === "admin" ? null : (
+                    <Button
+                      compact
+                      icon="account-remove"
+                      onPress={() =>
+                        handleRemoveMember(member.userId, member.User?.name)
+                      }
+                      textColor={theme.colors.error}
+                    >
+                      Entfernen
+                    </Button>
+                  )
+                }
+                style={{
+                  backgroundColor: theme.colors.cardBackground,
+                  borderRadius: 8,
+                  marginBottom: 4,
+                }}
+                title={member.User?.name || "Unbekannt"}
                 titleStyle={{ color: theme.colors.onSurface }}
-                descriptionStyle={{ color: theme.colors.onSurface, opacity: 0.6 }}
-                left={() => <List.Icon icon="account" color={theme.colors.primary} />}
-                right={() => member.role !== 'admin' ? (
-                  <Button
-                    icon="account-remove"
-                    compact
-                    textColor={theme.colors.error}
-                    onPress={() => handleRemoveMember(member.userId, member.User?.name)}
-                  >
-                    Entfernen
-                  </Button>
-                ) : null}
-                style={{ backgroundColor: theme.colors.cardBackground, borderRadius: 8, marginBottom: 4 }}
               />
             ))
           )}
@@ -306,11 +476,15 @@ export default function HouseholdScreen() {
         {/* Haushalt löschen */}
         {households.length > 1 && (
           <Button
-            mode="outlined"
             icon="delete"
-            textColor={theme.colors.error}
-            style={{ marginHorizontal: 16, marginTop: 8, borderColor: theme.colors.error + '60' }}
+            mode="outlined"
             onPress={handleDelete}
+            style={{
+              marginHorizontal: 16,
+              marginTop: 8,
+              borderColor: `${theme.colors.error}60`,
+            }}
+            textColor={theme.colors.error}
           >
             Haushaltsbuch löschen
           </Button>
@@ -323,11 +497,28 @@ export default function HouseholdScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 8, paddingBottom: 12 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "600", color: "#fff" },
   section: { padding: 16 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
-  label: { fontSize: 14, fontWeight: '500', marginBottom: 6, marginTop: 12 },
-  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 4 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  label: { fontSize: 14, fontWeight: "500", marginBottom: 6, marginTop: 12 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 4 },
 });

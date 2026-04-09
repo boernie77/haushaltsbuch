@@ -14,5 +14,5 @@ module.exports = {
         UNIQUE("householdId", "paperlessId")
       );
     `);
-  }
+  },
 };

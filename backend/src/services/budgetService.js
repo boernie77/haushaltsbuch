@@ -1,6 +1,6 @@
-const { Op, fn, col } = require('sequelize');
-const { Transaction, Budget, Household } = require('../models');
-const { getMonthBounds, getPeriodForDate } = require('../utils/monthBounds');
+const { Op, fn, col } = require("sequelize");
+const { Transaction, Budget, Household } = require("../models");
+const { getMonthBounds, getPeriodForDate } = require("../utils/monthBounds");
 
 /**
  * Check if any budget warning thresholds are reached after a new transaction.
@@ -19,24 +19,35 @@ async function checkBudgetWarning(householdId, categoryId, date) {
     if (categoryId) {
       const categoryBudget = await Budget.findOne({
         where: {
-          householdId, categoryId, year,
-          [Op.or]: [{ month }, { month: null }]
-        }
+          householdId,
+          categoryId,
+          year,
+          [Op.or]: [{ month }, { month: null }],
+        },
       });
 
       if (categoryBudget) {
-        const spent = await Transaction.sum('amount', {
-          where: { householdId, categoryId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } }
-        }) || 0;
+        const spent =
+          (await Transaction.sum("amount", {
+            where: {
+              householdId,
+              categoryId,
+              type: "expense",
+              isRecurring: { [Op.ne]: true },
+              date: { [Op.between]: [start, end] },
+            },
+          })) || 0;
 
-        const percentage = Math.round((spent / categoryBudget.limitAmount) * 100);
+        const percentage = Math.round(
+          (spent / categoryBudget.limitAmount) * 100
+        );
         if (percentage >= categoryBudget.warningAt) {
           warnings.push({
-            type: 'category',
+            type: "category",
             percentage,
-            spent: parseFloat(spent),
-            limit: parseFloat(categoryBudget.limitAmount),
-            isOver: percentage >= 100
+            spent: Number.parseFloat(spent),
+            limit: Number.parseFloat(categoryBudget.limitAmount),
+            isOver: percentage >= 100,
           });
         }
       }
@@ -44,25 +55,33 @@ async function checkBudgetWarning(householdId, categoryId, date) {
 
     // Check total household budget
     if (household?.monthlyBudget) {
-      const totalSpent = await Transaction.sum('amount', {
-        where: { householdId, type: 'expense', isRecurring: { [Op.ne]: true }, date: { [Op.between]: [start, end] } }
-      }) || 0;
+      const totalSpent =
+        (await Transaction.sum("amount", {
+          where: {
+            householdId,
+            type: "expense",
+            isRecurring: { [Op.ne]: true },
+            date: { [Op.between]: [start, end] },
+          },
+        })) || 0;
 
-      const percentage = Math.round((totalSpent / household.monthlyBudget) * 100);
+      const percentage = Math.round(
+        (totalSpent / household.monthlyBudget) * 100
+      );
       if (percentage >= (household.budgetWarningAt || 80)) {
         warnings.push({
-          type: 'household',
+          type: "household",
           percentage,
-          spent: parseFloat(totalSpent),
-          limit: parseFloat(household.monthlyBudget),
-          isOver: percentage >= 100
+          spent: Number.parseFloat(totalSpent),
+          limit: Number.parseFloat(household.monthlyBudget),
+          isOver: percentage >= 100,
         });
       }
     }
 
     return warnings.length > 0 ? warnings : null;
   } catch (err) {
-    console.error('Budget check error:', err);
+    console.error("Budget check error:", err);
     return null;
   }
 }

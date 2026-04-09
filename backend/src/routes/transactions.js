@@ -210,6 +210,7 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       isRecurring,
       recurringInterval,
       recurringDay,
+      recurringEndDate,
       isPersonal,
       targetHouseholdId,
       splits,
@@ -280,6 +281,8 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       recurringInterval: isRecurring === "true" ? recurringInterval : null,
       recurringDay: isRecurring === "true" ? effectiveRecurringDay : null,
       recurringNextDate,
+      recurringEndDate:
+        isRecurring === "true" && recurringEndDate ? recurringEndDate : null,
       isPersonal: isPersonal === "true" || isPersonal === true,
       targetHouseholdId: type === "transfer" ? targetHouseholdId : null,
       tip: tip ? Number.parseFloat(tip) : 0,
@@ -390,6 +393,7 @@ router.put("/:id", auth, async (req, res) => {
       isConfirmed,
       isRecurring,
       recurringInterval,
+      recurringEndDate,
       tip,
     } = req.body;
     const updates = {
@@ -417,6 +421,8 @@ router.put("/:id", auth, async (req, res) => {
           ? new Date(date).getDate()
           : transaction.recurringDay
         : null;
+      updates.recurringEndDate =
+        isRecurring && recurringEndDate ? recurringEndDate : null;
     }
 
     // Bei Datum-Änderung auf einem Template: recurringNextDate neu berechnen

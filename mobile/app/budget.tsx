@@ -1,11 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert, TextInput as RNTextInput } from 'react-native';
-import { Text, Button, useTheme, ActivityIndicator, Divider, Chip, ProgressBar } from 'react-native-paper';
-import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuthStore } from '../src/store/authStore';
-import { budgetAPI, categoryAPI, savingsGoalAPI } from '../src/services/api';
-import Toast from 'react-native-toast-message';
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  TextInput as RNTextInput,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import {
+  ActivityIndicator,
+  Button,
+  Chip,
+  ProgressBar,
+  Text,
+  useTheme,
+} from "react-native-paper";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
+import { budgetAPI, categoryAPI, savingsGoalAPI } from "../src/services/api";
+import { useAuthStore } from "../src/store/authStore";
 
 export default function BudgetScreen() {
   const theme = useTheme() as any;
@@ -19,23 +32,29 @@ export default function BudgetScreen() {
 
   const now = new Date();
   const [formCategoryId, setFormCategoryId] = useState<string | null>(null);
-  const [formLimit, setFormLimit] = useState('');
+  const [formLimit, setFormLimit] = useState("");
   const [formMonth, setFormMonth] = useState<number | null>(now.getMonth() + 1);
-  const [formYear, setFormYear] = useState(now.getFullYear());
+  const [formYear, _setFormYear] = useState(now.getFullYear());
   const [saving, setSaving] = useState(false);
   const [goals, setGoals] = useState<any[]>([]);
   const [showGoalForm, setShowGoalForm] = useState(false);
-  const [goalName, setGoalName] = useState('');
-  const [goalTarget, setGoalTarget] = useState('');
+  const [goalName, setGoalName] = useState("");
+  const [goalTarget, setGoalTarget] = useState("");
   const [savingGoal, setSavingGoal] = useState(false);
   const [depositGoalId, setDepositGoalId] = useState<string | null>(null);
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState("");
 
   const load = async () => {
-    if (!currentHousehold) return;
+    if (!currentHousehold) {
+      return;
+    }
     try {
       const [budgetRes, catRes] = await Promise.all([
-        budgetAPI.getAll({ householdId: currentHousehold.id, month: now.getMonth() + 1, year: now.getFullYear() }),
+        budgetAPI.getAll({
+          householdId: currentHousehold.id,
+          month: now.getMonth() + 1,
+          year: now.getFullYear(),
+        }),
         categoryAPI.getAll(currentHousehold.id),
       ]);
       setBudgets(budgetRes.data.budgets || []);
@@ -43,95 +62,153 @@ export default function BudgetScreen() {
       const goalRes = await savingsGoalAPI.getAll(currentHousehold.id);
       setGoals(goalRes.data.goals || []);
     } catch {
-      Toast.show({ type: 'error', text1: 'Budgets konnten nicht geladen werden' });
+      Toast.show({
+        type: "error",
+        text1: "Budgets konnten nicht geladen werden",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [currentHousehold?.id]);
+  useEffect(() => {
+    load();
+  }, [currentHousehold?.id]);
 
   const handleSave = async () => {
-    if (!currentHousehold || !formLimit) return;
+    if (!(currentHousehold && formLimit)) {
+      return;
+    }
     setSaving(true);
     try {
       await budgetAPI.create({
         householdId: currentHousehold.id,
         categoryId: formCategoryId,
-        limitAmount: parseFloat(formLimit),
+        limitAmount: Number.parseFloat(formLimit),
         month: formMonth,
         year: formYear,
       });
-      Toast.show({ type: 'success', text1: 'Budget gespeichert' });
+      Toast.show({ type: "success", text1: "Budget gespeichert" });
       setShowForm(false);
       setFormCategoryId(null);
-      setFormLimit('');
+      setFormLimit("");
       load();
     } catch (err: any) {
-      Toast.show({ type: 'error', text1: err.response?.data?.message || 'Fehler beim Speichern' });
+      Toast.show({
+        type: "error",
+        text1: err.response?.data?.message || "Fehler beim Speichern",
+      });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Budget löschen', 'Dieses Budget wirklich löschen?', [
-      { text: 'Abbrechen', style: 'cancel' },
+    Alert.alert("Budget löschen", "Dieses Budget wirklich löschen?", [
+      { text: "Abbrechen", style: "cancel" },
       {
-        text: 'Löschen', style: 'destructive', onPress: async () => {
+        text: "Löschen",
+        style: "destructive",
+        onPress: async () => {
           try {
             await budgetAPI.delete(id);
-            setBudgets(bs => bs.filter(b => b.id !== id));
-            Toast.show({ type: 'success', text1: 'Budget gelöscht' });
+            setBudgets((bs) => bs.filter((b) => b.id !== id));
+            Toast.show({ type: "success", text1: "Budget gelöscht" });
           } catch {
-            Toast.show({ type: 'error', text1: 'Fehler beim Löschen' });
+            Toast.show({ type: "error", text1: "Fehler beim Löschen" });
           }
-        }
-      }
+        },
+      },
     ]);
   };
 
   const handleSaveGoal = async () => {
-    if (!currentHousehold || !goalName || !goalTarget) return;
+    if (!(currentHousehold && goalName && goalTarget)) {
+      return;
+    }
     setSavingGoal(true);
     try {
-      await savingsGoalAPI.create({ householdId: currentHousehold.id, name: goalName, targetAmount: parseFloat(goalTarget), icon: '🎯' });
-      Toast.show({ type: 'success', text1: 'Sparziel erstellt' });
+      await savingsGoalAPI.create({
+        householdId: currentHousehold.id,
+        name: goalName,
+        targetAmount: Number.parseFloat(goalTarget),
+        icon: "🎯",
+      });
+      Toast.show({ type: "success", text1: "Sparziel erstellt" });
       setShowGoalForm(false);
-      setGoalName('');
-      setGoalTarget('');
+      setGoalName("");
+      setGoalTarget("");
       load();
     } catch {
-      Toast.show({ type: 'error', text1: 'Fehler beim Erstellen' });
-    } finally { setSavingGoal(false); }
-  };
-
-  const handleDeposit = async (goalId: string) => {
-    const amt = parseFloat(depositAmount);
-    if (!amt || amt <= 0) return;
-    const goal = goals.find(g => g.id === goalId);
-    try {
-      await savingsGoalAPI.update(goalId, { savedAmount: (parseFloat(goal.savedAmount) || 0) + amt });
-      Toast.show({ type: 'success', text1: 'Eingezahlt!' });
-      setDepositGoalId(null);
-      setDepositAmount('');
-      load();
-    } catch {
-      Toast.show({ type: 'error', text1: 'Fehler' });
+      Toast.show({ type: "error", text1: "Fehler beim Erstellen" });
+    } finally {
+      setSavingGoal(false);
     }
   };
 
-  const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+  const handleDeposit = async (goalId: string) => {
+    const amt = Number.parseFloat(depositAmount);
+    if (!amt || amt <= 0) {
+      return;
+    }
+    const goal = goals.find((g) => g.id === goalId);
+    try {
+      await savingsGoalAPI.update(goalId, {
+        savedAmount: (Number.parseFloat(goal.savedAmount) || 0) + amt,
+      });
+      Toast.show({ type: "success", text1: "Eingezahlt!" });
+      setDepositGoalId(null);
+      setDepositAmount("");
+      load();
+    } catch {
+      Toast.show({ type: "error", text1: "Fehler" });
+    }
+  };
+
+  const MONTHS = [
+    "Jan",
+    "Feb",
+    "Mär",
+    "Apr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Dez",
+  ];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.primary, paddingTop: insets.top + 12 }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: theme.colors.primary,
+            paddingTop: insets.top + 12,
+          },
+        ]}
+      >
         <View style={styles.headerRow}>
-          <Button icon="arrow-left" textColor="#fff" onPress={() => router.back()} compact>
+          <Button
+            compact
+            icon="arrow-left"
+            onPress={() => router.back()}
+            textColor="#fff"
+          >
             Zurück
           </Button>
           <Text style={styles.headerTitle}>Budgets</Text>
-          <Button icon="plus" textColor="#fff" onPress={() => setShowForm(!showForm)} compact>
+          <Button
+            compact
+            icon="plus"
+            onPress={() => setShowForm(!showForm)}
+            textColor="#fff"
+          >
             Neu
           </Button>
         </View>
@@ -140,59 +217,89 @@ export default function BudgetScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {/* New budget form */}
         {showForm && (
-          <View style={[styles.formCard, { backgroundColor: theme.colors.cardBackground }]}>
-            <Text style={[styles.sectionLabel, { color: theme.colors.primary }]}>Neues Budget</Text>
+          <View
+            style={[
+              styles.formCard,
+              { backgroundColor: theme.colors.cardBackground },
+            ]}
+          >
+            <Text
+              style={[styles.sectionLabel, { color: theme.colors.primary }]}
+            >
+              Neues Budget
+            </Text>
 
-            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Kategorie (leer = Gesamtbudget)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+              Kategorie (leer = Gesamtbudget)
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+            >
               <Chip
-                selected={!formCategoryId}
                 onPress={() => setFormCategoryId(null)}
-                style={{ marginRight: 8 }}
+                selected={!formCategoryId}
                 selectedColor={theme.colors.primary}
+                style={{ marginRight: 8 }}
               >
                 Gesamt
               </Chip>
-              {categories.map(cat => (
+              {categories.map((cat) => (
                 <Chip
                   key={cat.id}
-                  selected={formCategoryId === cat.id}
                   onPress={() => setFormCategoryId(cat.id)}
-                  style={{ marginRight: 8 }}
+                  selected={formCategoryId === cat.id}
                   selectedColor={theme.colors.primary}
+                  style={{ marginRight: 8 }}
                 >
                   {cat.icon} {cat.nameDE || cat.name}
                 </Chip>
               ))}
             </ScrollView>
 
-            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Limit (€)</Text>
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+              Limit (€)
+            </Text>
             <RNTextInput
-              style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
-              value={formLimit}
+              keyboardType="decimal-pad"
               onChangeText={setFormLimit}
               placeholder="z.B. 500"
-              placeholderTextColor={theme.colors.onSurface + '60'}
-              keyboardType="decimal-pad"
+              placeholderTextColor={`${theme.colors.onSurface}60`}
+              style={[
+                styles.input,
+                {
+                  color: theme.colors.onSurface,
+                  borderColor: `${theme.colors.primary}40`,
+                  backgroundColor: theme.colors.background,
+                },
+              ]}
+              value={formLimit}
             />
 
-            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Monat</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+              Monat
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}
+            >
               <Chip
-                selected={!formMonth}
                 onPress={() => setFormMonth(null)}
-                style={{ marginRight: 8 }}
+                selected={!formMonth}
                 selectedColor={theme.colors.primary}
+                style={{ marginRight: 8 }}
               >
                 Ganzes Jahr
               </Chip>
               {MONTHS.map((m, i) => (
                 <Chip
                   key={i}
-                  selected={formMonth === i + 1}
                   onPress={() => setFormMonth(i + 1)}
-                  style={{ marginRight: 8 }}
+                  selected={formMonth === i + 1}
                   selectedColor={theme.colors.primary}
+                  style={{ marginRight: 8 }}
                 >
                   {m}
                 </Chip>
@@ -200,11 +307,25 @@ export default function BudgetScreen() {
             </ScrollView>
 
             <View style={styles.formButtons}>
-              <Button mode="outlined" onPress={() => setShowForm(false)} style={{ flex: 1, marginRight: 8 }}>
+              <Button
+                mode="outlined"
+                onPress={() => setShowForm(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              >
                 Abbrechen
               </Button>
-              <Button mode="contained" onPress={handleSave} disabled={saving} buttonColor={theme.colors.primary} style={{ flex: 1 }}>
-                {saving ? <ActivityIndicator size={16} color="#fff" /> : 'Speichern'}
+              <Button
+                buttonColor={theme.colors.primary}
+                disabled={saving}
+                mode="contained"
+                onPress={handleSave}
+                style={{ flex: 1 }}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size={16} />
+                ) : (
+                  "Speichern"
+                )}
               </Button>
             </View>
           </View>
@@ -212,39 +333,92 @@ export default function BudgetScreen() {
 
         {/* Budget list */}
         {loading ? (
-          <ActivityIndicator style={{ marginTop: 40 }} color={theme.colors.primary} />
+          <ActivityIndicator
+            color={theme.colors.primary}
+            style={{ marginTop: 40 }}
+          />
         ) : budgets.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={{ color: theme.colors.onSurface, opacity: 0.5, fontSize: 16 }}>Keine Budgets vorhanden</Text>
+            <Text
+              style={{
+                color: theme.colors.onSurface,
+                opacity: 0.5,
+                fontSize: 16,
+              }}
+            >
+              Keine Budgets vorhanden
+            </Text>
           </View>
         ) : (
-          budgets.map(budget => {
+          budgets.map((budget) => {
             const pct = Math.min((budget.percentage || 0) / 100, 1);
             return (
-              <View key={budget.id} style={[styles.budgetCard, { backgroundColor: theme.colors.cardBackground }]}>
+              <View
+                key={budget.id}
+                style={[
+                  styles.budgetCard,
+                  { backgroundColor: theme.colors.cardBackground },
+                ]}
+              >
                 <View style={styles.budgetHeader}>
-                  <Text style={{ color: theme.colors.onSurface, fontWeight: '600', fontSize: 15 }}>
-                    {budget.Category ? `${budget.Category.icon} ${budget.Category.nameDE || budget.Category.name}` : 'Gesamtbudget'}
+                  <Text
+                    style={{
+                      color: theme.colors.onSurface,
+                      fontWeight: "600",
+                      fontSize: 15,
+                    }}
+                  >
+                    {budget.Category
+                      ? `${budget.Category.icon} ${budget.Category.nameDE || budget.Category.name}`
+                      : "Gesamtbudget"}
                   </Text>
-                  <Button icon="delete" compact textColor={theme.colors.error} onPress={() => handleDelete(budget.id)}>
-                    {''}
+                  <Button
+                    compact
+                    icon="delete"
+                    onPress={() => handleDelete(budget.id)}
+                    textColor={theme.colors.error}
+                  >
+                    {""}
                   </Button>
                 </View>
                 <View style={styles.budgetNumbers}>
                   <Text style={{ color: theme.colors.onSurface, opacity: 0.7 }}>
-                    {budget.spent?.toFixed(2)} / {parseFloat(budget.limitAmount).toFixed(2)} €
+                    {budget.spent?.toFixed(2)} /{" "}
+                    {Number.parseFloat(budget.limitAmount).toFixed(2)} €
                   </Text>
-                  <Text style={{ color: budget.isOver ? theme.colors.error : budget.isWarning ? theme.colors.warning : theme.colors.primary, fontWeight: '600' }}>
+                  <Text
+                    style={{
+                      color: budget.isOver
+                        ? theme.colors.error
+                        : budget.isWarning
+                          ? theme.colors.warning
+                          : theme.colors.primary,
+                      fontWeight: "600",
+                    }}
+                  >
                     {Math.round(budget.percentage || 0)}%
                   </Text>
                 </View>
                 <ProgressBar
+                  color={
+                    budget.isOver
+                      ? theme.colors.error
+                      : budget.isWarning
+                        ? theme.colors.warning
+                        : theme.colors.primary
+                  }
                   progress={pct}
-                  color={budget.isOver ? theme.colors.error : budget.isWarning ? theme.colors.warning : theme.colors.primary}
                   style={styles.progressBar}
                 />
                 {budget.month && (
-                  <Text style={{ color: theme.colors.onSurface, opacity: 0.5, fontSize: 12, marginTop: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.onSurface,
+                      opacity: 0.5,
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
                     {MONTHS[budget.month - 1]} {budget.year}
                   </Text>
                 )}
@@ -253,78 +427,232 @@ export default function BudgetScreen() {
           })
         )}
         {/* Divider + Sparziele */}
-        <View style={{ margin: 16, marginTop: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 16 }}>🎯 Sparziele</Text>
-          <Button icon="plus" compact textColor={theme.colors.primary} onPress={() => setShowGoalForm(!showGoalForm)}>Neu</Button>
+        <View
+          style={{
+            margin: 16,
+            marginTop: 24,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text
+            style={{
+              color: theme.colors.primary,
+              fontWeight: "700",
+              fontSize: 16,
+            }}
+          >
+            🎯 Sparziele
+          </Text>
+          <Button
+            compact
+            icon="plus"
+            onPress={() => setShowGoalForm(!showGoalForm)}
+            textColor={theme.colors.primary}
+          >
+            Neu
+          </Button>
         </View>
 
         {showGoalForm && (
-          <View style={[styles.formCard, { backgroundColor: theme.colors.cardBackground }]}>
-            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Name</Text>
+          <View
+            style={[
+              styles.formCard,
+              { backgroundColor: theme.colors.cardBackground },
+            ]}
+          >
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+              Name
+            </Text>
             <RNTextInput
-              style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
-              value={goalName} onChangeText={setGoalName} placeholder="z.B. Urlaub"
-              placeholderTextColor={theme.colors.onSurface + '60'}
+              onChangeText={setGoalName}
+              placeholder="z.B. Urlaub"
+              placeholderTextColor={`${theme.colors.onSurface}60`}
+              style={[
+                styles.input,
+                {
+                  color: theme.colors.onSurface,
+                  borderColor: `${theme.colors.primary}40`,
+                  backgroundColor: theme.colors.background,
+                },
+              ]}
+              value={goalName}
             />
-            <Text style={[styles.label, { color: theme.colors.onSurface }]}>Zielbetrag (€)</Text>
+            <Text style={[styles.label, { color: theme.colors.onSurface }]}>
+              Zielbetrag (€)
+            </Text>
             <RNTextInput
-              style={[styles.input, { color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background }]}
-              value={goalTarget} onChangeText={setGoalTarget} placeholder="z.B. 1000"
-              placeholderTextColor={theme.colors.onSurface + '60'} keyboardType="decimal-pad"
+              keyboardType="decimal-pad"
+              onChangeText={setGoalTarget}
+              placeholder="z.B. 1000"
+              placeholderTextColor={`${theme.colors.onSurface}60`}
+              style={[
+                styles.input,
+                {
+                  color: theme.colors.onSurface,
+                  borderColor: `${theme.colors.primary}40`,
+                  backgroundColor: theme.colors.background,
+                },
+              ]}
+              value={goalTarget}
             />
             <View style={styles.formButtons}>
-              <Button mode="outlined" onPress={() => setShowGoalForm(false)} style={{ flex: 1, marginRight: 8 }}>Abbrechen</Button>
-              <Button mode="contained" onPress={handleSaveGoal} disabled={savingGoal} buttonColor={theme.colors.primary} style={{ flex: 1 }}>
-                {savingGoal ? <ActivityIndicator size={16} color="#fff" /> : 'Erstellen'}
+              <Button
+                mode="outlined"
+                onPress={() => setShowGoalForm(false)}
+                style={{ flex: 1, marginRight: 8 }}
+              >
+                Abbrechen
+              </Button>
+              <Button
+                buttonColor={theme.colors.primary}
+                disabled={savingGoal}
+                mode="contained"
+                onPress={handleSaveGoal}
+                style={{ flex: 1 }}
+              >
+                {savingGoal ? (
+                  <ActivityIndicator color="#fff" size={16} />
+                ) : (
+                  "Erstellen"
+                )}
               </Button>
             </View>
           </View>
         )}
 
         {goals.length === 0 && !showGoalForm ? (
-          <Text style={{ color: theme.colors.onSurface, opacity: 0.4, textAlign: 'center', paddingVertical: 16 }}>Noch keine Sparziele</Text>
-        ) : goals.map(goal => {
-          const pct = goal.targetAmount > 0 ? Math.min(goal.savedAmount / goal.targetAmount, 1) : 0;
-          return (
-            <View key={goal.id} style={[styles.budgetCard, { backgroundColor: theme.colors.cardBackground, borderWidth: goal.isCompleted ? 2 : 0, borderColor: '#22c55e' }]}>
-              <View style={styles.budgetHeader}>
-                <Text style={{ color: theme.colors.onSurface, fontWeight: '600', fontSize: 15 }}>
-                  {goal.icon} {goal.name} {goal.isCompleted ? '✅' : ''}
-                </Text>
-                <Button icon="delete" compact textColor={theme.colors.error} onPress={async () => {
-                  await savingsGoalAPI.delete(goal.id);
-                  setGoals(gs => gs.filter(g => g.id !== goal.id));
-                }}>{''}</Button>
-              </View>
-              <View style={styles.budgetNumbers}>
-                <Text style={{ color: theme.colors.onSurface, opacity: 0.7 }}>
-                  {parseFloat(goal.savedAmount).toFixed(2)} / {parseFloat(goal.targetAmount).toFixed(2)} €
-                </Text>
-                <Text style={{ color: goal.isCompleted ? '#22c55e' : theme.colors.primary, fontWeight: '600' }}>
-                  {Math.round(pct * 100)}%
-                </Text>
-              </View>
-              <ProgressBar progress={pct} color={goal.isCompleted ? '#22c55e' : theme.colors.primary} style={styles.progressBar} />
-              {!goal.isCompleted && (
-                depositGoalId === goal.id ? (
-                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                    <RNTextInput
-                      style={[styles.input, { flex: 1, color: theme.colors.onSurface, borderColor: theme.colors.primary + '40', backgroundColor: theme.colors.background, marginBottom: 0 }]}
-                      value={depositAmount} onChangeText={setDepositAmount} placeholder="Betrag"
-                      placeholderTextColor={theme.colors.onSurface + '60'} keyboardType="decimal-pad" autoFocus
-                    />
-                    <Button mode="contained" onPress={() => handleDeposit(goal.id)} buttonColor={theme.colors.primary} compact style={{ marginTop: 2 }}>OK</Button>
-                    <Button mode="outlined" onPress={() => { setDepositGoalId(null); setDepositAmount(''); }} compact style={{ marginTop: 2 }}>✕</Button>
-                  </View>
-                ) : (
-                  <Button mode="text" textColor={theme.colors.primary} onPress={() => setDepositGoalId(goal.id)} style={{ marginTop: 4, alignSelf: 'flex-start' }} compact>
-                    + Einzahlen
+          <Text
+            style={{
+              color: theme.colors.onSurface,
+              opacity: 0.4,
+              textAlign: "center",
+              paddingVertical: 16,
+            }}
+          >
+            Noch keine Sparziele
+          </Text>
+        ) : (
+          goals.map((goal) => {
+            const pct =
+              goal.targetAmount > 0
+                ? Math.min(goal.savedAmount / goal.targetAmount, 1)
+                : 0;
+            return (
+              <View
+                key={goal.id}
+                style={[
+                  styles.budgetCard,
+                  {
+                    backgroundColor: theme.colors.cardBackground,
+                    borderWidth: goal.isCompleted ? 2 : 0,
+                    borderColor: "#22c55e",
+                  },
+                ]}
+              >
+                <View style={styles.budgetHeader}>
+                  <Text
+                    style={{
+                      color: theme.colors.onSurface,
+                      fontWeight: "600",
+                      fontSize: 15,
+                    }}
+                  >
+                    {goal.icon} {goal.name} {goal.isCompleted ? "✅" : ""}
+                  </Text>
+                  <Button
+                    compact
+                    icon="delete"
+                    onPress={async () => {
+                      await savingsGoalAPI.delete(goal.id);
+                      setGoals((gs) => gs.filter((g) => g.id !== goal.id));
+                    }}
+                    textColor={theme.colors.error}
+                  >
+                    {""}
                   </Button>
-                )
-              )}
-            </View>
-          );
-        })}
+                </View>
+                <View style={styles.budgetNumbers}>
+                  <Text style={{ color: theme.colors.onSurface, opacity: 0.7 }}>
+                    {Number.parseFloat(goal.savedAmount).toFixed(2)} /{" "}
+                    {Number.parseFloat(goal.targetAmount).toFixed(2)} €
+                  </Text>
+                  <Text
+                    style={{
+                      color: goal.isCompleted
+                        ? "#22c55e"
+                        : theme.colors.primary,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {Math.round(pct * 100)}%
+                  </Text>
+                </View>
+                <ProgressBar
+                  color={goal.isCompleted ? "#22c55e" : theme.colors.primary}
+                  progress={pct}
+                  style={styles.progressBar}
+                />
+                {!goal.isCompleted &&
+                  (depositGoalId === goal.id ? (
+                    <View
+                      style={{ flexDirection: "row", gap: 8, marginTop: 8 }}
+                    >
+                      <RNTextInput
+                        autoFocus
+                        keyboardType="decimal-pad"
+                        onChangeText={setDepositAmount}
+                        placeholder="Betrag"
+                        placeholderTextColor={`${theme.colors.onSurface}60`}
+                        style={[
+                          styles.input,
+                          {
+                            flex: 1,
+                            color: theme.colors.onSurface,
+                            borderColor: `${theme.colors.primary}40`,
+                            backgroundColor: theme.colors.background,
+                            marginBottom: 0,
+                          },
+                        ]}
+                        value={depositAmount}
+                      />
+                      <Button
+                        buttonColor={theme.colors.primary}
+                        compact
+                        mode="contained"
+                        onPress={() => handleDeposit(goal.id)}
+                        style={{ marginTop: 2 }}
+                      >
+                        OK
+                      </Button>
+                      <Button
+                        compact
+                        mode="outlined"
+                        onPress={() => {
+                          setDepositGoalId(null);
+                          setDepositAmount("");
+                        }}
+                        style={{ marginTop: 2 }}
+                      >
+                        ✕
+                      </Button>
+                    </View>
+                  ) : (
+                    <Button
+                      compact
+                      mode="text"
+                      onPress={() => setDepositGoalId(goal.id)}
+                      style={{ marginTop: 4, alignSelf: "flex-start" }}
+                      textColor={theme.colors.primary}
+                    >
+                      + Einzahlen
+                    </Button>
+                  ))}
+              </View>
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -333,16 +661,53 @@ export default function BudgetScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 8, paddingBottom: 12 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "600", color: "#fff" },
   formCard: { margin: 16, padding: 16, borderRadius: 16, elevation: 2 },
-  sectionLabel: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
-  label: { fontSize: 14, fontWeight: '500', marginBottom: 6, marginTop: 4 },
-  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, marginBottom: 8 },
-  formButtons: { flexDirection: 'row', marginTop: 8 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  budgetCard: { margin: 12, marginBottom: 0, padding: 16, borderRadius: 16, elevation: 2 },
-  budgetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  budgetNumbers: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  label: { fontSize: 14, fontWeight: "500", marginBottom: 6, marginTop: 4 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  formButtons: { flexDirection: "row", marginTop: 8 },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  budgetCard: {
+    margin: 12,
+    marginBottom: 0,
+    padding: 16,
+    borderRadius: 16,
+    elevation: 2,
+  },
+  budgetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  budgetNumbers: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
   progressBar: { height: 8, borderRadius: 4 },
 });

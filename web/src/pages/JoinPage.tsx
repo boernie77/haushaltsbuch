@@ -1,30 +1,31 @@
-import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link, useParams } from "react-router-dom";
 
 export default function JoinPage() {
   const { code } = useParams<{ code: string }>();
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-400 to-purple-600 dark:from-blue-900 dark:to-slate-900 p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full text-center">
-        <div className="text-5xl mb-4">🏠</div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Du wurdest eingeladen!</h1>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-pink-400 to-purple-600 p-4 dark:from-blue-900 dark:to-slate-900">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-2xl dark:bg-slate-800">
+        <div className="mb-4 text-5xl">🏠</div>
+        <h1 className="mb-2 font-bold text-2xl text-gray-900 dark:text-white">
+          Du wurdest eingeladen!
+        </h1>
+        <p className="mb-6 text-gray-500 dark:text-gray-400">
           Registriere dich mit diesem Code, um Haushaltsbuch beizutreten.
         </p>
-        <div className="bg-gray-100 dark:bg-slate-700 rounded-xl p-3 font-mono text-xl font-bold text-[var(--primary)] mb-8 tracking-widest">
+        <div className="mb-8 rounded-xl bg-gray-100 p-3 font-bold font-mono text-[var(--primary)] text-xl tracking-widest dark:bg-slate-700">
           {code}
         </div>
         <div className="space-y-3">
           <Link
+            className="btn-primary flex w-full items-center justify-center py-3 text-base"
             to={`/register?code=${code}`}
-            className="btn-primary w-full flex items-center justify-center text-base py-3"
           >
             Jetzt registrieren & beitreten
           </Link>
           <Link
+            className="block w-full rounded-xl bg-gray-100 px-4 py-3 text-center font-medium text-gray-700 text-sm transition-colors hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300 dark:hover:bg-slate-600"
             to="/login"
-            className="block w-full text-center px-4 py-3 rounded-xl bg-gray-100 dark:bg-slate-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors"
           >
             Bereits registriert? Anmelden
           </Link>

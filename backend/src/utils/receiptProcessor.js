@@ -1,6 +1,6 @@
-const sharp = require('sharp');
-const path = require('path');
-const fs = require('fs');
+const sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
 
 /**
  * Verarbeitet ein Quittungsbild zu einem klaren Dokumenten-Scan:
@@ -20,14 +20,14 @@ async function processReceiptImage(inputPath) {
   // 1) Glattes Bild (für Textbereiche): Kontrast-Boost, 1 Kanal erzwingen
   const { data: smooth, info } = await sharp(baseBuffer)
     .linear(1.3, -30) // Text etwas dunkler, Hintergrund etwas heller
-    .toColourspace('b-w') // Erzwingt 1 Kanal (greyscale PNG kann 3 Kanäle haben)
+    .toColourspace("b-w") // Erzwingt 1 Kanal (greyscale PNG kann 3 Kanäle haben)
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   // 2) Threshold-Maske: einfacher globaler Threshold, 1 Kanal
   const { data: mask } = await sharp(baseBuffer)
     .threshold(165)
-    .toColourspace('b-w')
+    .toColourspace("b-w")
     .raw()
     .toBuffer({ resolveWithObject: true });
 
@@ -42,7 +42,7 @@ async function processReceiptImage(inputPath) {
   }
 
   const buffer = await sharp(result, {
-    raw: { width: info.width, height: info.height, channels: info.channels }
+    raw: { width: info.width, height: info.height, channels: info.channels },
   })
     .jpeg({ quality: 92 })
     .toBuffer();
@@ -60,7 +60,7 @@ async function processReceiptFile(filePath) {
     fs.writeFileSync(filePath, buffer);
     return filePath;
   } catch (err) {
-    console.error('[receipt] Bildverarbeitung fehlgeschlagen:', err.message);
+    console.error("[receipt] Bildverarbeitung fehlgeschlagen:", err.message);
     return null;
   }
 }
