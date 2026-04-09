@@ -26,8 +26,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 018-recurring-source-id,
-│       │                           019-subscription
+│       ├── migrations/             001-initial … 020-professional-themes,
+│       │                           021-recurring-end-date
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -36,7 +36,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │       └── utils/
 │           ├── migrate.js          Migrations-Runner (_migrations-Tabelle)
 │           ├── receiptProcessor.js Sharp-Pipeline (B&W Dokumenten-Scan-Filter)
-│           └── seedCategories.js   17 Systemkategorien
+│           └── seedCategories.js   18 Systemkategorien (findOrCreate, läuft bei jedem Start)
 ├── web/
 │   └── src/
 │       ├── pages/                  Alle Seiten
@@ -71,7 +71,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted, `subscriptionType` (trial|monthly|null), `trialStartedAt`, `trialEndsAt`, `subscriptionActive`
 - **Household** (= Haushaltsbuch): id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
 - **HouseholdMember**: householdId, userId, role (admin/member/viewer)
-- **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
+- **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `recurringEndDate` (optional, Cron stoppt Template wenn überschritten), `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
 - **Category**: name, nameDE, icon, color, isSystem, householdId (null = global Systemkategorie)
 - **Budget**: householdId, categoryId, limitAmount, month, year, warningAt
 - **GlobalSettings**: id='global', anthropicApiKey, aiKeyPublic (single-row)
@@ -118,6 +118,19 @@ module.exports = {
 };
 ```
 
+### ⚠️ KRITISCH: Spaltenname in Migrations — immer camelCase mit Anführungszeichen!
+Sequelize verwendet **camelCase** Spaltennamen direkt in PostgreSQL (kein `underscored: true`).
+Neue Spalten MÜSSEN mit Anführungszeichen in camelCase angelegt werden:
+```sql
+-- RICHTIG:
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "recurringEndDate" DATE;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS "isRecurring" BOOLEAN;
+
+-- FALSCH (Spalte existiert, aber Sequelize findet sie nicht → Fehler 500):
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS recurring_end_date DATE;
+```
+Vorhandene Migrationen (005, 018 etc.) als Referenz nutzen.
+
 ## Cron-Jobs (`cronService.js`)
 | Zeit | Job |
 |------|-----|
@@ -147,12 +160,13 @@ Zwei-Pass-Verfahren mit Pixel-Mapping:
 - `isRecurring: true` → **Template-Buchung** (nur Template, erscheint NICHT in normaler Transaktionsliste)
 - `recurringNextDate` = Buchungsdatum beim Erstellen (Cron erstellt ab dann Kopien)
 - `recurringInterval`: `weekly` | `monthly` | `yearly`
+- `recurringEndDate`: optionales Enddatum — Cron setzt `isRecurring: false` wenn überschritten
 - `GET /api/transactions` filtert `isRecurring: true` automatisch aus
 - `GET /api/transactions/recurring` + `DELETE /api/transactions/recurring/:id`
-- `PUT /api/transactions/:id` akzeptiert `isRecurring` + `recurringInterval`
-- Web: TransactionsPage — eigener Filter-Tab "Wiederkehrend" mit Bearbeiten/Beenden/Verschieben
+- `PUT /api/transactions/:id` akzeptiert `isRecurring` + `recurringInterval` + `recurringEndDate`
+- Web: TransactionsPage — eigener Filter-Tab "Wiederkehrend" mit Bearbeiten/Beenden/Verschieben + Enddatum-Spalte
 - Mobile: transactions.tsx — eigener Filter-Tab "Wiederkehrend" mit Beenden-Button
-- Mobile: add.tsx — Switch + Intervall-Chips
+- Mobile: add.tsx — Switch + Intervall-Chips + Enddatum-Feld
 - **API-Antwort:** `GET /api/transactions/recurring` gibt `{ recurring: [...] }` zurück (nicht direkt Array)
 
 ## Buchungen verschieben
@@ -383,7 +397,7 @@ Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `
 - Web-Build: `npm install` (kein `npm ci`, kein Lockfile committed)
 - Backend ENV auf VPS: `/opt/haushaltsbuch/.env`
 - DB-User: `haushalt`, DB-Name: `haushaltsbuch`
-- 17 Systemkategorien automatisch geseedet
+- 18 Systemkategorien automatisch geseedet (inkl. "Kredit" 💳) — `seedCategories.js` nutzt `findOrCreate` und läuft bei jedem Server-Start (neue Kategorien werden auch auf bestehenden Installs ergänzt)
 - Themes: `feminine` = rosa/hell, `masculine` = dunkelblau
 - API-Routes unter `/api/...` (Caddy → Port 8081 → nginx → Backend Port 3001)
 - **Niemals** `sequelize.sync()` in Produktion — nur Migrations-Runner verwenden
@@ -392,5 +406,6 @@ Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `
 - React Native: Komponenten **nicht** innerhalb anderer Komponenten definieren (`const Foo = () =>`) — führt zu Remount bei jedem Render (Eingabefeld verliert Fokus). Stattdessen Render-Funktion (`const renderFoo = (...)`) verwenden.
 - React Native Modal vs Paper Portal: Paper `Portal`/`Modal` bricht `ScrollView` + `maximumZoomScale` auf iOS → für Vollbild-Zoom nativen `Modal as RNModal` aus `react-native` verwenden
 - **Tailwind `.input` Klasse:** Hat `@apply px-3` → überschreibt Utility-Klasse `pl-9`. Fix: `style={{ paddingLeft: '2.25rem' }}` inline
+- **Button-Klassen:** `.btn-primary` (Primäraktion) + `.btn-secondary` (Abbrechen/Sekundär) — beide passen sich dem Professional-Theme an (`rounded-xl` → `rounded`). Nie hardcoded `rounded-xl` für Buttons verwenden!
 - **Sequelize Association-Naming:** `h.HouseholdMembers` (Default), nicht `h.members`
 - **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
