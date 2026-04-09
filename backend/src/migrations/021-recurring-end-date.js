@@ -2,7 +2,7 @@ module.exports = {
   up: async (sequelize) => {
     await sequelize.query(`
       ALTER TABLE transactions
-        ADD COLUMN IF NOT EXISTS recurring_end_date DATE;
+        ADD COLUMN IF NOT EXISTS "recurringEndDate" DATE;
     `);
   },
 };

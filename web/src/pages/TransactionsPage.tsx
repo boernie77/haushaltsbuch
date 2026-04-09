@@ -908,7 +908,7 @@ export default function TransactionsPage() {
             </div>
             <div className="flex justify-end gap-3 md:col-span-2">
               <button
-                className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-gray-700 dark:bg-slate-700 dark:text-gray-300"
+                className="btn-secondary"
                 onClick={() => {
                   setShowForm(false);
                   setEditingId(null);
@@ -1213,7 +1213,7 @@ export default function TransactionsPage() {
             )}
             <div className="flex justify-end gap-3">
               <button
-                className="rounded-xl bg-gray-100 px-4 py-2 font-medium text-gray-700 text-sm dark:bg-slate-700 dark:text-gray-300"
+                className="btn-secondary"
                 onClick={() => setMoveDialog(null)}
               >
                 Abbrechen

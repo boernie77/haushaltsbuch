@@ -91,8 +91,13 @@ html.professional aside nav button {
   @apply bg-[var(--primary)] hover:opacity-90 text-white font-semibold px-4 py-2 rounded-xl transition-all;
 }
 
+.btn-secondary {
+  @apply bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-medium px-4 py-2 rounded-xl transition-all;
+}
+
 /* ── Professional: Eckige Buttons ────────────────────────────────── */
-html.professional .btn-primary {
+html.professional .btn-primary,
+html.professional .btn-secondary {
   @apply rounded;
 }
 
