@@ -156,6 +156,41 @@ Zwei-Pass-Verfahren mit Pixel-Mapping:
 - **Wichtig:** `toColourspace('b-w')` erzwingen, da greyscale PNG trotzdem 3 RGB-Kanäle haben kann → sonst 3× zu großes Bild
 - **Kein CLAHE im Textbereich** — CLAHE erzeugt Embossing-Artefakte die nur durch Threshold verdeckt werden
 
+## Monatszeitraum (`monthStartDay`)
+Pro Haushaltsbuch konfigurierbar (1–28, Default 1). Steuert, ab welchem Tag des Monats der Budget-Monat beginnt — nützlich z.B. wenn das Gehalt am 27. kommt.
+
+### ⚠️ KRITISCH: Period-Label folgt dem End-Monat (nicht dem Start-Monat)!
+Bei `monthStartDay > 1` ist der **Label-Monat = Kalendermonat am Ende der Periode**:
+- `startDay=27`, Period "April" = **27.03. – 26.04.** (nicht 27.04. – 26.05.!)
+- `startDay=27`, 27.03. fällt in Period "April"; 27.04. fällt in Period "Mai"
+
+Begründung: Wer am 27. Gehalt bekommt, versteht den 27.03. intuitiv als Beginn von "April".
+
+### Zentrale Logik: `backend/src/utils/monthBounds.js`
+- `getMonthBounds(year, month, startDay)` → `{start, end}` Datumsgrenzen für Period-Label
+- `getPeriodForDate(date, startDay)` → `{year, month}` Period zu dem ein Datum gehört
+- Beide funktionieren bei `startDay=1` wie früher (Kalendermonat)
+
+### Frontend: Period-Berechnung ist 7× dupliziert (keine zentrale Util!)
+Wenn die Logik geändert wird, MÜSSEN alle 7 Stellen synchron angepasst werden:
+- `web/src/pages/`: DashboardPage, StatisticsPage, TransactionsPage, BudgetPage, BackupPage
+- `mobile/app/(tabs)/`: index.tsx, statistics.tsx, transactions.tsx
+- `mobile/app/budget.tsx`
+
+Standard-Pattern:
+```ts
+const startDay = currentHousehold?.monthStartDay || 1;
+let periodMonth = now.getMonth() + 1;
+let periodYear = now.getFullYear();
+if (startDay > 1 && now.getDate() >= startDay) {
+  if (periodMonth === 12) { periodMonth = 1; periodYear += 1; }
+  else periodMonth += 1;
+}
+```
+
+### Backend `/yearly` und `/wealth` nutzen Kalendermonate, nicht Period
+`EXTRACT(MONTH FROM date)` bei Aggregaten — bewusst Kalender-basiert (Jahresübersicht / Vermögensentwicklung). Nur `/monthly`, `/overview`, `/byPerson`, `/budgets`, `/reports` verwenden Period-Bounds.
+
 ## Wiederkehrende Buchungen
 - `isRecurring: true` → **Template-Buchung** (nur Template, erscheint NICHT in normaler Transaktionsliste)
 - `recurringNextDate` = Buchungsdatum beim Erstellen (Cron erstellt ab dann Kopien)
