@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
-import { Link, useNavigate } from "react-router-dom";
-import { householdAPI } from "../services/api";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { api, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
 interface LoginForm {
@@ -14,11 +14,37 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { login, setHouseholds, setCurrentHousehold } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [searchParams] = useSearchParams();
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>();
+
+  // SSO error from backend redirect (?sso_error=...)
+  useEffect(() => {
+    const ssoError = searchParams.get("sso_error");
+    if (ssoError) {
+      toast.error(ssoError);
+      window.history.replaceState(null, "", "/login");
+    }
+  }, [searchParams]);
+
+  // SSO success: Backend redirected with #token=<jwt>
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const token = hash.get("token");
+    if (!token) {
+      return;
+    }
+    localStorage.setItem("auth_token", token);
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    window.history.replaceState(null, "", "/login");
+    useAuthStore
+      .getState()
+      .loadStoredAuth()
+      .then(() => navigate("/"));
+  }, [navigate]);
 
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
@@ -35,6 +61,11 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSsoLogin = () => {
+    const apiBase = (api.defaults.baseURL || "/api").replace(/\/$/, "");
+    window.location.href = `${apiBase}/auth/oidc/login`;
   };
 
   return (
@@ -96,6 +127,33 @@ export default function LoginPage() {
               Anmelden
             </button>
           </form>
+          <div className="my-4 flex items-center gap-3 text-gray-400 text-xs">
+            <div className="h-px flex-1 bg-gray-200 dark:bg-slate-700" />
+            <span>oder</span>
+            <div className="h-px flex-1 bg-gray-200 dark:bg-slate-700" />
+          </div>
+          <button
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2 font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600"
+            onClick={handleSsoLogin}
+            type="button"
+          >
+            <svg
+              aria-hidden="true"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c-4 0-7 2-7 5v1h14v-1c0-3-3-5-7-5z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Mit Authentik anmelden
+          </button>
           <div className="mt-4 space-y-2 text-center text-gray-500 text-sm dark:text-gray-400">
             <p>
               Noch kein Konto?{" "}

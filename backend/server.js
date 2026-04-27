@@ -22,6 +22,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Routes
+app.use("/api/auth/oidc", require("./src/routes/oidc"));
 app.use("/api/auth", require("./src/routes/auth"));
 app.use("/api/users", require("./src/routes/users"));
 app.use("/api/households", require("./src/routes/households"));

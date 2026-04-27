@@ -58,6 +58,13 @@ const User = sequelize.define(
       defaultValue: false,
       comment: "Superadmin hat Abo manuell aktiviert",
     },
+    oidcSubject: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: true,
+      comment:
+        "OIDC sub claim (z.B. Email aus Authentik) — verlinkt SSO-Identität",
+    },
   },
   { tableName: "users", timestamps: true }
 );

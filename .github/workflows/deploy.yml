@@ -36,6 +36,9 @@ jobs:
             set_env ALLOWED_ORIGINS "https://haushalt.bernauer24.com"
             set_env APP_URL "https://haushalt.bernauer24.com"
             set_env API_URL "https://haushalt.bernauer24.com/api"
+            set_env OIDC_ISSUER_URL "https://auth.bernauer24.com/application/o/haushaltsbuch/"
+            set_env OIDC_CLIENT_ID "${{ secrets.OIDC_CLIENT_ID }}"
+            set_env OIDC_CLIENT_SECRET "${{ secrets.OIDC_CLIENT_SECRET }}"
 
             docker-compose build --no-cache
             docker-compose up -d
