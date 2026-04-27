@@ -55,9 +55,21 @@ export default function StatisticsPage() {
   const [wealth, setWealth] = useState<any>(null);
   const [persons, setPersons] = useState<any>(null);
   const [trendMonths, setTrendMonths] = useState(6);
-  const currentYear = new Date().getFullYear();
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(Math.max(currentYear, 2026));
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const startDay = currentHousehold?.monthStartDay || 1;
+  let initialMonth = now.getMonth() + 1;
+  let initialYear = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (initialMonth === 12) {
+      initialMonth = 1;
+      initialYear += 1;
+    } else {
+      initialMonth += 1;
+    }
+  }
+  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [selectedYear, setSelectedYear] = useState(Math.max(initialYear, 2026));
   const [loading, setLoading] = useState(false);
 
   const fmt = (n: number) =>

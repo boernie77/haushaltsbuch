@@ -38,12 +38,12 @@ export default function HomeScreen() {
       const sd = currentHousehold.monthStartDay || 1;
       let pm = now.getMonth() + 1;
       let py = now.getFullYear();
-      if (sd > 1 && now.getDate() < sd) {
-        if (pm === 1) {
-          pm = 12;
-          py -= 1;
+      if (sd > 1 && now.getDate() >= sd) {
+        if (pm === 12) {
+          pm = 1;
+          py += 1;
         } else {
-          pm -= 1;
+          pm += 1;
         }
       }
       const [overviewRes, budgetRes] = await Promise.all([

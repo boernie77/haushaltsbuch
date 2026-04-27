@@ -48,12 +48,12 @@ export default function TransactionsScreen() {
   const calcCurrentPeriod = (sd: number) => {
     let m = now.getMonth() + 1;
     let y = now.getFullYear();
-    if (sd > 1 && now.getDate() < sd) {
-      if (m === 1) {
-        m = 12;
-        y -= 1;
+    if (sd > 1 && now.getDate() >= sd) {
+      if (m === 12) {
+        m = 1;
+        y += 1;
       } else {
-        m -= 1;
+        m += 1;
       }
     }
     return { month: m, year: y };
@@ -66,8 +66,8 @@ export default function TransactionsScreen() {
     if (startDay <= 1) {
       return format(new Date(y, m - 1, 1), "MMMM yyyy", { locale: de });
     }
-    const start = new Date(y, m - 1, startDay);
-    const end = new Date(y, m, startDay - 1);
+    const start = new Date(y, m - 2, startDay);
+    const end = new Date(y, m - 1, startDay - 1);
     return `${format(start, "d. MMM", { locale: de })} – ${format(end, "d. MMM yyyy", { locale: de })}`;
   };
   const prevPeriod = () => {

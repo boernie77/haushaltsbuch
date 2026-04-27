@@ -53,6 +53,17 @@ export default function BudgetPage() {
   const [depositAmount, setDepositAmount] = useState("");
 
   const now = new Date();
+  const startDay = currentHousehold?.monthStartDay || 1;
+  let periodMonth = now.getMonth() + 1;
+  let periodYear = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (periodMonth === 12) {
+      periodMonth = 1;
+      periodYear += 1;
+    } else {
+      periodMonth += 1;
+    }
+  }
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("de-DE", {
@@ -66,8 +77,8 @@ export default function BudgetPage() {
     }
     const { data } = await budgetAPI.getAll({
       householdId: currentHousehold.id,
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
+      month: periodMonth,
+      year: periodYear,
     });
     setBudgets(data.budgets);
   };

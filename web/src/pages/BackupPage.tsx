@@ -320,8 +320,19 @@ export default function BackupPage() {
   const [importing, setImporting] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const now = new Date();
-  const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
-  const [reportYear, setReportYear] = useState(now.getFullYear());
+  const startDay = currentHousehold?.monthStartDay || 1;
+  let initialReportMonth = now.getMonth() + 1;
+  let initialReportYear = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (initialReportMonth === 12) {
+      initialReportMonth = 1;
+      initialReportYear += 1;
+    } else {
+      initialReportMonth += 1;
+    }
+  }
+  const [reportMonth, setReportMonth] = useState(initialReportMonth);
+  const [reportYear, setReportYear] = useState(initialReportYear);
   const [sendingReport, setSendingReport] = useState(false);
 
   const handleExport = async () => {

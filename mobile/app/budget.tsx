@@ -31,10 +31,21 @@ export default function BudgetScreen() {
   const [showForm, setShowForm] = useState(false);
 
   const now = new Date();
+  const startDay = currentHousehold?.monthStartDay || 1;
+  let periodMonth = now.getMonth() + 1;
+  let periodYear = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (periodMonth === 12) {
+      periodMonth = 1;
+      periodYear += 1;
+    } else {
+      periodMonth += 1;
+    }
+  }
   const [formCategoryId, setFormCategoryId] = useState<string | null>(null);
   const [formLimit, setFormLimit] = useState("");
-  const [formMonth, setFormMonth] = useState<number | null>(now.getMonth() + 1);
-  const [formYear, _setFormYear] = useState(now.getFullYear());
+  const [formMonth, setFormMonth] = useState<number | null>(periodMonth);
+  const [formYear, _setFormYear] = useState(periodYear);
   const [saving, setSaving] = useState(false);
   const [goals, setGoals] = useState<any[]>([]);
   const [showGoalForm, setShowGoalForm] = useState(false);
@@ -52,8 +63,8 @@ export default function BudgetScreen() {
       const [budgetRes, catRes] = await Promise.all([
         budgetAPI.getAll({
           householdId: currentHousehold.id,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
+          month: periodMonth,
+          year: periodYear,
         }),
         categoryAPI.getAll(currentHousehold.id),
       ]);

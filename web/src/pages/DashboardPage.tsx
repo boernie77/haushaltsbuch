@@ -35,12 +35,12 @@ export default function DashboardPage() {
   const startDay = currentHousehold?.monthStartDay || 1;
   let periodMonth = now.getMonth() + 1;
   let periodYear = now.getFullYear();
-  if (startDay > 1 && now.getDate() < startDay) {
-    if (periodMonth === 1) {
-      periodMonth = 12;
-      periodYear -= 1;
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (periodMonth === 12) {
+      periodMonth = 1;
+      periodYear += 1;
     } else {
-      periodMonth -= 1;
+      periodMonth += 1;
     }
   }
 

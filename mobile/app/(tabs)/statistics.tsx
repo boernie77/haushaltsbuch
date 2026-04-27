@@ -39,6 +39,17 @@ export default function StatisticsScreen() {
   const [yearlyData, setYearlyData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const now = new Date();
+  const startDay = currentHousehold?.monthStartDay || 1;
+  let periodMonth = now.getMonth() + 1;
+  let periodYear = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    if (periodMonth === 12) {
+      periodMonth = 1;
+      periodYear += 1;
+    } else {
+      periodMonth += 1;
+    }
+  }
 
   useEffect(() => {
     if (!currentHousehold) {
@@ -48,12 +59,12 @@ export default function StatisticsScreen() {
     Promise.all([
       statsAPI.monthly({
         householdId: currentHousehold.id,
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
+        year: periodYear,
+        month: periodMonth,
       }),
       statsAPI.yearly({
         householdId: currentHousehold.id,
-        year: now.getFullYear(),
+        year: periodYear,
       }),
     ])
       .then(([m, y]) => {

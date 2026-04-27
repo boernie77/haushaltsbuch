@@ -410,7 +410,8 @@ export default function HouseholdPage() {
             </h2>
             <p className="mb-4 text-gray-500 text-sm dark:text-gray-400">
               Lege fest, an welchem Tag des Monats dein Budget-Monat beginnt.
-              Nützlich z.B. wenn du am 15. Gehalt bekommst.
+              Nützlich z.B. wenn du am 27. Gehalt bekommst — dann startet der
+              Budget-Monat April bereits am 27.03.
             </p>
             <div className="flex items-center gap-3">
               <label className="whitespace-nowrap text-gray-700 text-sm dark:text-gray-300">
@@ -445,8 +446,9 @@ export default function HouseholdPage() {
             </div>
             {monthStartDay !== 1 && (
               <p className="mt-3 text-gray-400 text-xs">
-                Zeitraum: {monthStartDay}. des Monats bis {monthStartDay - 1}.
-                des Folgemonats
+                Zeitraum: {monthStartDay}. des Vormonats bis {monthStartDay - 1}
+                . des Monats (z.B. April = {monthStartDay}.03. –{" "}
+                {monthStartDay - 1}.04.)
               </p>
             )}
           </div>
