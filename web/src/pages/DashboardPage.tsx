@@ -3,6 +3,8 @@ import { de } from "date-fns/locale";
 import {
   AlertTriangle,
   BarChart2,
+  ChevronLeft,
+  ChevronRight,
   PiggyBank,
   ShoppingCart,
   TrendingDown,
@@ -33,16 +35,49 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const now = new Date();
   const startDay = currentHousehold?.monthStartDay || 1;
-  let periodMonth = now.getMonth() + 1;
-  let periodYear = now.getFullYear();
-  if (startDay > 1 && now.getDate() >= startDay) {
-    if (periodMonth === 12) {
-      periodMonth = 1;
-      periodYear += 1;
-    } else {
-      periodMonth += 1;
+  const calcCurrentPeriod = (sd: number) => {
+    let m = now.getMonth() + 1;
+    let y = now.getFullYear();
+    if (sd > 1 && now.getDate() >= sd) {
+      if (m === 12) {
+        m = 1;
+        y += 1;
+      } else {
+        m += 1;
+      }
     }
-  }
+    return { month: m, year: y };
+  };
+  const currentPeriod = calcCurrentPeriod(startDay);
+  const [selectedMonth, setSelectedMonth] = useState(currentPeriod.month);
+  const [selectedYear, setSelectedYear] = useState(currentPeriod.year);
+
+  const getPeriodLabel = (m: number, y: number) => {
+    if (startDay <= 1) {
+      return format(new Date(y, m - 1, 1), "MMMM yyyy", { locale: de });
+    }
+    const start = new Date(y, m - 2, startDay);
+    const end = new Date(y, m - 1, startDay - 1);
+    return `${format(start, "d. MMM", { locale: de })} – ${format(end, "d. MMM yyyy", { locale: de })}`;
+  };
+  const prevPeriod = () => {
+    if (selectedMonth === 1) {
+      setSelectedMonth(12);
+      setSelectedYear((y) => y - 1);
+    } else {
+      setSelectedMonth((m) => m - 1);
+    }
+  };
+  const nextPeriod = () => {
+    if (selectedMonth === 12) {
+      setSelectedMonth(1);
+      setSelectedYear((y) => y + 1);
+    } else {
+      setSelectedMonth((m) => m + 1);
+    }
+  };
+  const isCurrent =
+    selectedMonth === currentPeriod.month && selectedYear === currentPeriod.year;
 
   useEffect(() => {
     if (!currentHousehold) {
@@ -50,16 +85,19 @@ export default function DashboardPage() {
     }
     setLoading(true);
     Promise.all([
-      statsAPI.overview(currentHousehold.id),
+      statsAPI.overview(currentHousehold.id, {
+        month: selectedMonth,
+        year: selectedYear,
+      }),
       statsAPI.monthly({
         householdId: currentHousehold.id,
-        year: periodYear,
-        month: periodMonth,
+        year: selectedYear,
+        month: selectedMonth,
       }),
       budgetAPI.getAll({
         householdId: currentHousehold.id,
-        month: periodMonth,
-        year: periodYear,
+        month: selectedMonth,
+        year: selectedYear,
       }),
     ])
       .then(([o, m, b]) => {
@@ -68,7 +106,7 @@ export default function DashboardPage() {
         setBudgets(b.data.budgets);
       })
       .finally(() => setLoading(false));
-  }, [currentHousehold, periodMonth, periodYear]);
+  }, [currentHousehold, selectedMonth, selectedYear]);
 
   if (!currentHousehold) {
     return (
@@ -113,14 +151,47 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
-      <div>
-        <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
-          Hallo, {user?.name?.split(" ")[0]} 👋
-        </h1>
-        <p className="mt-1 text-gray-500 dark:text-gray-400">
-          {format(now, "EEEE, d. MMMM yyyy", { locale: de })} ·{" "}
-          {currentHousehold?.name}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
+            Hallo, {user?.name?.split(" ")[0]} 👋
+          </h1>
+          <p className="mt-1 text-gray-500 dark:text-gray-400">
+            {format(now, "EEEE, d. MMMM yyyy", { locale: de })} ·{" "}
+            {currentHousehold?.name}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm dark:bg-slate-800">
+          <button
+            className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700"
+            onClick={prevPeriod}
+            type="button"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <span className="min-w-[160px] text-center font-medium text-gray-700 text-sm dark:text-gray-300">
+            {getPeriodLabel(selectedMonth, selectedYear)}
+          </span>
+          <button
+            className="rounded-lg p-1 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-slate-700"
+            onClick={nextPeriod}
+            type="button"
+          >
+            <ChevronRight size={20} />
+          </button>
+          {!isCurrent && (
+            <button
+              className="rounded-lg px-2 py-1 text-[var(--primary)] text-xs transition-colors hover:bg-[var(--primary)]/10"
+              onClick={() => {
+                setSelectedMonth(currentPeriod.month);
+                setSelectedYear(currentPeriod.year);
+              }}
+              type="button"
+            >
+              Heute
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Summary Cards — 4 cards */}
@@ -159,7 +230,7 @@ export default function DashboardPage() {
             {fmt(overview?.thisMonthIncome || 0)}
           </p>
           <p className="mt-2 text-gray-500 text-xs">
-            Vormonat: {fmt(overview?.lastMonth || 0)}
+            Vormonat: {fmt(overview?.lastMonthIncome || 0)}
           </p>
         </div>
 
@@ -183,7 +254,11 @@ export default function DashboardPage() {
             {(overview?.balance ?? 0) >= 0 ? "+" : ""}
             {fmt(overview?.balance || 0)}
           </p>
-          <p className="mt-2 text-gray-500 text-xs">Diesen Monat</p>
+          <p className="mt-2 text-gray-500 text-xs">
+            {isCurrent
+              ? "Diesen Monat"
+              : getPeriodLabel(selectedMonth, selectedYear)}
+          </p>
         </div>
 
         <div className="card p-5">
@@ -211,8 +286,8 @@ export default function DashboardPage() {
 
       {/* Forecast + Budget */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* Prognose */}
-        {overview?.projectedExpenses > 0 && (
+        {/* Prognose — nur für laufenden Monat sinnvoll */}
+        {isCurrent && overview?.projectedExpenses > 0 && (
           <div className="card p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-semibold text-gray-900 dark:text-white">
@@ -377,7 +452,10 @@ export default function DashboardPage() {
             <ShoppingCart className="text-[var(--primary)]" size={20} />
             <div>
               <p className="font-semibold text-gray-500 text-xs uppercase">
-                Top Kategorie diesen Monat
+                Top Kategorie ·{" "}
+                {isCurrent
+                  ? "Diesen Monat"
+                  : getPeriodLabel(selectedMonth, selectedYear)}
               </p>
               <p className="mt-0.5 font-bold text-gray-900 text-lg dark:text-white">
                 {overview.topCategory.icon}{" "}

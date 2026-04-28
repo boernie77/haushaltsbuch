@@ -45,8 +45,10 @@ export const transactionAPI = {
 export const statsAPI = {
   monthly: (p: any) => api.get("/statistics/monthly", { params: p }),
   yearly: (p: any) => api.get("/statistics/yearly", { params: p }),
-  overview: (householdId: string) =>
-    api.get("/statistics/overview", { params: { householdId } }),
+  overview: (householdId: string, p?: { month?: number; year?: number }) =>
+    api.get("/statistics/overview", {
+      params: { householdId, ...(p || {}) },
+    }),
   trends: (householdId: string, months: number) =>
     api.get("/statistics/trends", { params: { householdId, months } }),
   wealth: (householdId: string) =>

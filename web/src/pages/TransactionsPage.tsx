@@ -130,6 +130,15 @@ export default function TransactionsPage() {
 
   const [paperlessUsers, setPaperlessUsers] = useState<any[]>([]);
 
+  // Eigene Kategorie anlegen
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryForm, setCategoryForm] = useState({
+    name: "",
+    icon: "📦",
+    color: "#6B7280",
+  });
+  const [categorySaving, setCategorySaving] = useState(false);
+
   const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace("/api", "");
 
   const loadCountRef = useRef(0);
@@ -318,27 +327,28 @@ export default function TransactionsPage() {
       } else {
         // Create new
         const fd = new FormData();
-        Object.entries(form).forEach(([k, v]) => {
-          if (k === "receiptFile" && v) {
-            fd.append("receipt", v as File);
-          } else if (k === "amount") {
-            fd.append("amount", String(totalAmount));
-          } else if (k === "tip") {
-            if (tipAmount > 0) {
-              fd.append("tip", String(tipAmount));
-            }
-          } else if (
-            ![
-              "receiptFile",
-              "isRecurring",
-              "recurringInterval",
-              "targetHouseholdId",
-            ].includes(k) &&
-            v
-          ) {
-            fd.append(k, v as string);
-          }
-        });
+        if (form.receiptFile) {
+          fd.append("receipt", form.receiptFile);
+        }
+        fd.append("amount", String(totalAmount));
+        if (tipAmount > 0) {
+          fd.append("tip", String(tipAmount));
+        }
+        if (form.description) {
+          fd.append("description", form.description);
+        }
+        if (form.merchant) {
+          fd.append("merchant", form.merchant);
+        }
+        if (form.date) {
+          fd.append("date", form.date);
+        }
+        if (form.type) {
+          fd.append("type", form.type);
+        }
+        if (form.categoryId) {
+          fd.append("categoryId", form.categoryId);
+        }
         if (form.isRecurring) {
           fd.append("isRecurring", "true");
           fd.append("recurringInterval", form.recurringInterval);
@@ -426,6 +436,32 @@ export default function TransactionsPage() {
       transactionId: t.id,
       title: t.description || t.merchant || "Quittung",
     });
+  };
+
+  const handleCreateCategory = async () => {
+    if (!(categoryForm.name.trim() && currentHousehold)) {
+      toast.error("Name ist Pflicht");
+      return;
+    }
+    setCategorySaving(true);
+    try {
+      const { data } = await categoryAPI.create({
+        name: categoryForm.name.trim(),
+        nameDE: categoryForm.name.trim(),
+        icon: categoryForm.icon,
+        color: categoryForm.color,
+        householdId: currentHousehold.id,
+      });
+      toast.success("Kategorie angelegt");
+      const refreshed = await categoryAPI.getAll(currentHousehold.id);
+      setCategories(refreshed.data.categories);
+      setForm((f) => ({ ...f, categoryId: data.category.id }));
+      setShowCategoryModal(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Fehler beim Anlegen");
+    } finally {
+      setCategorySaving(false);
+    }
   };
 
   const handlePaperlessUpload = async () => {
@@ -680,20 +716,37 @@ export default function TransactionsPage() {
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
                   Kategorie
                 </label>
-                <select
-                  className="input"
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, categoryId: e.target.value }))
-                  }
-                  value={form.categoryId}
-                >
-                  <option value="">-- Wählen --</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.icon} {c.nameDE || c.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    className="input flex-1"
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, categoryId: e.target.value }))
+                    }
+                    value={form.categoryId}
+                  >
+                    <option value="">-- Wählen --</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.nameDE || c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-xl border-2 border-[var(--primary)] px-3 text-[var(--primary)] transition-all hover:bg-[var(--primary)] hover:text-white"
+                    onClick={() => {
+                      setCategoryForm({
+                        name: "",
+                        icon: "📦",
+                        color: "#6B7280",
+                      });
+                      setShowCategoryModal(true);
+                    }}
+                    title="Neue Kategorie anlegen"
+                    type="button"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
               </div>
             )}
             {form.type === "transfer" && (
@@ -1457,6 +1510,164 @@ export default function TransactionsPage() {
                   <FileText size={16} />
                 )}
                 Hochladen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Kategorie-Anlegen-Modal */}
+      {showCategoryModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowCategoryModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg dark:text-white">
+                Neue Kategorie anlegen
+              </h3>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setShowCategoryModal(false)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  Name *
+                </label>
+                <input
+                  autoFocus
+                  className="input"
+                  onChange={(e) =>
+                    setCategoryForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                  placeholder="z.B. Hobby"
+                  type="text"
+                  value={categoryForm.name}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  Symbol
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "📦",
+                    "🏠",
+                    "🚗",
+                    "🍕",
+                    "🛒",
+                    "🎬",
+                    "👕",
+                    "💊",
+                    "✈️",
+                    "🎁",
+                    "📚",
+                    "🎮",
+                    "💪",
+                    "🐾",
+                    "🌱",
+                    "💼",
+                    "📱",
+                    "🔧",
+                    "💳",
+                    "🎨",
+                  ].map((emoji) => (
+                    <button
+                      className={`rounded-xl border-2 p-2 text-2xl transition-all ${categoryForm.icon === emoji ? "border-[var(--primary)] bg-[var(--primary)]/10" : "border-transparent hover:bg-gray-100 dark:hover:bg-slate-700"}`}
+                      key={emoji}
+                      onClick={() =>
+                        setCategoryForm((f) => ({ ...f, icon: emoji }))
+                      }
+                      type="button"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  className="input mt-2 text-sm"
+                  onChange={(e) =>
+                    setCategoryForm((f) => ({ ...f, icon: e.target.value }))
+                  }
+                  placeholder="Eigenes Emoji"
+                  type="text"
+                  value={categoryForm.icon}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  Farbe
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    className="h-10 w-16 cursor-pointer rounded-lg border border-gray-300"
+                    onChange={(e) =>
+                      setCategoryForm((f) => ({ ...f, color: e.target.value }))
+                    }
+                    type="color"
+                    value={categoryForm.color}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      "#6B7280",
+                      "#EF4444",
+                      "#F97316",
+                      "#EAB308",
+                      "#22C55E",
+                      "#06B6D4",
+                      "#3B82F6",
+                      "#8B5CF6",
+                      "#EC4899",
+                    ].map((c) => (
+                      <button
+                        className={`h-8 w-8 rounded-full border-2 transition-all ${categoryForm.color === c ? "border-gray-900 dark:border-white" : "border-transparent"}`}
+                        key={c}
+                        onClick={() =>
+                          setCategoryForm((f) => ({ ...f, color: c }))
+                        }
+                        style={{ background: c }}
+                        type="button"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl bg-gray-50 p-3 dark:bg-slate-700">
+                <span className="text-2xl">{categoryForm.icon}</span>
+                <span
+                  className="font-medium"
+                  style={{ color: categoryForm.color }}
+                >
+                  {categoryForm.name || "Vorschau"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                className="btn-secondary"
+                onClick={() => setShowCategoryModal(false)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="btn-primary disabled:opacity-50"
+                disabled={categorySaving || !categoryForm.name.trim()}
+                onClick={handleCreateCategory}
+                type="button"
+              >
+                {categorySaving ? "Speichere..." : "Anlegen"}
               </button>
             </div>
           </div>

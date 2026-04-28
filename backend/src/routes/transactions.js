@@ -15,6 +15,11 @@ const { auth } = require("../middleware/auth");
 const { checkBudgetWarning } = require("../services/budgetService");
 const { getMonthBounds } = require("../utils/monthBounds");
 
+// FormData fields can arrive as arrays if appended twice — normalize to scalar.
+function firstValue(v) {
+  return Array.isArray(v) ? v[0] : v;
+}
+
 // Berechnet das nächste Fälligkeitsdatum NACH heute
 function calcNextFutureDate(date, interval, recurringDay) {
   const today = new Date();
@@ -196,31 +201,32 @@ router.delete("/recurring/:id", auth, async (req, res) => {
 // POST /api/transactions
 router.post("/", auth, upload.single("receipt"), async (req, res) => {
   try {
-    const {
-      amount,
-      description,
-      note,
-      date,
-      type,
-      categoryId,
-      householdId,
-      merchant,
-      tags,
-      isConfirmed,
-      isRecurring,
-      recurringInterval,
-      recurringDay,
-      recurringEndDate,
-      isPersonal,
-      targetHouseholdId,
-      splits,
-      tip,
-    } = req.body;
+    // multer kann bei doppelt angehängten Feldern Arrays liefern → normalisieren
+    const amount = firstValue(req.body.amount);
+    const description = firstValue(req.body.description);
+    const note = firstValue(req.body.note);
+    const date = firstValue(req.body.date);
+    const type = firstValue(req.body.type);
+    const categoryId = firstValue(req.body.categoryId) || null;
+    const householdId = firstValue(req.body.householdId);
+    const merchant = firstValue(req.body.merchant);
+    const tags = firstValue(req.body.tags);
+    const isConfirmed = firstValue(req.body.isConfirmed);
+    const isRecurring = firstValue(req.body.isRecurring);
+    const recurringInterval = firstValue(req.body.recurringInterval);
+    const recurringDay = firstValue(req.body.recurringDay);
+    const recurringEndDate = firstValue(req.body.recurringEndDate);
+    const isPersonal = firstValue(req.body.isPersonal);
+    const targetHouseholdId = firstValue(req.body.targetHouseholdId) || null;
+    const splits = firstValue(req.body.splits);
+    const tip = firstValue(req.body.tip);
 
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) {
       return res.status(403).json({ error: "Access denied" });
     }
+
+    const recurringActive = isRecurring === "true" || isRecurring === true;
 
     // recurringDay automatisch aus dem Datum ableiten wenn nicht explizit gesetzt
     const effectiveRecurringDay = recurringDay
@@ -232,7 +238,12 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
     // Fälligkeitsdatum berechnen
     let recurringNextDate = null;
     let createImmediateCopy = false;
-    if (isRecurring === "true" && date) {
+    if (recurringActive && date) {
+      if (!recurringInterval) {
+        return res
+          .status(400)
+          .json({ error: "recurringInterval ist Pflicht für Wiederholungen" });
+      }
       const bookingDate = new Date(date);
       bookingDate.setHours(0, 0, 0, 0);
       const today = new Date();
@@ -256,33 +267,35 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       await processReceiptFile(req.file.path);
     }
 
+    const parsedTags = tags
+      ? (() => {
+          try {
+            return JSON.parse(tags);
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+
     const transaction = await Transaction.create({
       amount: Number.parseFloat(amount),
-      description,
-      note,
+      description: description || null,
+      note: note || null,
       date: date || new Date(),
       type: type || "expense",
       categoryId,
       householdId,
       userId: req.user.id,
-      merchant,
-      tags: tags
-        ? (() => {
-            try {
-              return JSON.parse(tags);
-            } catch {
-              return [];
-            }
-          })()
-        : [],
+      merchant: merchant || null,
+      tags: parsedTags,
       receiptImage: req.file ? `/uploads/${req.file.filename}` : null,
       isConfirmed: isConfirmed !== "false",
-      isRecurring: isRecurring === "true",
-      recurringInterval: isRecurring === "true" ? recurringInterval : null,
-      recurringDay: isRecurring === "true" ? effectiveRecurringDay : null,
+      isRecurring: recurringActive,
+      recurringInterval: recurringActive ? recurringInterval : null,
+      recurringDay: recurringActive ? effectiveRecurringDay : null,
       recurringNextDate,
       recurringEndDate:
-        isRecurring === "true" && recurringEndDate ? recurringEndDate : null,
+        recurringActive && recurringEndDate ? recurringEndDate : null,
       isPersonal: isPersonal === "true" || isPersonal === true,
       targetHouseholdId: type === "transfer" ? targetHouseholdId : null,
       tip: tip ? Number.parseFloat(tip) : 0,
@@ -308,23 +321,15 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
     if (createImmediateCopy) {
       await Transaction.create({
         amount: Number.parseFloat(amount),
-        description,
-        note,
+        description: description || null,
+        note: note || null,
         date,
         type: type || "expense",
         categoryId,
         householdId,
         userId: req.user.id,
-        merchant,
-        tags: tags
-          ? (() => {
-              try {
-                return JSON.parse(tags);
-              } catch {
-                return [];
-              }
-            })()
-          : [],
+        merchant: merchant || null,
+        tags: parsedTags,
         isConfirmed: true,
         isRecurring: false,
         isPersonal: isPersonal === "true" || isPersonal === true,
@@ -360,8 +365,12 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
 
     res.status(201).json({ transaction: full, budgetWarning: warning });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create transaction" });
+    console.error("[POST /transactions]", err);
+    res.status(500).json({
+      error: err.message
+        ? `Fehler: ${err.message}`
+        : "Failed to create transaction",
+    });
   }
 });
 

@@ -264,10 +264,10 @@ router.get("/yearly", auth, async (req, res) => {
   }
 });
 
-// GET /api/statistics/overview?householdId=
+// GET /api/statistics/overview?householdId=&month=&year=
 router.get("/overview", auth, async (req, res) => {
   try {
-    const { householdId } = req.query;
+    const { householdId, month, year } = req.query;
     if (!(await checkAccess(req.user.id, householdId))) {
       return res.status(403).json({ error: "Access denied" });
     }
@@ -278,9 +278,13 @@ router.get("/overview", auth, async (req, res) => {
     });
     const startDay = hh?.monthStartDay || 1;
 
-    const { year: curYear, month: curMonth } = getPeriodForDate(now, startDay);
+    const todayPeriod = getPeriodForDate(now, startDay);
+    const curYear = year ? Number.parseInt(year, 10) : todayPeriod.year;
+    const curMonth = month ? Number.parseInt(month, 10) : todayPeriod.month;
     const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
     const prevYear = curMonth === 1 ? curYear - 1 : curYear;
+    const isCurrentPeriod =
+      curYear === todayPeriod.year && curMonth === todayPeriod.month;
 
     const { start: curStart, end: curEnd } = getMonthBounds(
       curYear,
@@ -303,6 +307,7 @@ router.get("/overview", auth, async (req, res) => {
       thisMonthExp,
       lastMonthExp,
       thisMonthInc,
+      lastMonthInc,
       topCategory,
       recentCount,
       recurringTemplates,
@@ -315,6 +320,9 @@ router.get("/overview", auth, async (req, res) => {
       }),
       Transaction.sum("amount", {
         where: { householdId, type: "income", ...nr, date: thisMonthRange },
+      }),
+      Transaction.sum("amount", {
+        where: { householdId, type: "income", ...nr, date: lastMonthRange },
       }),
       Transaction.findOne({
         attributes: ["categoryId", [fn("SUM", col("amount")), "total"]],
@@ -352,41 +360,46 @@ router.get("/overview", auth, async (req, res) => {
     const current = Number.parseFloat(thisMonthExp) || 0;
     const previous = Number.parseFloat(lastMonthExp) || 0;
     const income = Number.parseFloat(thisMonthInc) || 0;
+    const previousIncome = Number.parseFloat(lastMonthInc) || 0;
     const change = previous > 0 ? ((current - previous) / previous) * 100 : 0;
     const daysInMonth =
       Math.floor((curEnd - curStart) / (1000 * 60 * 60 * 24)) + 1;
-    const currentDay = Math.max(
-      1,
-      Math.floor((now - curStart) / (1000 * 60 * 60 * 24)) + 1
-    );
+    const currentDay = isCurrentPeriod
+      ? Math.max(1, Math.floor((now - curStart) / (1000 * 60 * 60 * 24)) + 1)
+      : daysInMonth;
     let fixedAlreadyPaid = 0;
     let fixedYetToCome = 0;
-    for (const t of recurringTemplates) {
-      if (!(t.recurringNextDate && t.recurringInterval)) {
-        continue;
-      }
-      const occurrences = getOccurrencesInRange(
-        t.recurringNextDate,
-        t.recurringInterval,
-        t.recurringDay,
-        curStart,
-        curEnd
-      );
-      for (const d of occurrences) {
-        if (d <= today) {
-          fixedAlreadyPaid += Number.parseFloat(t.amount);
-        } else {
-          fixedYetToCome += Number.parseFloat(t.amount);
+    if (isCurrentPeriod) {
+      for (const t of recurringTemplates) {
+        if (!(t.recurringNextDate && t.recurringInterval)) {
+          continue;
+        }
+        const occurrences = getOccurrencesInRange(
+          t.recurringNextDate,
+          t.recurringInterval,
+          t.recurringDay,
+          curStart,
+          curEnd
+        );
+        for (const d of occurrences) {
+          if (d <= today) {
+            fixedAlreadyPaid += Number.parseFloat(t.amount);
+          } else {
+            fixedYetToCome += Number.parseFloat(t.amount);
+          }
         }
       }
     }
 
-    // Variable Ausgaben = aktuelle Ausgaben abzüglich bereits gebuchter Fixkosten
-    const variableSoFar = Math.max(0, current - fixedAlreadyPaid);
-    const projectedVariable =
-      currentDay > 0 ? (variableSoFar / currentDay) * daysInMonth : 0;
-    const projectedExpenses =
-      projectedVariable + fixedAlreadyPaid + fixedYetToCome;
+    // Prognose nur für laufenden Monat — abgeschlossene Monate brauchen keine Hochrechnung
+    let projectedExpenses = current;
+    if (isCurrentPeriod) {
+      const variableSoFar = Math.max(0, current - fixedAlreadyPaid);
+      const projectedVariable =
+        currentDay > 0 ? (variableSoFar / currentDay) * daysInMonth : 0;
+      projectedExpenses =
+        projectedVariable + fixedAlreadyPaid + fixedYetToCome;
+    }
 
     res.json({
       thisMonth: current,
@@ -395,6 +408,7 @@ router.get("/overview", auth, async (req, res) => {
       savingsRate:
         income > 0 ? Math.round(((income - current) / income) * 1000) / 10 : 0,
       lastMonth: previous,
+      lastMonthIncome: previousIncome,
       changePercent: Math.round(change * 10) / 10,
       topCategory: topCategory
         ? {
@@ -405,6 +419,9 @@ router.get("/overview", auth, async (req, res) => {
       transactionCount: recentCount,
       daysInMonth,
       currentDay,
+      isCurrentPeriod,
+      year: curYear,
+      month: curMonth,
       projectedExpenses: Math.round(projectedExpenses * 100) / 100,
       projectedRemaining: Math.round((income - projectedExpenses) * 100) / 100,
       fixedMonthly: Math.round((fixedAlreadyPaid + fixedYetToCome) * 100) / 100,
