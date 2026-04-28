@@ -1,7 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# --legacy-peer-deps weil @vitejs/plugin-react seit 4.7 strenger gegen
+# vite-Versionen prüft und sonst „Found: vite@undefined" wirft, obwohl
+# vite^5.4 in devDependencies steht. Kein lockfile im Repo, daher kein npm ci.
+RUN npm install --legacy-peer-deps
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
