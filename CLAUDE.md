@@ -26,8 +26,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 020-professional-themes,
-│       │                           021-recurring-end-date
+│       ├── migrations/             001-initial … 021-recurring-end-date,
+│       │                           022-oidc-subject
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -171,11 +171,13 @@ Begründung: Wer am 27. Gehalt bekommt, versteht den 27.03. intuitiv als Beginn 
 - `getPeriodForDate(date, startDay)` → `{year, month}` Period zu dem ein Datum gehört
 - Beide funktionieren bei `startDay=1` wie früher (Kalendermonat)
 
-### Frontend: Period-Berechnung ist 7× dupliziert (keine zentrale Util!)
-Wenn die Logik geändert wird, MÜSSEN alle 7 Stellen synchron angepasst werden:
+### Frontend: Period-Berechnung ist 8× dupliziert (keine zentrale Util!)
+Wenn die Logik geändert wird, MÜSSEN alle 8 Stellen synchron angepasst werden:
 - `web/src/pages/`: DashboardPage, StatisticsPage, TransactionsPage, BudgetPage, BackupPage
 - `mobile/app/(tabs)/`: index.tsx, statistics.tsx, transactions.tsx
 - `mobile/app/budget.tsx`
+
+DashboardPage und TransactionsPage verwenden zusätzlich `selectedMonth`/`selectedYear`-State + `prevPeriod`/`nextPeriod`/`getPeriodLabel`-Helfer für die Pfeil-Navigation. Beim Refactor: zuerst zentrale Util in `web/src/utils/period.ts` extrahieren, dann alle 8 Stellen umstellen.
 
 Standard-Pattern:
 ```ts
@@ -203,6 +205,13 @@ if (startDay > 1 && now.getDate() >= startDay) {
 - Mobile: transactions.tsx — eigener Filter-Tab "Wiederkehrend" mit Beenden-Button
 - Mobile: add.tsx — Switch + Intervall-Chips + Enddatum-Feld
 - **API-Antwort:** `GET /api/transactions/recurring` gibt `{ recurring: [...] }` zurück (nicht direkt Array)
+- **POST /api/transactions** legt bei `isRecurring=true` UND Datum ≤ heute zwei Records an: das Template + eine sofortige Buchungskopie für den heutigen Tag. PUT macht das Gleiche beim nachträglichen Aktivieren.
+
+### ⚠️ FormData-Falle bei multipart-Upload (POST /transactions)
+Niemals dasselbe FormData-Feld zweimal `append`-en (z.B. einmal generisch im Object.entries-Loop, einmal explizit) — multer liefert es dann als Array. Sequelize crasht beim DATEONLY-Insert mit `["2026-12-31","2026-12-31"]`. Genau dieser Bug verhinderte das direkte Anlegen wiederkehrender Buchungen. Lösung:
+- Frontend: explizit jedes Feld einzeln appenden, keine Schleife mit Exclusion-List
+- Backend: `firstValue(req.body.feld)` Helper in `transactions.js` normalisiert vorsorglich Array → Skalar
+- Backend: Catch-Block gibt jetzt `Fehler: <err.message>` an Client zurück (statt generischem 500), damit solche Bugs künftig sofort sichtbar sind
 
 ## Buchungen verschieben
 - `PUT /api/transactions/:id/move` — verschiebt Buchung in anderes Haushaltsbuch
@@ -213,6 +222,12 @@ if (startDay > 1 && now.getDate() >= startDay) {
 ## Buchungen bearbeiten
 - `PUT /api/transactions/:id` — aktualisiert alle Felder inkl. isRecurring/recurringInterval
 - Web: Pencil-Icon bei jeder Buchung, befüllt das Erstellen-Formular mit `editingId`
+
+## Eigene Kategorien
+- `POST /api/categories` mit `{ name, nameDE, icon, color, householdId }` → legt benutzerdefinierte Kategorie an (`isSystem: false`)
+- `GET /api/categories?householdId=` liefert Systemkategorien (global, `householdId=null`) UND haushaltseigene zusammen
+- Web: TransactionsPage — „+"-Button neben dem Kategorie-Dropdown im Buchungsformular öffnet Modal (Name, 20 Emoji-Vorschläge + freie Eingabe, 9 Farb-Presets + Color-Picker, Live-Vorschau). Nach dem Anlegen wird Liste refreshed und neue Kategorie automatisch ausgewählt.
+- Beim Verschieben einer Buchung in ein anderes Haushaltsbuch werden benutzerdefinierte Kategorien entfernt, die im Ziel nicht existieren (siehe „Buchungen verschieben")
 
 ## Duplikat-Check
 - `POST /api/transactions/duplicate-check` — prüft auf ähnliche Buchungen (Betrag, Datum, Beschreibung)
@@ -305,9 +320,14 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 
 ## Statistiken & Dashboard
 - **Web-Dashboard:** 4 Karten (Ausgaben, Einnahmen, Bilanz, Sparquote) + Monats-Prognose + Budgetanzeige + Kategorie-Pie-Chart
+- **Web-Dashboard:** Pfeil-Navigation im Header (← → + Heute-Button) zum Wechseln der Periode — synchron zu TransactionsPage-Pattern (siehe „Monatszeitraum")
 - **Mobile-Übersicht:** Monatsübersicht + Monats-Prognose + Monatsbudget + Top-Kategorie + Kategoriebudgets
 - **Statistiken:** 5 Tabs — Monat, Jahr, Trends (Durchschnittsausgaben nach Kategorie), Vermögen (kumulierte Bilanz), Personen (Ausgaben pro Person + Ausgleichsrechnung)
-- **Prognose-API:** `statsAPI.overview()` liefert `projectedExpenses`, `projectedRemaining`, `currentDay`, `daysInMonth`
+- **`statsAPI.overview(householdId, { month?, year? })`** akzeptiert optional `month`/`year` (Defaults = aktuelle Periode); Response enthält:
+  - `thisMonth`, `lastMonth` — Ausgaben aktuelle/vorherige Periode
+  - `thisMonthIncome`, `lastMonthIncome` — Einnahmen analog (⚠️ NIEMALS `lastMonth` für Einnahmen-Vormonat verwenden — das ist ein Ausgaben-Wert!)
+  - `projectedExpenses`, `projectedRemaining`, `currentDay`, `daysInMonth`
+  - `isCurrentPeriod`, `year`, `month` — Frontend nutzt `isCurrentPeriod` um Prognose-Karte für vergangene Monate auszublenden (Hochrechnung macht für abgeschlossene Monate keinen Sinn)
 - API: `statsAPI.trends()`, `statsAPI.wealth()`, `statsAPI.byPerson()`
 
 ## Sparziele
@@ -340,10 +360,24 @@ Persistente Daten liegen als Bind Mounts unter `./data/`:
 #   4. node src/utils/migrate.js
 #   5. seedSystemCategories()
 
-# Direkt auf VPS:
-ssh -i ~/.ssh/emailrelay_vps root@VPS-IP-ENTFERNT
+# Direkt auf VPS (SSH-Key-Setup ggf. neu — siehe unten):
+ssh root@VPS-IP-ENTFERNT
 cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 ```
+
+### Deploy-Verifikation (ohne SSH-Zugang)
+- `index.html`-Last-Modified prüfen: `curl -s -I https://haushalt.bernauer24.com/ | grep last-modified`
+- Bundle-Hash prüfen: `curl -s https://haushalt.bernauer24.com/ | grep -oE "index-[A-Za-z0-9]+\.js"` (ändert sich bei jedem Vite-Build)
+- Neue Code-Strings im Bundle suchen: `curl -s https://haushalt.bernauer24.com/assets/index-XXXX.js | grep -oE "neuerString"`
+- ⚠️ Vor Klage „der Fix ist nicht da": Browser-Hard-Reload (`Strg+Shift+R` / `Cmd+Shift+R`) ist Pflicht — das Production-`index.html` hat zwar dynamische Bundle-Hashes, aber die HTML selbst kann gecacht werden.
+
+### ⚠️ OIDC-Schutz beim Deploy
+Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `docker-compose.yml` (OIDC_*-Env-Vars) und `.github/workflows/deploy.yml` (set_env OIDC_*) nicht versehentlich angefasst wurden. SSO via Authentik bricht sonst.
+
+### SSH-Status (Stand 2026-04-28)
+- Alter Key `~/.ssh/emailrelay_vps` ist auf dem aktuellen Dev-Rechner **nicht mehr vorhanden** (Neuinstallation von `~/.ssh/`)
+- Aktiv: `~/.ssh/id_ed25519` — muss noch in `/root/.ssh/authorized_keys` auf dem VPS eingetragen werden (via Hetzner Cloud Console, https://console.hetzner.cloud)
+- Bis dahin: Deploy nur via `git push origin main` (GitHub Actions hat eigenen Key in Secret `HETZNER_SSH_KEY`); VPS-Inspektion via curl auf Public-URL
 
 ## iOS Mobile App
 - **Expo SDK 52**, expo-router
@@ -427,8 +461,9 @@ Wenn lint-staged abbricht, kann Biome Backend-Dateien im Working Tree modifizier
 Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `git checkout -- backend/`
 
 ## Wichtige Konventionen
-- VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
-- SSH-Key für VPS: `~/.ssh/emailrelay_vps`
+- Hauptrepo-VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
+- haushaltsbuch-home auf VPS verwendet `docker compose` (Plugin-Variante — anderer Stack!)
+- SSH-Key für VPS: `~/.ssh/id_ed25519` (funktioniert direkt, kein sshpass nötig)
 - Web-Build: `npm install` (kein `npm ci`, kein Lockfile committed)
 - Backend ENV auf VPS: `/opt/haushaltsbuch/.env`
 - DB-User: `haushalt`, DB-Name: `haushaltsbuch`
@@ -444,3 +479,27 @@ Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `
 - **Button-Klassen:** `.btn-primary` (Primäraktion) + `.btn-secondary` (Abbrechen/Sekundär) — beide passen sich dem Professional-Theme an (`rounded-xl` → `rounded`). Nie hardcoded `rounded-xl` für Buttons verwenden!
 - **Sequelize Association-Naming:** `h.HouseholdMembers` (Default), nicht `h.members`
 - **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
+- **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
+- **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
+
+## Session-Notizen 2026-04-28
+- Bug behoben: Wiederkehrende Buchung direkt anlegen schlug fehl wegen doppeltem `recurringEndDate` in FormData → multer-Array → Sequelize-Crash
+- Bug behoben: Dashboard-„Vormonat"-Zeile bei Einnahmen zeigte fälschlich `lastMonth` (Ausgaben) → jetzt `lastMonthIncome`
+- Feature: Eigene Kategorien anlegen via „+"-Button neben Kategorie-Dropdown im Buchungsformular
+- Feature: Pfeil-Navigation auf Dashboard (← →, Heute-Button), `statsAPI.overview` akzeptiert `month`/`year`, Prognose-Karte nur für laufenden Monat
+- SSH-Key zum VPS: `~/.ssh/id_ed25519` funktioniert direkt (`ssh root@VPS-IP-ENTFERNT`)
+- haushaltsbuch-home mit Hauptrepo synchronisiert (alle Fixes seit 2026-04-05 portiert, inkl. OIDC)
+- haushaltsbuch-home auf VPS deployed: https://money.bernauer24.com (Port 8481, `/opt/haushaltsbuch-home/`)
+- `/api/config` gibt jetzt `oidcEnabled` zurück; SSO-Button nur sichtbar wenn OIDC konfiguriert
+- Migration 020 (Professional Themes) im haushaltsbuch-home safe gemacht: No-Op wenn kein ENUM existiert
+
+## haushaltsbuch-home (Self-Hosting-Fork)
+- **GitHub:** https://github.com/boernie77/haushaltsbuch-home (öffentlich)
+- **Produktion:** https://money.bernauer24.com (gleicher Hetzner VPS, Port 8481)
+- **Pfad auf VPS:** `/opt/haushaltsbuch-home/`, ENV: `/opt/haushaltsbuch-home/.env`
+- **Docker:** `docker compose` (Plugin — VPS nutzt hier Plugin-Variante, nicht `docker-compose`!)
+- **Images:** `ghcr.io/boernie77/haushaltsbuch-home-backend:latest` + `web:latest`
+- **Build:** GitHub Actions bei push auf main → ghcr.io; Watchtower zieht täglich
+- **FAMILY_MODE=true** fest im Dockerfile eingebaut — kein Trial, alle User dauerhaft aktiv
+- **OIDC:** optional (nur wenn OIDC_ISSUER_URL/CLIENT_ID/SECRET gesetzt), SSO-Button versteckt sich sonst
+- **theme-Spalte:** VARCHAR (kein PostgreSQL ENUM) → Migration 020 ist No-Op auf Frisch-Install
