@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { usePeriod } from "../hooks/usePeriod";
 import { budgetAPI, statsAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
@@ -33,51 +34,15 @@ export default function DashboardPage() {
   const [monthly, setMonthly] = useState<any>(null);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const now = new Date();
-  const startDay = currentHousehold?.monthStartDay || 1;
-  const calcCurrentPeriod = (sd: number) => {
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    if (sd > 1 && now.getDate() >= sd) {
-      if (m === 12) {
-        m = 1;
-        y += 1;
-      } else {
-        m += 1;
-      }
-    }
-    return { month: m, year: y };
-  };
-  const currentPeriod = calcCurrentPeriod(startDay);
-  const [selectedMonth, setSelectedMonth] = useState(currentPeriod.month);
-  const [selectedYear, setSelectedYear] = useState(currentPeriod.year);
-
-  const getPeriodLabel = (m: number, y: number) => {
-    if (startDay <= 1) {
-      return format(new Date(y, m - 1, 1), "MMMM yyyy", { locale: de });
-    }
-    const start = new Date(y, m - 2, startDay);
-    const end = new Date(y, m - 1, startDay - 1);
-    return `${format(start, "d. MMM", { locale: de })} – ${format(end, "d. MMM yyyy", { locale: de })}`;
-  };
-  const prevPeriod = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12);
-      setSelectedYear((y) => y - 1);
-    } else {
-      setSelectedMonth((m) => m - 1);
-    }
-  };
-  const nextPeriod = () => {
-    if (selectedMonth === 12) {
-      setSelectedMonth(1);
-      setSelectedYear((y) => y + 1);
-    } else {
-      setSelectedMonth((m) => m + 1);
-    }
-  };
-  const isCurrent =
-    selectedMonth === currentPeriod.month && selectedYear === currentPeriod.year;
+  const {
+    selectedMonth,
+    selectedYear,
+    prevPeriod,
+    nextPeriod,
+    resetToCurrent,
+    getPeriodLabel,
+    isCurrent,
+  } = usePeriod(currentHousehold);
 
   useEffect(() => {
     if (!currentHousehold) {
@@ -157,7 +122,7 @@ export default function DashboardPage() {
             Hallo, {user?.name?.split(" ")[0]} 👋
           </h1>
           <p className="mt-1 text-gray-500 dark:text-gray-400">
-            {format(now, "EEEE, d. MMMM yyyy", { locale: de })} ·{" "}
+            {format(new Date(), "EEEE, d. MMMM yyyy", { locale: de })} ·{" "}
             {currentHousehold?.name}
           </p>
         </div>
@@ -182,10 +147,7 @@ export default function DashboardPage() {
           {!isCurrent && (
             <button
               className="rounded-lg px-2 py-1 text-[var(--primary)] text-xs transition-colors hover:bg-[var(--primary)]/10"
-              onClick={() => {
-                setSelectedMonth(currentPeriod.month);
-                setSelectedYear(currentPeriod.year);
-              }}
+              onClick={resetToCurrent}
               type="button"
             >
               Heute

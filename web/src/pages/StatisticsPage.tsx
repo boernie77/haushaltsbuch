@@ -16,6 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { usePeriod } from "../hooks/usePeriod";
 import { statsAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
@@ -63,21 +64,9 @@ export default function StatisticsPage() {
   const [fixedBalance, setFixedBalance] = useState<any>(null);
   const [snapshotSaving, setSnapshotSaving] = useState(false);
   const [trendMonths, setTrendMonths] = useState(6);
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const startDay = currentHousehold?.monthStartDay || 1;
-  let initialMonth = now.getMonth() + 1;
-  let initialYear = now.getFullYear();
-  if (startDay > 1 && now.getDate() >= startDay) {
-    if (initialMonth === 12) {
-      initialMonth = 1;
-      initialYear += 1;
-    } else {
-      initialMonth += 1;
-    }
-  }
-  const [selectedMonth, setSelectedMonth] = useState(initialMonth);
-  const [selectedYear, setSelectedYear] = useState(Math.max(initialYear, 2026));
+  const currentYear = new Date().getFullYear();
+  const { selectedMonth, selectedYear, setSelectedMonth, setSelectedYear } =
+    usePeriod(currentHousehold);
   const [loading, setLoading] = useState(false);
 
   const fmt = (n: number) =>

@@ -1,5 +1,4 @@
 import { format } from "date-fns";
-import { de } from "date-fns/locale";
 import {
   ArrowDown,
   ArrowRightLeft,
@@ -20,6 +19,7 @@ import {
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { usePeriod } from "../hooks/usePeriod";
 import {
   accountAPI,
   categoryAPI,
@@ -52,49 +52,15 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const now = new Date();
-  const startDay = currentHousehold?.monthStartDay || 1;
-  const calcCurrentPeriod = (sd: number) => {
-    let m = now.getMonth() + 1;
-    let y = now.getFullYear();
-    if (sd > 1 && now.getDate() >= sd) {
-      if (m === 12) {
-        m = 1;
-        y += 1;
-      } else {
-        m += 1;
-      }
-    }
-    return { month: m, year: y };
-  };
-  const currentPeriod = calcCurrentPeriod(startDay);
-  const [selectedMonth, setSelectedMonth] = useState(currentPeriod.month);
-  const [selectedYear, setSelectedYear] = useState(currentPeriod.year);
-
-  const getPeriodLabel = (m: number, y: number) => {
-    if (startDay <= 1) {
-      return format(new Date(y, m - 1, 1), "MMMM yyyy", { locale: de });
-    }
-    const start = new Date(y, m - 2, startDay);
-    const end = new Date(y, m - 1, startDay - 1);
-    return `${format(start, "d. MMM", { locale: de })} – ${format(end, "d. MMM yyyy", { locale: de })}`;
-  };
-  const prevPeriod = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12);
-      setSelectedYear((y) => y - 1);
-    } else {
-      setSelectedMonth((m) => m - 1);
-    }
-  };
-  const nextPeriod = () => {
-    if (selectedMonth === 12) {
-      setSelectedMonth(1);
-      setSelectedYear((y) => y + 1);
-    } else {
-      setSelectedMonth((m) => m + 1);
-    }
-  };
+  const {
+    selectedMonth,
+    selectedYear,
+    currentPeriod,
+    prevPeriod,
+    nextPeriod,
+    resetToCurrent,
+    getPeriodLabel,
+  } = usePeriod(currentHousehold);
 
   const [form, setForm] = useState({
     amount: "",
@@ -618,10 +584,7 @@ export default function TransactionsPage() {
             selectedYear !== currentPeriod.year) && (
             <button
               className="rounded-lg px-2 py-1 text-[var(--primary)] text-xs transition-colors hover:bg-[var(--primary)]/10"
-              onClick={() => {
-                setSelectedMonth(currentPeriod.month);
-                setSelectedYear(currentPeriod.year);
-              }}
+              onClick={resetToCurrent}
               type="button"
             >
               Heute

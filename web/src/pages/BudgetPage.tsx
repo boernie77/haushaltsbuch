@@ -2,6 +2,7 @@ import { AlertTriangle, PiggyBank, Plus, Target, Trash2 } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { usePeriod } from "../hooks/usePeriod";
 import { budgetAPI, categoryAPI, savingsGoalAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
@@ -52,18 +53,8 @@ export default function BudgetPage() {
   const [depositGoalId, setDepositGoalId] = useState<string | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
 
-  const now = new Date();
-  const startDay = currentHousehold?.monthStartDay || 1;
-  let periodMonth = now.getMonth() + 1;
-  let periodYear = now.getFullYear();
-  if (startDay > 1 && now.getDate() >= startDay) {
-    if (periodMonth === 12) {
-      periodMonth = 1;
-      periodYear += 1;
-    } else {
-      periodMonth += 1;
-    }
-  }
+  const { selectedMonth: periodMonth, selectedYear: periodYear } =
+    usePeriod(currentHousehold);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("de-DE", {

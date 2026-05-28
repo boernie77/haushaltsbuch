@@ -46,7 +46,17 @@ interface AuthState {
   user: User | null;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+// localStorage-Key für das zuletzt aktive Haushaltsbuch. Wird beim Setzen
+// geschrieben und beim App-Start (loadStoredAuth) wieder vorgewählt — so
+// landet der User nach Reload/Neustart automatisch in seinem letzten Buch.
+const LAST_HOUSEHOLD_KEY = "last_household_id";
+
+function pickInitialHousehold(households: Household[]): Household {
+  const lastId = localStorage.getItem(LAST_HOUSEHOLD_KEY);
+  return households.find((h) => h.id === lastId) || households[0];
+}
+
+export const useAuthStore = create<AuthState>((set, _get) => ({
   token: null,
   user: null,
   currentHousehold: null,
@@ -60,7 +70,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ token: data.token, user: data.user, isAuthenticated: true });
     const { data: hd } = await api.get("/households");
     if (hd.households?.length > 0) {
-      set({ households: hd.households, currentHousehold: hd.households[0] });
+      const initial = pickInitialHousehold(hd.households);
+      localStorage.setItem(LAST_HOUSEHOLD_KEY, initial.id);
+      set({ households: hd.households, currentHousehold: initial });
     }
   },
 
@@ -76,12 +88,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ token: data.token, user: data.user, isAuthenticated: true });
     const { data: hd } = await api.get("/households");
     if (hd.households?.length > 0) {
-      set({ households: hd.households, currentHousehold: hd.households[0] });
+      const initial = pickInitialHousehold(hd.households);
+      localStorage.setItem(LAST_HOUSEHOLD_KEY, initial.id);
+      set({ households: hd.households, currentHousehold: initial });
     }
   },
 
   logout: () => {
     localStorage.removeItem("auth_token");
+    // LAST_HOUSEHOLD_KEY bleibt absichtlich erhalten — beim nächsten Login
+    // des gleichen Users wird so wieder das gewohnte Buch geöffnet.
     api.defaults.headers.common.Authorization = undefined;
     set({
       token: null,
@@ -104,9 +120,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Also load households so page-refresh works without re-login
       const { data: hd } = await api.get("/households");
       if (hd.households?.length > 0) {
+        const initial = pickInitialHousehold(hd.households);
         set((state) => ({
           households: hd.households,
-          currentHousehold: state.currentHousehold ?? hd.households[0],
+          currentHousehold: state.currentHousehold ?? initial,
         }));
       }
     } catch {
@@ -114,7 +131,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  setCurrentHousehold: (currentHousehold) => set({ currentHousehold }),
+  setCurrentHousehold: (currentHousehold) => {
+    if (currentHousehold) {
+      localStorage.setItem(LAST_HOUSEHOLD_KEY, currentHousehold.id);
+    }
+    set({ currentHousehold });
+  },
   setHouseholds: (households) => set({ households }),
   updateUser: (data) =>
     set((state) => ({ user: state.user ? { ...state.user, ...data } : null })),
