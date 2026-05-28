@@ -52,6 +52,7 @@ export default function TransactionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLDivElement>(null);
   const {
     selectedMonth,
     selectedYear,
@@ -286,6 +287,13 @@ export default function TransactionsPage() {
     setDuplicates([]);
     setDupChecked(false);
     setSplits([]);
+    // Zum Formular hochscrollen, damit der User direkt loslegen kann
+    // ohne die Tabelle erst hochzuscrollen. requestAnimationFrame wartet,
+    // bis showForm tatsächlich gerendert ist. scrollIntoView statt
+    // window.scrollTo, weil das <main> der eigentliche Scroll-Container ist.
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -637,7 +645,7 @@ export default function TransactionsPage() {
 
       {/* Add Form */}
       {showForm && (
-        <div className="card p-6">
+        <div className="card p-6" ref={formRef}>
           <h2 className="mb-4 font-semibold text-gray-900 dark:text-white">
             {editingId ? "Buchung bearbeiten" : "Neue Buchung"}
           </h2>
