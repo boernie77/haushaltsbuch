@@ -187,19 +187,20 @@ export default function AccountsPage() {
           )}
         </div>
       </div>
-      <div
-        className={`shrink-0 text-right font-bold text-lg ${
-          a.type === "liability"
-            ? a.balance > 0
-              ? "text-[var(--expense)]"
-              : "text-green-600"
-            : a.balance >= 0
-              ? "text-green-600"
-              : "text-[var(--expense)]"
-        }`}
-      >
-        {fmt(a.balance)}
-      </div>
+      {(() => {
+        // Aus User-Sicht: Schulden werden als negative Zahl angezeigt
+        // (Passivkonto +500€ Schulden → -500€). Asset-Konten wie gespeichert.
+        const displayBalance = a.type === "liability" ? -a.balance : a.balance;
+        return (
+          <div
+            className={`shrink-0 text-right font-bold text-lg ${
+              displayBalance < 0 ? "text-[var(--expense)]" : "text-green-600"
+            }`}
+          >
+            {fmt(displayBalance)}
+          </div>
+        );
+      })()}
       <div className="flex shrink-0 gap-2">
         <button
           className="text-gray-400 transition-colors hover:text-[var(--primary)]"
@@ -241,7 +242,11 @@ export default function AccountsPage() {
           <div className="text-gray-500 text-xs uppercase tracking-wide">
             Aktiva (Vermögen)
           </div>
-          <div className="mt-1 font-bold text-green-600 text-xl">
+          <div
+            className={`mt-1 font-bold text-xl ${
+              totalAssets < 0 ? "text-[var(--expense)]" : "text-green-600"
+            }`}
+          >
             {fmt(totalAssets)}
           </div>
         </div>
@@ -249,8 +254,12 @@ export default function AccountsPage() {
           <div className="text-gray-500 text-xs uppercase tracking-wide">
             Passiva (Schulden)
           </div>
-          <div className="mt-1 font-bold text-[var(--expense)] text-xl">
-            {fmt(totalLiabilities)}
+          <div
+            className={`mt-1 font-bold text-xl ${
+              totalLiabilities > 0 ? "text-[var(--expense)]" : "text-green-600"
+            }`}
+          >
+            {fmt(-totalLiabilities)}
           </div>
         </div>
         <div className="card p-4">
