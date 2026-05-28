@@ -112,7 +112,13 @@ router.get("/", auth, async (req, res) => {
       };
     }
 
-    const { count, rows } = await Transaction.findAndCountAll({
+    // Bei Periode-Filter (month+year) kein Limit: eine Period ist natürlich
+    // begrenzt (≤ paar Hundert Buchungen). Das alte Default-Limit=50 hat bei
+    // großen Periods die ältesten Buchungen (z.B. wiederkehrende vom 1.) aus
+    // der Liste fallen lassen, weil sortiert nach date DESC.
+    const periodFilterActive = Boolean(month && year);
+    const pageLimit = periodFilterActive ? null : Number.parseInt(limit);
+    const queryOptions = {
       where,
       distinct: true,
       include: [
@@ -136,15 +142,18 @@ router.get("/", auth, async (req, res) => {
         ["date", "DESC"],
         ["createdAt", "DESC"],
       ],
-      limit: Number.parseInt(limit),
-      offset: (Number.parseInt(page) - 1) * Number.parseInt(limit),
-    });
+    };
+    if (pageLimit) {
+      queryOptions.limit = pageLimit;
+      queryOptions.offset = (Number.parseInt(page) - 1) * pageLimit;
+    }
+    const { count, rows } = await Transaction.findAndCountAll(queryOptions);
 
     res.json({
       transactions: rows,
       total: count,
       page: Number.parseInt(page),
-      totalPages: Math.ceil(count / limit),
+      totalPages: pageLimit ? Math.ceil(count / pageLimit) : 1,
     });
   } catch (err) {
     console.error(err);
