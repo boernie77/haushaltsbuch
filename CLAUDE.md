@@ -502,6 +502,14 @@ Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `
 - **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
 
+## Session-Notizen 2026-05-28
+- Feature: Spaltenkopf Datum/Betrag in TransactionsPage klickbar zum Sortieren (lokal, kein Reload). Default bleibt Datum absteigend
+- Feature: Summen-Karten oberhalb der Wiederkehrend-Tabelle (Ausgaben/Einnahmen/Saldo, monatlich hochgerechnet — weekly × 52/12, yearly ÷ 12)
+- Feature: Treffer-Summen-Zeile bei aktivem Suchfeld in TransactionsPage (Anzahl + Ausgaben + Einnahmen + Saldo, respektiert Type-Filter)
+- Feature: Fester Saldo — neue Migration 023 (`monthly_fixed_snapshots`), `fixedBalanceService.js`, Cron 1. jeden Monats 02:00 friert Vormonats-Period ein, Endpoint `/api/statistics/fixed-balance`, neuer Tab "Fester Saldo" in StatisticsPage (KPI-Karten + LineChart + Tabelle + Button "Aktuellen Monat festhalten")
+- Fix: ALLE Statistik-Endpoints folgen jetzt dem `monthStartDay`-Period-Schema (`/yearly`, `/wealth`, `/trends`, `/fixed-balance`). Vorher waren `/yearly` und `/wealth` bewusst Kalender-basiert via `EXTRACT(MONTH FROM date)`. JS-seitige Aggregation via `getPeriodForDate()`; bei sehr großen Haushalten (>10000 Buchungen/Jahr) ggf. später optimieren
+- CLAUDE.md: alter Hinweis "yearly/wealth bewusst Kalender" entfernt, neue Doku zu Fester Saldo + Cron-Tabelle aktualisiert
+
 ## Session-Notizen 2026-04-28
 - Bug behoben: Wiederkehrende Buchung direkt anlegen schlug fehl wegen doppeltem `recurringEndDate` in FormData → multer-Array → Sequelize-Crash
 - Bug behoben: Dashboard-„Vormonat"-Zeile bei Einnahmen zeigte fälschlich `lastMonth` (Ausgaben) → jetzt `lastMonthIncome`
