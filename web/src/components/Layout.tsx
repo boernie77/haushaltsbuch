@@ -292,11 +292,8 @@ export default function Layout() {
         <div className="flex items-center gap-3 border-pink-100 border-b p-4 dark:border-slate-700">
           <span className="text-2xl">💰</span>
           {sidebarOpen && (
-            <span className="flex flex-col leading-tight">
-              <span className="font-bold text-[var(--primary)] text-lg">
-                Haushaltsbuch
-              </span>
-              <span className="text-gray-400 text-xs">v{APP_VERSION}</span>
+            <span className="font-bold text-[var(--primary)] text-lg">
+              Haushaltsbuch
             </span>
           )}
           <button
@@ -518,6 +515,14 @@ export default function Layout() {
             </Link>
           </div>
         )}
+
+        {/* Version — IMMER sichtbar (auch wenn Sidebar zugeklappt) */}
+        <div
+          className="border-pink-100 border-t px-2 py-2 text-center text-gray-400 text-xs dark:border-slate-700"
+          title={`Version ${APP_VERSION}`}
+        >
+          v{APP_VERSION}
+        </div>
       </aside>
 
       {/* Main Content */}
