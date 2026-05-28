@@ -193,35 +193,31 @@ router.get("/yearly", auth, async (req, res) => {
 
     const y = Number.parseInt(year, 10) || new Date().getFullYear();
 
-    const monthly = await Transaction.findAll({
-      attributes: [
-        [fn("EXTRACT", literal("MONTH FROM date")), "month"],
-        [fn("SUM", col("amount")), "total"],
-        "type",
-      ],
-      where: {
-        householdId,
-        isRecurring: { [Op.ne]: true },
-        date: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31)] },
-      },
-      group: [fn("EXTRACT", literal("MONTH FROM date")), "type"],
-      order: [[fn("EXTRACT", literal("MONTH FROM date")), "ASC"]],
-      raw: true,
+    // Period-Bounds gemäß monthStartDay (z.B. startDay=27 → Period "April" =
+    // 27.03.–26.04.). Statt EXTRACT(MONTH) wird jede Buchung in JS der Period
+    // zugeordnet via getPeriodForDate.
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
     });
+    const startDay = household?.monthStartDay || 1;
 
-    const byCategory = await Transaction.findAll({
-      attributes: ["categoryId", [fn("SUM", col("amount")), "total"]],
+    // Datumsbereich: gesamter Period-Jahresbereich = von Period-Januar.start
+    // bis Period-Dezember.end. Bei startDay > 1 reicht das in das Vorjahr/
+    // Folgejahr hinein.
+    const janBounds = getMonthBounds(y, 1, startDay);
+    const decBounds = getMonthBounds(y, 12, startDay);
+
+    const transactions = await Transaction.findAll({
+      attributes: ["amount", "type", "date", "categoryId"],
       where: {
         householdId,
-        type: "expense",
         isRecurring: { [Op.ne]: true },
-        date: { [Op.between]: [new Date(y, 0, 1), new Date(y, 11, 31)] },
+        type: { [Op.in]: ["expense", "income"] },
+        date: { [Op.between]: [janBounds.start, decBounds.end] },
       },
       include: [
         { model: Category, attributes: ["name", "nameDE", "icon", "color"] },
       ],
-      group: ["categoryId", "Category.id"],
-      order: [[literal("total"), "DESC"]],
     });
 
     const months = Array.from({ length: 12 }, (_, i) => ({
@@ -229,14 +225,33 @@ router.get("/yearly", auth, async (req, res) => {
       expenses: 0,
       income: 0,
     }));
-    monthly.forEach((m) => {
-      const idx = Number.parseInt(m.month, 10) - 1;
-      if (m.type === "expense") {
-        months[idx].expenses = Number.parseFloat(m.total);
-      } else if (m.type === "income") {
-        months[idx].income = Number.parseFloat(m.total);
+    const catAgg = new Map(); // categoryId → { total, category }
+    for (const t of transactions) {
+      const period = getPeriodForDate(t.date, startDay);
+      if (period.year !== y) {
+        continue; // Period gehört zu einem anderen Jahr
       }
-    });
+      const amt = Number.parseFloat(t.amount) || 0;
+      const idx = period.month - 1;
+      if (t.type === "expense") {
+        months[idx].expenses += amt;
+        const key = t.categoryId || "uncategorized";
+        const existing = catAgg.get(key) || { total: 0, category: t.Category };
+        existing.total += amt;
+        existing.category = t.Category;
+        catAgg.set(key, existing);
+      } else if (t.type === "income") {
+        months[idx].income += amt;
+      }
+    }
+
+    const byCategory = Array.from(catAgg.entries())
+      .map(([categoryId, v]) => ({
+        categoryId: categoryId === "uncategorized" ? null : categoryId,
+        category: v.category,
+        total: Math.round(v.total * 100) / 100,
+      }))
+      .sort((a, b) => b.total - a.total);
 
     const totalExpenses = months.reduce((s, m) => s + m.expenses, 0);
     const totalIncome = months.reduce((s, m) => s + m.income, 0);
@@ -252,11 +267,7 @@ router.get("/yearly", auth, async (req, res) => {
             10
           : 0,
       monthly: months,
-      byCategory: byCategory.map((b) => ({
-        categoryId: b.categoryId,
-        category: b.Category,
-        total: Number.parseFloat(b.dataValues.total),
-      })),
+      byCategory,
     });
   } catch (err) {
     console.error(err);
@@ -440,9 +451,21 @@ router.get("/trends", auth, async (req, res) => {
     }
 
     const n = Number.parseInt(months, 10);
-    const since = new Date();
-    since.setMonth(since.getMonth() - n);
-    since.setDate(1);
+    // Period-aware "letzte n Monate": Start = Beginn der Period vor n
+    // Monaten gemäß monthStartDay. Bei startDay=1 entspricht das dem
+    // bisherigen Verhalten (1. des Vormonats).
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
+    });
+    const startDay = household?.monthStartDay || 1;
+    const currentPeriod = getPeriodForDate(new Date(), startDay);
+    let sinceYear = currentPeriod.year;
+    let sinceMonth = currentPeriod.month - n;
+    while (sinceMonth < 1) {
+      sinceMonth += 12;
+      sinceYear -= 1;
+    }
+    const { start: since } = getMonthBounds(sinceYear, sinceMonth, startDay);
 
     const [byCategory, totals] = await Promise.all([
       Transaction.findAll({
@@ -525,30 +548,51 @@ router.get("/wealth", auth, async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const rows = await sequelize.query(
-      `
-      SELECT
-        EXTRACT(YEAR FROM date)::int AS year,
-        EXTRACT(MONTH FROM date)::int AS month,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) -
-        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS balance
-      FROM transactions
-      WHERE "householdId" = :householdId AND type IN ('expense','income') AND "isRecurring" IS NOT TRUE
-      GROUP BY year, month
-      ORDER BY year, month
-    `,
-      { replacements: { householdId }, type: "SELECT" }
-    );
+    // Period-Bounds gemäß monthStartDay: Buchungen werden in JS dem Period-
+    // Label zugeordnet, nicht via EXTRACT(MONTH). So stimmt der Vermögens-
+    // verlauf mit dem Period-Schema des Haushaltsbuchs überein.
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
+    });
+    const startDay = household?.monthStartDay || 1;
+
+    const rows = await Transaction.findAll({
+      attributes: ["amount", "type", "date"],
+      where: {
+        householdId,
+        type: { [Op.in]: ["expense", "income"] },
+        isRecurring: { [Op.ne]: true },
+      },
+      raw: true,
+    });
+
+    // Aggregation: (year, month) → balance
+    const agg = new Map();
+    for (const r of rows) {
+      const period = getPeriodForDate(r.date, startDay);
+      const key = `${period.year}-${period.month}`;
+      const amt = Number.parseFloat(r.amount) || 0;
+      const delta = r.type === "income" ? amt : -amt;
+      agg.set(key, (agg.get(key) || 0) + delta);
+    }
+
+    // Sortiert nach (year, month) ASC
+    const entries = Array.from(agg.entries())
+      .map(([key, balance]) => {
+        const [y, m] = key.split("-").map(Number);
+        return { year: y, month: m, balance };
+      })
+      .sort((a, b) => a.year - b.year || a.month - b.month);
 
     let cumulative = 0;
-    const data = rows.map((r) => {
-      cumulative += Number.parseFloat(r.balance);
+    const data = entries.map((e) => {
+      cumulative += e.balance;
       return {
-        year: r.year,
-        month: r.month,
-        balance: Math.round(Number.parseFloat(r.balance) * 100) / 100,
+        year: e.year,
+        month: e.month,
+        balance: Math.round(e.balance * 100) / 100,
         cumulative: Math.round(cumulative * 100) / 100,
-        label: `${String(r.month).padStart(2, "0")}/${r.year}`,
+        label: `${String(e.month).padStart(2, "0")}/${e.year}`,
       };
     });
 
@@ -679,7 +723,12 @@ router.get("/fixed-balance", auth, async (req, res) => {
       ],
     });
 
-    const now = new Date();
+    // Aktuelle Period gemäß monthStartDay (z.B. 27.03. → "April")
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
+    });
+    const startDay = household?.monthStartDay || 1;
+    const period = getPeriodForDate(new Date(), startDay);
     const current = await computeFixedBalance(householdId);
 
     res.json({
@@ -691,8 +740,8 @@ router.get("/fixed-balance", auth, async (req, res) => {
         balance: Number(s.balance),
       })),
       current: {
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
+        year: period.year,
+        month: period.month,
         ...current,
       },
     });
@@ -712,9 +761,13 @@ router.post("/fixed-balance/snapshot", auth, async (req, res) => {
       return res.status(403).json({ error: "Forbidden" });
     }
     const { upsertSnapshot } = require("../services/fixedBalanceService");
-    const now = new Date();
-    const year = Number.parseInt(req.body.year, 10) || now.getFullYear();
-    const month = Number.parseInt(req.body.month, 10) || now.getMonth() + 1;
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
+    });
+    const startDay = household?.monthStartDay || 1;
+    const period = getPeriodForDate(new Date(), startDay);
+    const year = Number.parseInt(req.body.year, 10) || period.year;
+    const month = Number.parseInt(req.body.month, 10) || period.month;
     const snap = await upsertSnapshot(householdId, year, month);
     res.json({
       year: snap.year,

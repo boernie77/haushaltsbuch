@@ -56,20 +56,33 @@ async function upsertSnapshot(householdId, year, month) {
 }
 
 // Cron-Eintrittspunkt: für alle Haushalte den Snapshot des Vormonats erstellen.
+// "Vormonat" wird pro Haushalt aus `monthStartDay` abgeleitet, damit der
+// Snapshot mit dem Period-Schema des Haushaltsbuchs übereinstimmt
+// (z.B. monthStartDay=27 → Snapshot am 1.5. friert die Period "April"
+// = 27.03.–26.04. ein).
 async function snapshotPreviousMonth() {
   try {
     const { Household } = require("../models");
+    const { getPeriodForDate } = require("../utils/monthBounds");
     const now = new Date();
-    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-    const prevYear =
-      now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
 
-    const households = await Household.findAll({ attributes: ["id", "name"] });
+    const households = await Household.findAll({
+      attributes: ["id", "name", "monthStartDay"],
+    });
     for (const h of households) {
       try {
+        const startDay = h.monthStartDay || 1;
+        // "Vormonat" = aktuelle Period MINUS eins
+        const currentPeriod = getPeriodForDate(now, startDay);
+        const prevMonth =
+          currentPeriod.month === 1 ? 12 : currentPeriod.month - 1;
+        const prevYear =
+          currentPeriod.month === 1
+            ? currentPeriod.year - 1
+            : currentPeriod.year;
         await upsertSnapshot(h.id, prevYear, prevMonth);
         console.log(
-          `[fixed-balance] Snapshot ${prevYear}-${String(prevMonth).padStart(2, "0")} für ${h.name}`
+          `[fixed-balance] Snapshot ${prevYear}-${String(prevMonth).padStart(2, "0")} für ${h.name} (startDay=${startDay})`
         );
       } catch (err) {
         console.error(`[fixed-balance] Fehler bei ${h.name}: ${err.message}`);

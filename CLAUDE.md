@@ -191,8 +191,10 @@ if (startDay > 1 && now.getDate() >= startDay) {
 }
 ```
 
-### Backend `/yearly` und `/wealth` nutzen Kalendermonate, nicht Period
-`EXTRACT(MONTH FROM date)` bei Aggregaten — bewusst Kalender-basiert (Jahresübersicht / Vermögensentwicklung). Nur `/monthly`, `/overview`, `/byPerson`, `/budgets`, `/reports` verwenden Period-Bounds.
+### Alle Statistik-Endpoints folgen dem Period-Schema (seit 2026-05-28)
+`/monthly`, `/overview`, `/byPerson`, `/budgets`, `/reports`, `/yearly`, `/wealth`, `/trends`, `/fixed-balance` ordnen Buchungen via `getPeriodForDate()` ihrer Period zu (statt `EXTRACT(MONTH FROM date)`). Konsequenz: Bei `monthStartDay=27` taucht der 27.03. in allen Tabs als „April" auf — konsistent über die ganze App.
+
+Performance-Hinweis: `/yearly` und `/wealth` machen jetzt JS-seitige Aggregation statt SQL `GROUP BY` mit `EXTRACT`. Bei sehr großen Buchungsmengen (>10000 pro Haushalt/Jahr) ggf. später optimieren — aktuell vernachlässigbar.
 
 ## Wiederkehrende Buchungen
 - `isRecurring: true` → **Template-Buchung** (nur Template, erscheint NICHT in normaler Transaktionsliste)
