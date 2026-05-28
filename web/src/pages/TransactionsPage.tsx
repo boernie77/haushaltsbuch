@@ -1,7 +1,9 @@
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import {
+  ArrowDown,
   ArrowRightLeft,
+  ArrowUp,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -35,6 +37,16 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const toggleSort = (col: "date" | "amount") => {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir(col === "date" ? "desc" : "desc");
+    }
+  };
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -492,6 +504,33 @@ export default function TransactionsPage() {
       setUploading(false);
     }
   };
+
+  // Sortierte Buchungen (lokal — keine API-Reload bei Sort-Wechsel)
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const cmp =
+      sortBy === "date"
+        ? new Date(a.date).getTime() - new Date(b.date).getTime()
+        : Number.parseFloat(a.amount) - Number.parseFloat(b.amount);
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  // Summen für wiederkehrende Buchungen (monatlich hochgerechnet)
+  const recurringMonthly = (r: any) => {
+    const amt = Number.parseFloat(r.amount) || 0;
+    if (r.recurringInterval === "weekly") {
+      return amt * (52 / 12);
+    }
+    if (r.recurringInterval === "yearly") {
+      return amt / 12;
+    }
+    return amt; // monthly
+  };
+  const recurringExpensesMonthly = recurring
+    .filter((r) => r.type === "expense")
+    .reduce((sum, r) => sum + recurringMonthly(r), 0);
+  const recurringIncomeMonthly = recurring
+    .filter((r) => r.type === "income")
+    .reduce((sum, r) => sum + recurringMonthly(r), 0);
 
   const favDocTypes =
     paperlessData?.documentTypes?.filter((x: any) => x.isFavorite) || [];
@@ -979,6 +1018,41 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {/* Summen-Karte für wiederkehrende Buchungen (monatlich hochgerechnet) */}
+      {typeFilter === "recurring" && recurring.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="card p-4">
+            <div className="text-gray-500 text-xs uppercase tracking-wide">
+              Ausgaben / Monat
+            </div>
+            <div className="mt-1 font-bold text-[var(--expense)] text-xl">
+              -{recurringExpensesMonthly.toFixed(2)} €
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-gray-500 text-xs uppercase tracking-wide">
+              Einnahmen / Monat
+            </div>
+            <div className="mt-1 font-bold text-green-600 text-xl">
+              +{recurringIncomeMonthly.toFixed(2)} €
+            </div>
+          </div>
+          <div className="card p-4">
+            <div className="text-gray-500 text-xs uppercase tracking-wide">
+              Saldo / Monat
+            </div>
+            <div
+              className={`mt-1 font-bold text-xl ${recurringIncomeMonthly - recurringExpensesMonthly >= 0 ? "text-green-600" : "text-[var(--expense)]"}`}
+            >
+              {recurringIncomeMonthly - recurringExpensesMonthly >= 0
+                ? "+"
+                : ""}
+              {(recurringIncomeMonthly - recurringExpensesMonthly).toFixed(2)} €
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Transaction List */}
       <div className="card overflow-hidden">
         {loading ? (
@@ -1109,25 +1183,50 @@ export default function TransactionsPage() {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-slate-700">
               <tr>
-                {[
-                  "Datum",
-                  "Kategorie",
-                  "Beschreibung",
-                  "Händler",
-                  "Betrag",
-                  "",
-                ].map((h) => (
-                  <th
-                    className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide"
-                    key={h}
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                  <button
+                    className="inline-flex items-center gap-1 hover:text-[var(--primary)]"
+                    onClick={() => toggleSort("date")}
+                    type="button"
                   >
-                    {h}
-                  </th>
-                ))}
+                    Datum
+                    {sortBy === "date" &&
+                      (sortDir === "asc" ? (
+                        <ArrowUp size={12} />
+                      ) : (
+                        <ArrowDown size={12} />
+                      ))}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                  Kategorie
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                  Beschreibung
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                  Händler
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                  <button
+                    className="inline-flex items-center gap-1 hover:text-[var(--primary)]"
+                    onClick={() => toggleSort("amount")}
+                    type="button"
+                  >
+                    Betrag
+                    {sortBy === "amount" &&
+                      (sortDir === "asc" ? (
+                        <ArrowUp size={12} />
+                      ) : (
+                        <ArrowDown size={12} />
+                      ))}
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-              {transactions.map((t) => (
+              {sortedTransactions.map((t) => (
                 <tr
                   className="transition-colors hover:bg-pink-50/50 dark:hover:bg-slate-700/50"
                   key={t.id}
