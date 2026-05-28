@@ -397,8 +397,7 @@ router.get("/overview", auth, async (req, res) => {
       const variableSoFar = Math.max(0, current - fixedAlreadyPaid);
       const projectedVariable =
         currentDay > 0 ? (variableSoFar / currentDay) * daysInMonth : 0;
-      projectedExpenses =
-        projectedVariable + fixedAlreadyPaid + fixedYetToCome;
+      projectedExpenses = projectedVariable + fixedAlreadyPaid + fixedYetToCome;
     }
 
     res.json({
@@ -655,6 +654,78 @@ router.get("/by-person", auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch person statistics" });
+  }
+});
+
+// GET /api/statistics/fixed-balance?householdId=
+// Liefert alle persistierten Monats-Snapshots des "festen Saldos" + Live-Wert
+// für den aktuellen Monat. Snapshots werden vom Cron (1. jeden Monats 02:00)
+// erstellt; der aktuelle Monat ist nur eine Hochrechnung aus den aktiven
+// wiederkehrenden Buchungen und wird beim nächsten Cron-Lauf eingefroren.
+router.get("/fixed-balance", auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    if (!(await checkAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const { MonthlyFixedSnapshot } = require("../models");
+    const { computeFixedBalance } = require("../services/fixedBalanceService");
+
+    const snapshots = await MonthlyFixedSnapshot.findAll({
+      where: { householdId },
+      order: [
+        ["year", "ASC"],
+        ["month", "ASC"],
+      ],
+    });
+
+    const now = new Date();
+    const current = await computeFixedBalance(householdId);
+
+    res.json({
+      snapshots: snapshots.map((s) => ({
+        year: s.year,
+        month: s.month,
+        fixedIncome: Number(s.fixedIncome),
+        fixedExpenses: Number(s.fixedExpenses),
+        balance: Number(s.balance),
+      })),
+      current: {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        ...current,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch fixed balance" });
+  }
+});
+
+// POST /api/statistics/fixed-balance/snapshot?householdId=
+// Manuelles Erstellen/Aktualisieren des Snapshots für aktuellen oder
+// angegebenen Monat. Nützlich für Backfill und sofortiges Festhalten.
+router.post("/fixed-balance/snapshot", auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    if (!(await checkAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const { upsertSnapshot } = require("../services/fixedBalanceService");
+    const now = new Date();
+    const year = Number.parseInt(req.body.year, 10) || now.getFullYear();
+    const month = Number.parseInt(req.body.month, 10) || now.getMonth() + 1;
+    const snap = await upsertSnapshot(householdId, year, month);
+    res.json({
+      year: snap.year,
+      month: snap.month,
+      fixedIncome: Number(snap.fixedIncome),
+      fixedExpenses: Number(snap.fixedExpenses),
+      balance: Number(snap.balance),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
   }
 });
 

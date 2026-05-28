@@ -138,6 +138,7 @@ Vorhandene Migrationen (005, 018 etc.) als Referenz nutzen.
 | täglich 07:00 | `deactivateExpiredTrials` — deaktiviert Konten mit abgelaufenem Testabo |
 | täglich 07:30 | `sendTrialExpiryReminders` — E-Mail-Erinnerung 5 Tage + 2 Tage vor Testabo-Ablauf |
 | alle 6h | `syncAllPaperless` — synchronisiert alle aktiven Paperless-Haushalte |
+| 1. jeden Monats 02:00 | `snapshotPreviousMonth` — Snapshot „Fester Saldo" für Vormonat (siehe `fixedBalanceService.js`) |
 | 1. jeden Monats 08:00 | `sendMonthlyReports` — HTML-Monatsberichte per E-Mail |
 | konfigurierbar | SFTP-Backup (täglich 02:00 / wöchentlich / monatlich) |
 
@@ -317,6 +318,23 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - **Absender:** noreply@bernauer24.com (Strato-Alias)
 - **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte, Testabo-Ablauf-Erinnerungen
 - ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
+
+## Fester Saldo (Snapshot-Tracking)
+Eigene Tabelle `monthly_fixed_snapshots` (Migration 023) hält pro Haushalt und Monat den „festen Saldo" fest:
+- **`fixedIncome`** = Summe der aktuell aktiven wiederkehrenden Einnahmen, monatlich hochgerechnet (weekly × 52/12, yearly ÷ 12).
+- **`fixedExpenses`** = analog für Ausgaben.
+- **`balance`** = `fixedIncome − fixedExpenses`.
+
+Snapshot-Logik in `backend/src/services/fixedBalanceService.js`:
+- `computeFixedBalance(householdId)` → Live-Berechnung aus aktiven Templates.
+- `upsertSnapshot(householdId, year, month)` → friert den Wert in der DB ein (`findOrCreate` + Update).
+- `snapshotPreviousMonth()` — Cron-Eintrittspunkt am 1. jeden Monats 02:00, iteriert über alle Haushalte.
+
+API:
+- `GET /api/statistics/fixed-balance?householdId=` → `{ snapshots: [...], current: {...} }`. `current` ist Live-Hochrechnung des laufenden Monats und wird NICHT automatisch persistiert.
+- `POST /api/statistics/fixed-balance/snapshot?householdId=` (Body: `{year?, month?}`) → manuelles Festhalten via Button „Aktuellen Monat festhalten" in der UI.
+
+Frontend: `StatisticsPage` Tab „Fester Saldo" zeigt 3 KPI-Karten (laufender Monat) + LineChart über alle Snapshots (3 Linien: Einnahmen grün, Feste Ausgaben rot, Saldo blau) + Tabelle. Aktueller Monat erscheint mit Sternchen-Marker `*`.
 
 ## Statistiken & Dashboard
 - **Web-Dashboard:** 4 Karten (Ausgaben, Einnahmen, Bilanz, Sparquote) + Monats-Prognose + Budgetanzeige + Kategorie-Pie-Chart

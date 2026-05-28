@@ -424,6 +424,29 @@ const SavingsGoal = sequelize.define(
   { tableName: "savings_goals", timestamps: true }
 );
 
+// ── MonthlyFixedSnapshot ──────────────────────────────────────────────────────
+const MonthlyFixedSnapshot = sequelize.define(
+  "MonthlyFixedSnapshot",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    year: { type: DataTypes.INTEGER, allowNull: false },
+    month: { type: DataTypes.INTEGER, allowNull: false },
+    fixedIncome: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+    fixedExpenses: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+    balance: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+  },
+  {
+    tableName: "monthly_fixed_snapshots",
+    timestamps: true,
+    indexes: [{ unique: true, fields: ["householdId", "year", "month"] }],
+  }
+);
+
 // ── TransactionSplit ──────────────────────────────────────────────────────────
 const TransactionSplit = sequelize.define(
   "TransactionSplit",
@@ -498,6 +521,9 @@ InviteCode.belongsTo(User, { foreignKey: "usedById", as: "usedBy" });
 Household.hasMany(SavingsGoal, { foreignKey: "householdId" });
 SavingsGoal.belongsTo(Household, { foreignKey: "householdId" });
 
+Household.hasMany(MonthlyFixedSnapshot, { foreignKey: "householdId" });
+MonthlyFixedSnapshot.belongsTo(Household, { foreignKey: "householdId" });
+
 Transaction.hasMany(TransactionSplit, {
   foreignKey: "transactionId",
   as: "splits",
@@ -523,4 +549,5 @@ module.exports = {
   GlobalSettings,
   InviteCode,
   BackupConfig,
+  MonthlyFixedSnapshot,
 };

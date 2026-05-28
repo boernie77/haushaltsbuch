@@ -44,7 +44,13 @@ const COLORS = [
   "#00BCD4",
 ];
 
-type Tab = "monthly" | "yearly" | "trends" | "wealth" | "persons";
+type Tab =
+  | "monthly"
+  | "yearly"
+  | "trends"
+  | "wealth"
+  | "persons"
+  | "fixed-balance";
 
 export default function StatisticsPage() {
   const { currentHousehold } = useAuthStore();
@@ -54,6 +60,8 @@ export default function StatisticsPage() {
   const [trends, setTrends] = useState<any>(null);
   const [wealth, setWealth] = useState<any>(null);
   const [persons, setPersons] = useState<any>(null);
+  const [fixedBalance, setFixedBalance] = useState<any>(null);
+  const [snapshotSaving, setSnapshotSaving] = useState(false);
   const [trendMonths, setTrendMonths] = useState(6);
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -116,6 +124,11 @@ export default function StatisticsPage() {
         })
         .then((r) => setPersons(r.data))
         .finally(() => setLoading(false));
+    } else if (tab === "fixed-balance") {
+      statsAPI
+        .fixedBalance(currentHousehold.id)
+        .then((r) => setFixedBalance(r.data))
+        .finally(() => setLoading(false));
     }
   }, [currentHousehold, tab, selectedMonth, selectedYear, trendMonths]);
 
@@ -125,6 +138,7 @@ export default function StatisticsPage() {
     { key: "trends", label: "Trends" },
     { key: "wealth", label: "Vermögen" },
     { key: "persons", label: "Personen" },
+    { key: "fixed-balance", label: "Fester Saldo" },
   ];
 
   return (
@@ -652,6 +666,197 @@ export default function StatisticsPage() {
             )}
           </>
         ))}
+
+      {/* Fester Saldo (Snapshots) */}
+      {!loading &&
+        tab === "fixed-balance" &&
+        fixedBalance &&
+        (() => {
+          const series = [
+            ...fixedBalance.snapshots.map((s: any) => ({
+              ...s,
+              label: `${String(s.month).padStart(2, "0")}/${s.year}`,
+              key: `${s.year}-${s.month}`,
+            })),
+          ];
+          // Aktuellen Monat als Live-Wert anhängen, falls noch kein
+          // Snapshot dafür existiert.
+          const c = fixedBalance.current;
+          const hasCurrent = fixedBalance.snapshots.some(
+            (s: any) => s.year === c.year && s.month === c.month
+          );
+          if (!hasCurrent) {
+            series.push({
+              ...c,
+              label: `${String(c.month).padStart(2, "0")}/${c.year} *`,
+              key: `${c.year}-${c.month}`,
+              isLive: true,
+            });
+          }
+          return (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="card p-4">
+                  <div className="text-gray-500 text-xs uppercase tracking-wide">
+                    Aktuell Einnahmen / Monat
+                  </div>
+                  <div className="mt-1 font-bold text-[var(--income)] text-xl">
+                    {fmt(c.fixedIncome)}
+                  </div>
+                </div>
+                <div className="card p-4">
+                  <div className="text-gray-500 text-xs uppercase tracking-wide">
+                    Aktuell Feste Ausgaben / Monat
+                  </div>
+                  <div className="mt-1 font-bold text-[var(--expense)] text-xl">
+                    {fmt(c.fixedExpenses)}
+                  </div>
+                </div>
+                <div className="card p-4">
+                  <div className="text-gray-500 text-xs uppercase tracking-wide">
+                    Aktuell Saldo / Monat
+                  </div>
+                  <div
+                    className={`mt-1 font-bold text-xl ${c.balance >= 0 ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
+                  >
+                    {fmt(c.balance)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold text-gray-900 dark:text-white">
+                    Entwicklung
+                  </h2>
+                  <button
+                    className="btn-secondary text-xs disabled:opacity-50"
+                    disabled={snapshotSaving || !currentHousehold}
+                    onClick={async () => {
+                      if (!currentHousehold) {
+                        return;
+                      }
+                      setSnapshotSaving(true);
+                      try {
+                        await statsAPI.fixedBalanceSnapshot(
+                          currentHousehold.id
+                        );
+                        const { data } = await statsAPI.fixedBalance(
+                          currentHousehold.id
+                        );
+                        setFixedBalance(data);
+                      } finally {
+                        setSnapshotSaving(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {snapshotSaving
+                      ? "Speichere..."
+                      : "Aktuellen Monat festhalten"}
+                  </button>
+                </div>
+                {series.length === 0 ? (
+                  <p className="py-8 text-center text-gray-400 text-sm">
+                    Noch keine Snapshots vorhanden. Klicke auf „Aktuellen Monat
+                    festhalten" oder warte bis zum 1. des nächsten Monats — dann
+                    legt der Cron-Job den ersten Snapshot an.
+                  </p>
+                ) : (
+                  <ResponsiveContainer height={300} width="100%">
+                    <LineChart data={series}>
+                      <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" />
+                      <XAxis dataKey="label" fontSize={11} stroke="#9ca3af" />
+                      <YAxis fontSize={11} stroke="#9ca3af" />
+                      <Tooltip
+                        formatter={(v: any) => fmt(Number(v))}
+                        labelStyle={{ color: "#111" }}
+                      />
+                      <Legend />
+                      <Line
+                        dataKey="fixedIncome"
+                        dot
+                        name="Einnahmen"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        type="monotone"
+                      />
+                      <Line
+                        dataKey="fixedExpenses"
+                        dot
+                        name="Feste Ausgaben"
+                        stroke="#ef4444"
+                        strokeWidth={2}
+                        type="monotone"
+                      />
+                      <Line
+                        dataKey="balance"
+                        dot
+                        name="Saldo"
+                        stroke="#3b82f6"
+                        strokeWidth={2.5}
+                        type="monotone"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+                <p className="mt-2 text-gray-400 text-xs">
+                  * = laufender Monat (Live-Hochrechnung, noch nicht
+                  eingefroren). Snapshots werden automatisch am 1. jeden Monats
+                  für den Vormonat erstellt.
+                </p>
+              </div>
+
+              {series.length > 0 && (
+                <div className="card overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 dark:bg-slate-700">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                          Monat
+                        </th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                          Einnahmen
+                        </th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                          Feste Ausgaben
+                        </th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-500 text-xs uppercase tracking-wide">
+                          Saldo
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                      {[...series].reverse().map((s: any) => (
+                        <tr key={s.key}>
+                          <td className="px-4 py-3 text-gray-700 text-sm dark:text-gray-300">
+                            {MONTHS[s.month - 1]} {s.year}
+                            {s.isLive && (
+                              <span className="ml-1 text-gray-400 text-xs">
+                                (live)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[var(--income)] text-sm">
+                            {fmt(s.fixedIncome)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-[var(--expense)] text-sm">
+                            {fmt(s.fixedExpenses)}
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right font-semibold text-sm ${s.balance >= 0 ? "text-[var(--income)]" : "text-[var(--expense)]"}`}
+                          >
+                            {fmt(s.balance)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          );
+        })()}
     </div>
   );
 }

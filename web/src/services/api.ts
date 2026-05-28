@@ -54,6 +54,15 @@ export const statsAPI = {
   wealth: (householdId: string) =>
     api.get("/statistics/wealth", { params: { householdId } }),
   byPerson: (p: any) => api.get("/statistics/by-person", { params: p }),
+  fixedBalance: (householdId: string) =>
+    api.get("/statistics/fixed-balance", { params: { householdId } }),
+  fixedBalanceSnapshot: (
+    householdId: string,
+    payload?: { year?: number; month?: number }
+  ) =>
+    api.post("/statistics/fixed-balance/snapshot", payload || {}, {
+      params: { householdId },
+    }),
 };
 
 export const budgetAPI = {

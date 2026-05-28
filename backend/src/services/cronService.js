@@ -4,6 +4,7 @@ let activeBackupJob = null;
 let recurringJob = null;
 let paperlessJob = null;
 let reportsJob = null;
+const fixedBalanceJob = null;
 
 // ── Recurring Transactions ────────────────────────────────────────────────────
 
@@ -429,6 +430,11 @@ async function startCron() {
   reportsJob = cron.schedule("0 8 1 * *", sendMonthlyReports);
   console.log("[cron] Monatsberichte: 1. jeden Monats 08:00");
 
+  // Fester-Saldo-Snapshot: 1. jeden Monats um 02:00 (vor allen anderen Jobs)
+  const { snapshotPreviousMonth } = require("./fixedBalanceService");
+  fixedBalanceJob = cron.schedule("0 2 1 * *", snapshotPreviousMonth);
+  console.log("[cron] Fester-Saldo-Snapshot: 1. jeden Monats 02:00");
+
   // Backup: aus Konfiguration
   try {
     const { BackupConfig } = require("../models");
@@ -491,6 +497,10 @@ function stopCron() {
   if (reportsJob) {
     reportsJob.destroy();
     reportsJob = null;
+  }
+  if (fixedBalanceJob) {
+    fixedBalanceJob.destroy();
+    fixedBalanceJob = null;
   }
   if (activeBackupJob) {
     activeBackupJob.destroy();
