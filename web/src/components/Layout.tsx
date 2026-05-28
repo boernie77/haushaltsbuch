@@ -26,6 +26,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { applyThemeClasses } from "../App";
 import { api, configAPI, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import { APP_VERSION } from "../version";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Übersicht", exact: true },
@@ -291,8 +292,11 @@ export default function Layout() {
         <div className="flex items-center gap-3 border-pink-100 border-b p-4 dark:border-slate-700">
           <span className="text-2xl">💰</span>
           {sidebarOpen && (
-            <span className="font-bold text-[var(--primary)] text-lg">
-              Haushaltsbuch
+            <span className="flex flex-col leading-tight">
+              <span className="font-bold text-[var(--primary)] text-lg">
+                Haushaltsbuch
+              </span>
+              <span className="text-gray-400 text-xs">v{APP_VERSION}</span>
             </span>
           )}
           <button

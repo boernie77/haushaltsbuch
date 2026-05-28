@@ -480,6 +480,20 @@ Backend-JS wird bewusst NICHT von Biome angefasst.
 Wenn lint-staged abbricht, kann Biome Backend-Dateien im Working Tree modifiziert haben.
 Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `git checkout -- backend/`
 
+## Versionsnummer
+Die App-Version wird in der Sidebar des Webs (unter „Haushaltsbuch"-Logo) als `v1.0.1` angezeigt — so sieht der User auf einen Blick, welche Version live ist.
+
+**Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. Bei jedem Release MANUELL hochzählen (semver: MAJOR.MINOR.PATCH).
+
+**Synchron halten:** Beim Bump immer alle 5 Stellen anpassen, sonst zeigt UI/Stores eine andere Version als das Bundle:
+- `web/src/version.ts`
+- `web/package.json`
+- `backend/package.json`
+- `mobile/package.json`
+- `mobile/app.json` (`expo.version` — wichtig für TestFlight/Store-Submissions)
+
+Mobile-App zeigt die Version aktuell noch nicht in der UI (kann später via `Constants.expoConfig?.version` ergänzt werden — z.B. in einem Settings-Screen).
+
 ## Wichtige Konventionen
 - Hauptrepo-VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
 - haushaltsbuch-home auf VPS verwendet `docker compose` (Plugin-Variante — anderer Stack!)
