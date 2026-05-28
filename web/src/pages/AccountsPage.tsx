@@ -105,7 +105,12 @@ export default function AccountsPage() {
       type: a.type,
       icon: a.icon,
       color: a.color,
-      startingBalance: String(a.startingBalance),
+      // Liability speichert Schulden als negativen Wert (vorzeichenrichtig).
+      // Im Formular zeigen wir den Betrag positiv ("Aktuelle Schulden")
+      // damit der User intuitiv eingeben kann.
+      startingBalance: String(
+        a.type === "liability" ? -a.startingBalance : a.startingBalance
+      ),
       isActive: a.isActive,
     });
     setModalOpen(true);
@@ -118,13 +123,21 @@ export default function AccountsPage() {
     }
     setSaving(true);
     try {
+      const userInputAmount = Number.parseFloat(form.startingBalance) || 0;
+      // Liability: User gibt offene Schulden positiv ein → wir speichern
+      // negativ, damit die Saldo-Formel (start + income − expense + ...)
+      // für alle Konten gleich funktioniert.
+      const startingBalance =
+        form.type === "liability"
+          ? -Math.abs(userInputAmount)
+          : userInputAmount;
       const payload = {
         householdId: currentHousehold.id,
         name: form.name.trim(),
         type: form.type,
         icon: form.icon,
         color: form.color,
-        startingBalance: Number.parseFloat(form.startingBalance) || 0,
+        startingBalance,
         isActive: form.isActive,
       };
       if (editingId) {
@@ -159,8 +172,10 @@ export default function AccountsPage() {
   const assets = accounts.filter((a) => a.type === "asset");
   const liabilities = accounts.filter((a) => a.type === "liability");
   const totalAssets = assets.reduce((s, a) => s + a.balance, 0);
+  // Liability-Salden sind vorzeichenrichtig negativ → totalLiabilities ist
+  // typischerweise ≤ 0. Reinvermögen ist einfach die Summe aller Salden.
   const totalLiabilities = liabilities.reduce((s, a) => s + a.balance, 0);
-  const netWorth = totalAssets - totalLiabilities;
+  const netWorth = totalAssets + totalLiabilities;
 
   const renderAccountCard = (a: Account) => (
     <div
@@ -183,24 +198,26 @@ export default function AccountsPage() {
         <div className="text-gray-500 text-xs">
           {a.type === "asset" ? "Aktivkonto" : "Passivkonto / Schulden"}
           {a.startingBalance !== 0 && (
-            <> · Startsaldo {fmt(a.startingBalance)}</>
+            <>
+              {" · "}
+              {a.type === "liability" ? "Startschuld " : "Startsaldo "}
+              {fmt(
+                a.type === "liability" ? -a.startingBalance : a.startingBalance
+              )}
+            </>
           )}
         </div>
       </div>
-      {(() => {
-        // Aus User-Sicht: Schulden werden als negative Zahl angezeigt
-        // (Passivkonto +500€ Schulden → -500€). Asset-Konten wie gespeichert.
-        const displayBalance = a.type === "liability" ? -a.balance : a.balance;
-        return (
-          <div
-            className={`shrink-0 text-right font-bold text-lg ${
-              displayBalance < 0 ? "text-[var(--expense)]" : "text-green-600"
-            }`}
-          >
-            {fmt(displayBalance)}
-          </div>
-        );
-      })()}
+      {/* Saldo wird vorzeichenrichtig gespeichert: positiv = Guthaben,
+          negativ = Schulden. Anzeige einfach wie gespeichert; das Vorzeichen
+          entscheidet die Farbe. */}
+      <div
+        className={`shrink-0 text-right font-bold text-lg ${
+          a.balance < 0 ? "text-[var(--expense)]" : "text-green-600"
+        }`}
+      >
+        {fmt(a.balance)}
+      </div>
       <div className="flex shrink-0 gap-2">
         <button
           className="text-gray-400 transition-colors hover:text-[var(--primary)]"
@@ -256,10 +273,10 @@ export default function AccountsPage() {
           </div>
           <div
             className={`mt-1 font-bold text-xl ${
-              totalLiabilities > 0 ? "text-[var(--expense)]" : "text-green-600"
+              totalLiabilities < 0 ? "text-[var(--expense)]" : "text-green-600"
             }`}
           >
-            {fmt(-totalLiabilities)}
+            {fmt(totalLiabilities)}
           </div>
         </div>
         <div className="card p-4">
@@ -374,15 +391,18 @@ export default function AccountsPage() {
 
               <div>
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
-                  Startsaldo
+                  {form.type === "liability"
+                    ? "Aktuelle Schulden"
+                    : "Aktueller Saldo"}
                   <span className="ml-1 text-gray-400 text-xs">
                     {form.type === "liability"
-                      ? "(offene Schuld zu Beginn)"
+                      ? "(positiv eingeben — z.B. 500 = 500€ Schulden)"
                       : "(Stand am Tag der Anlage)"}
                   </span>
                 </label>
                 <input
                   className="input"
+                  min={form.type === "liability" ? "0" : undefined}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, startingBalance: e.target.value }))
                   }
