@@ -21,6 +21,7 @@ import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
+  accountAPI,
   categoryAPI,
   householdAPI,
   ocrAPI,
@@ -107,8 +108,11 @@ export default function TransactionsPage() {
     recurringInterval: "monthly",
     recurringEndDate: "",
     targetHouseholdId: "",
+    accountId: "",
+    transferTargetAccountId: "",
     tip: "",
   });
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [splits, setSplits] = useState<
     { categoryId: string; amount: string; description: string }[]
   >([]);
@@ -217,6 +221,10 @@ export default function TransactionsPage() {
       .getAll()
       .then(({ data }) => setAllHouseholds(data.households || []))
       .catch(() => {});
+    accountAPI
+      .getAll(currentHousehold.id)
+      .then(({ data }) => setAccounts(data.accounts || []))
+      .catch(() => {});
   }, [currentHousehold]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -267,6 +275,7 @@ export default function TransactionsPage() {
   };
 
   const resetForm = () => {
+    const activeAccounts = accounts.filter((a) => a.isActive);
     setForm({
       amount: "",
       description: "",
@@ -279,6 +288,8 @@ export default function TransactionsPage() {
       recurringInterval: "monthly",
       recurringEndDate: "",
       targetHouseholdId: "",
+      accountId: activeAccounts[0]?.id || "",
+      transferTargetAccountId: "",
       tip: "",
     });
     setSplits([]);
@@ -300,6 +311,8 @@ export default function TransactionsPage() {
       recurringInterval: t.recurringInterval || "monthly",
       recurringEndDate: t.recurringEndDate || "",
       targetHouseholdId: t.targetHouseholdId || "",
+      accountId: t.accountId || "",
+      transferTargetAccountId: t.transferTargetAccountId || "",
       tip: tipVal > 0 ? tipVal.toFixed(2) : "",
     });
     setEditingId(t.id);
@@ -333,6 +346,11 @@ export default function TransactionsPage() {
           recurringEndDate:
             form.isRecurring && form.recurringEndDate
               ? form.recurringEndDate
+              : null,
+          accountId: form.accountId || null,
+          transferTargetAccountId:
+            form.type === "transfer"
+              ? form.transferTargetAccountId || null
               : null,
         });
         toast.success("Buchung aktualisiert");
@@ -370,6 +388,12 @@ export default function TransactionsPage() {
         }
         if (form.type === "transfer" && form.targetHouseholdId) {
           fd.append("targetHouseholdId", form.targetHouseholdId);
+        }
+        if (form.accountId) {
+          fd.append("accountId", form.accountId);
+        }
+        if (form.type === "transfer" && form.transferTargetAccountId) {
+          fd.append("transferTargetAccountId", form.transferTargetAccountId);
         }
         if (splits.length > 0) {
           fd.append(
@@ -800,7 +824,7 @@ export default function TransactionsPage() {
             {form.type === "transfer" && (
               <div>
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
-                  Ziel-Haushalt
+                  Ziel-Haushalt (optional)
                 </label>
                 <select
                   className="input"
@@ -812,7 +836,7 @@ export default function TransactionsPage() {
                   }
                   value={form.targetHouseholdId}
                 >
-                  <option value="">-- Wählen --</option>
+                  <option value="">-- kein Haushalt-Transfer --</option>
                   {allHouseholds
                     .filter((h) => h.id !== currentHousehold?.id)
                     .map((h) => (
@@ -821,6 +845,63 @@ export default function TransactionsPage() {
                       </option>
                     ))}
                 </select>
+              </div>
+            )}
+
+            {/* Konto-Auswahl */}
+            {accounts.length > 0 && (
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  {form.type === "transfer" ? "Von Konto" : "Konto"}
+                </label>
+                <select
+                  className="input"
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, accountId: e.target.value }))
+                  }
+                  value={form.accountId}
+                >
+                  <option value="">-- kein Konto --</option>
+                  {accounts
+                    .filter((a) => a.isActive)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.icon} {a.name}
+                        {a.type === "liability" ? " (Schulden)" : ""}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+            {form.type === "transfer" && accounts.length > 0 && (
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  Auf Konto
+                </label>
+                <select
+                  className="input"
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      transferTargetAccountId: e.target.value,
+                    }))
+                  }
+                  value={form.transferTargetAccountId}
+                >
+                  <option value="">-- Wählen --</option>
+                  {accounts
+                    .filter((a) => a.isActive && a.id !== form.accountId)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.icon} {a.name}
+                        {a.type === "liability" ? " (Schulden)" : ""}
+                      </option>
+                    ))}
+                </select>
+                <p className="mt-1 text-gray-400 text-xs">
+                  Übertragung zwischen eigenen Konten wird in den Statistiken
+                  neutral behandelt (keine Ausgabe/Einnahme).
+                </p>
               </div>
             )}
 

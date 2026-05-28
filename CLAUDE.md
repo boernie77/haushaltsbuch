@@ -480,6 +480,36 @@ Backend-JS wird bewusst NICHT von Biome angefasst.
 Wenn lint-staged abbricht, kann Biome Backend-Dateien im Working Tree modifiziert haben.
 Vor dem nächsten Commit prüfen: `grep -r "import\.meta\." backend/` und ggf. `git checkout -- backend/`
 
+## Konten-Feature (seit 2026-05-28, v1.0.1)
+Eigene Konten pro Haushaltsbuch (Girokonto, Kreditkarte, Bargeld, Darlehen, ...). Migration 024 legt Tabelle `accounts` an + spaltet `transactions` um `accountId` + `transferTargetAccountId`. Pro Haushalt wird automatisch ein „Hauptkonto" (`type=asset`) angelegt und ALLE bestehenden Buchungen darauf zugeordnet — kein Saldo-Bruch.
+
+**Konto-Typen:**
+- `asset` (Aktivkonto: Giro, Spar, Bargeld) — positiver Saldo = Vermögen.
+- `liability` (Passivkonto: Kreditkarte, Darlehen, Dispo) — positiver Saldo = offene Schulden.
+
+**Saldo-Berechnung** (Service `routes/accounts.js#computeBalance`): live aus `startingBalance` + Summe der Buchungen. Keine redundante Speicherung. Formel ist gleich für asset/liability; der Typ steuert nur die UI-Färbung.
+
+**Buchungstypen + Konto-Zuordnung:**
+- `expense` / `income`: `accountId` = Konto, von/auf das gebucht wird. Wird in Statistiken erfasst.
+- `transfer`: `accountId` = Quellkonto, `transferTargetAccountId` = Zielkonto. **Wird in Statistiken AUTOMATISCH ignoriert**, weil alle Statistik-Endpoints explizit nach `type IN ('expense','income')` filtern. So sind Kreditkarten-Tilgungen oder Umbuchungen neutral; nur echte Ausgaben (z.B. Zinsen auf Darlehen → `type=expense`, `accountId=Darlehen`) erscheinen in den Statistiken.
+- Der bestehende `targetHouseholdId`-Mechanismus für Haushaltsbuch-zu-Haushaltsbuch-Transfers bleibt parallel erhalten.
+
+**Endpoints:**
+- `GET /api/accounts?householdId=` → `{ accounts: [{ id, name, type, icon, color, startingBalance, isActive, sortOrder, balance }, ...] }`
+- `POST /api/accounts` — Body: `{ householdId, name, type, icon, color, startingBalance, sortOrder }`
+- `PUT /api/accounts/:id` — alle Felder einzeln (Partial-Update).
+- `DELETE /api/accounts/:id` — blockt wenn noch Buchungen referenzieren ODER es das letzte Konto im Haushalt wäre.
+
+**Frontend:**
+- `web/src/pages/AccountsPage.tsx` — CRUD + Vermögensübersicht (Aktiva/Passiva/Reinvermögen).
+- Sidebar-Eintrag „Konten" mit `CreditCard`-Icon.
+- TransactionsPage: Konto-Dropdown bei expense/income, zwei Dropdowns (Quelle/Ziel) bei transfer.
+
+**Bekannte offene Punkte:**
+- Mobile-App noch nicht angepasst (Iteration 2). Mobile zeigt `accountId`-Felder noch nicht.
+- Dashboard zeigt Konto-Saldi noch nicht — wäre eine sinnvolle Karte.
+- Recurring-Buchungen (Cron): `processRecurringTransactions` in `cronService.js` übernimmt `accountId` + `transferTargetAccountId` jetzt auf die generierten Kopien. Bestehende wiederkehrende Templates haben durch Migration 024 das Hauptkonto bekommen — neue Templates erben das beim Anlegen aus dem Formular.
+
 ## Versionsnummer
 Die App-Version wird in der Sidebar des Webs (unter „Haushaltsbuch"-Logo) als `v1.0.1` angezeigt — so sieht der User auf einen Blick, welche Version live ist.
 

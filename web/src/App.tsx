@@ -2,6 +2,7 @@ import type React from "react";
 import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
+import AccountsPage from "./pages/AccountsPage";
 import AdminPage from "./pages/AdminPage";
 import BackupPage from "./pages/BackupPage";
 import BudgetPage from "./pages/BudgetPage";
@@ -71,6 +72,7 @@ export default function App() {
       >
         <Route element={<DashboardPage />} index />
         <Route element={<TransactionsPage />} path="transactions" />
+        <Route element={<AccountsPage />} path="accounts" />
         <Route element={<StatisticsPage />} path="statistics" />
         <Route element={<BudgetPage />} path="budget" />
         <Route element={<HouseholdPage />} path="household" />

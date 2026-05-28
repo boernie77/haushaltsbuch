@@ -81,6 +81,8 @@ async function processRecurringTransactions() {
             isConfirmed: true,
             isRecurring: false,
             recurringSourceId: t.id,
+            accountId: t.accountId,
+            transferTargetAccountId: t.transferTargetAccountId,
           },
           { transaction: tx }
         );

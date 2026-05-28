@@ -227,6 +227,9 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
     const recurringEndDate = firstValue(req.body.recurringEndDate);
     const isPersonal = firstValue(req.body.isPersonal);
     const targetHouseholdId = firstValue(req.body.targetHouseholdId) || null;
+    const accountId = firstValue(req.body.accountId) || null;
+    const transferTargetAccountId =
+      firstValue(req.body.transferTargetAccountId) || null;
     const splits = firstValue(req.body.splits);
     const tip = firstValue(req.body.tip);
 
@@ -308,6 +311,9 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       isPersonal: isPersonal === "true" || isPersonal === true,
       targetHouseholdId: type === "transfer" ? targetHouseholdId : null,
       tip: tip ? Number.parseFloat(tip) : 0,
+      accountId,
+      transferTargetAccountId:
+        type === "transfer" ? transferTargetAccountId : null,
     });
 
     // Splits speichern falls vorhanden
@@ -413,6 +419,8 @@ router.put("/:id", auth, async (req, res) => {
       recurringInterval,
       recurringEndDate,
       tip,
+      accountId,
+      transferTargetAccountId,
     } = req.body;
     const updates = {
       amount,
@@ -427,6 +435,15 @@ router.put("/:id", auth, async (req, res) => {
     };
     if (tip !== undefined) {
       updates.tip = Number.parseFloat(tip) || 0;
+    }
+    if (accountId !== undefined) {
+      updates.accountId = accountId || null;
+    }
+    if (transferTargetAccountId !== undefined) {
+      updates.transferTargetAccountId =
+        (type ?? transaction.type) === "transfer"
+          ? transferTargetAccountId || null
+          : null;
     }
 
     const isRecurringBool =

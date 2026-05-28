@@ -166,6 +166,14 @@ export const savingsGoalAPI = {
   delete: (id: string) => api.delete(`/savings-goals/${id}`),
 };
 
+export const accountAPI = {
+  getAll: (householdId: string) =>
+    api.get("/accounts", { params: { householdId } }),
+  create: (d: any) => api.post("/accounts", d),
+  update: (id: string, d: any) => api.put(`/accounts/${id}`, d),
+  delete: (id: string) => api.delete(`/accounts/${id}`),
+};
+
 export const reportsAPI = {
   downloadMonthly: (householdId: string, year: number, month: number) =>
     api.get("/reports/monthly", {

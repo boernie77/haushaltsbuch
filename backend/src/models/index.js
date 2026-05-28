@@ -206,6 +206,8 @@ const Transaction = sequelize.define(
     isPersonal: { type: DataTypes.BOOLEAN, defaultValue: false },
     targetHouseholdId: { type: DataTypes.UUID, allowNull: true },
     tip: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
+    accountId: { type: DataTypes.UUID, allowNull: true },
+    transferTargetAccountId: { type: DataTypes.UUID, allowNull: true },
   },
   { tableName: "transactions", timestamps: true }
 );
@@ -424,6 +426,35 @@ const SavingsGoal = sequelize.define(
   { tableName: "savings_goals", timestamps: true }
 );
 
+// ── Account ───────────────────────────────────────────────────────────────────
+// Konto innerhalb eines Haushaltsbuchs (Girokonto, Kreditkarte, Bargeld, …).
+// type: 'asset' (Vermögen, positiver Saldo gut) | 'liability' (Schulden,
+// positiver Saldo = offene Verbindlichkeit).
+const Account = sequelize.define(
+  "Account",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    name: { type: DataTypes.STRING, allowNull: false },
+    type: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: "asset",
+      validate: { isIn: [["asset", "liability"]] },
+    },
+    icon: { type: DataTypes.STRING(50), defaultValue: "💳" },
+    color: { type: DataTypes.STRING(7), defaultValue: "#3B82F6" },
+    startingBalance: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+    isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+    sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  },
+  { tableName: "accounts", timestamps: true }
+);
+
 // ── MonthlyFixedSnapshot ──────────────────────────────────────────────────────
 const MonthlyFixedSnapshot = sequelize.define(
   "MonthlyFixedSnapshot",
@@ -524,6 +555,15 @@ SavingsGoal.belongsTo(Household, { foreignKey: "householdId" });
 Household.hasMany(MonthlyFixedSnapshot, { foreignKey: "householdId" });
 MonthlyFixedSnapshot.belongsTo(Household, { foreignKey: "householdId" });
 
+Household.hasMany(Account, { foreignKey: "householdId" });
+Account.belongsTo(Household, { foreignKey: "householdId" });
+Account.hasMany(Transaction, { foreignKey: "accountId" });
+Transaction.belongsTo(Account, { foreignKey: "accountId", as: "account" });
+Transaction.belongsTo(Account, {
+  foreignKey: "transferTargetAccountId",
+  as: "transferTargetAccount",
+});
+
 Transaction.hasMany(TransactionSplit, {
   foreignKey: "transactionId",
   as: "splits",
@@ -550,4 +590,5 @@ module.exports = {
   InviteCode,
   BackupConfig,
   MonthlyFixedSnapshot,
+  Account,
 };
