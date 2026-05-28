@@ -532,6 +532,15 @@ export default function TransactionsPage() {
     .filter((r) => r.type === "income")
     .reduce((sum, r) => sum + recurringMonthly(r), 0);
 
+  // Summen der aktuell gefilterten Buchungen (Suche/Filter aktiv)
+  const searchExpenses = transactions
+    .filter((t) => t.type === "expense")
+    .reduce((sum, t) => sum + Number.parseFloat(t.amount), 0);
+  const searchIncome = transactions
+    .filter((t) => t.type === "income")
+    .reduce((sum, t) => sum + Number.parseFloat(t.amount), 0);
+  const searchActive = search.trim().length > 0;
+
   const favDocTypes =
     paperlessData?.documentTypes?.filter((x: any) => x.isFavorite) || [];
   const favCorrespondents =
@@ -1015,6 +1024,47 @@ export default function TransactionsPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Such-/Filter-Treffer-Summen */}
+      {searchActive && typeFilter !== "recurring" && !loading && (
+        <div className="card flex flex-wrap items-center gap-6 p-4 text-sm">
+          <div>
+            <span className="text-gray-500">Treffer: </span>
+            <span className="font-semibold text-gray-900 dark:text-white">
+              {transactions.length}
+            </span>
+          </div>
+          {(typeFilter === "all" || typeFilter === "expense") &&
+            searchExpenses > 0 && (
+              <div>
+                <span className="text-gray-500">Ausgaben: </span>
+                <span className="font-bold text-[var(--expense)]">
+                  -{searchExpenses.toFixed(2)} €
+                </span>
+              </div>
+            )}
+          {(typeFilter === "all" || typeFilter === "income") &&
+            searchIncome > 0 && (
+              <div>
+                <span className="text-gray-500">Einnahmen: </span>
+                <span className="font-bold text-green-600">
+                  +{searchIncome.toFixed(2)} €
+                </span>
+              </div>
+            )}
+          {typeFilter === "all" && (searchExpenses > 0 || searchIncome > 0) && (
+            <div>
+              <span className="text-gray-500">Saldo: </span>
+              <span
+                className={`font-bold ${searchIncome - searchExpenses >= 0 ? "text-green-600" : "text-[var(--expense)]"}`}
+              >
+                {searchIncome - searchExpenses >= 0 ? "+" : ""}
+                {(searchIncome - searchExpenses).toFixed(2)} €
+              </span>
+            </div>
+          )}
         </div>
       )}
 
