@@ -194,6 +194,8 @@ export const subAccountAPI = {
     categoryId: string,
     params: { householdId: string; year: number; month: number }
   ) => api.delete(`/sub-accounts/${categoryId}/settle`, { params }),
+  backfill: (categoryId: string, payload: { householdId: string }) =>
+    api.post(`/sub-accounts/${categoryId}/backfill`, payload),
 };
 
 export const reportsAPI = {

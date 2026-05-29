@@ -245,6 +245,71 @@ router.post("/:categoryId/settle", auth, async (req, res) => {
   }
 });
 
+// POST /api/sub-accounts/:categoryId/backfill
+// Body: { householdId }
+// Ordnet ALLE bestehenden Buchungen dieser Kategorie nachträglich dem Sub-
+// Konto zu: Period wird aus dem Buchungs-Datum abgeleitet
+// (getPeriodForDate(date, monthStartDay)). excludeFromStats=true wird gesetzt.
+// Bereits zugeordnete Buchungen (subAccountPeriodMonth IS NOT NULL) und
+// Settlement-Buchungen werden übersprungen.
+router.post("/:categoryId/backfill", auth, async (req, res) => {
+  try {
+    const { householdId } = req.body;
+    if (!householdId) {
+      return res.status(400).json({ error: "householdId required" });
+    }
+    if (!(await checkAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const category = await Category.findByPk(req.params.categoryId);
+    if (!category?.hasSubAccount) {
+      return res.status(400).json({ error: "Kategorie hat kein Sub-Konto" });
+    }
+
+    const { Household } = require("../models");
+    const { getPeriodForDate } = require("../utils/monthBounds");
+    const household = await Household.findByPk(householdId, {
+      attributes: ["monthStartDay"],
+    });
+    const startDay = household?.monthStartDay || 1;
+
+    const candidates = await Transaction.findAll({
+      where: {
+        householdId,
+        categoryId: category.id,
+        isSubAccountSettlement: { [Op.ne]: true },
+        subAccountPeriodMonth: null,
+      },
+      attributes: ["id", "date"],
+    });
+
+    let updated = 0;
+    const tx = await sequelize.transaction();
+    try {
+      for (const t of candidates) {
+        const period = getPeriodForDate(t.date, startDay);
+        await Transaction.update(
+          {
+            subAccountPeriodMonth: period.month,
+            subAccountPeriodYear: period.year,
+            excludeFromStats: true,
+          },
+          { where: { id: t.id }, transaction: tx }
+        );
+        updated++;
+      }
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+    res.json({ updated, total: candidates.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
 // DELETE /api/sub-accounts/:categoryId/settle?year=&month=&householdId=
 // Macht ein Schließen rückgängig (löscht Settlement + Audit-Eintrag).
 router.delete("/:categoryId/settle", auth, async (req, res) => {

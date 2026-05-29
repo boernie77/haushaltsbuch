@@ -182,6 +182,33 @@ export default function SubAccountsPage() {
     }
   };
 
+  const backfill = async (categoryId: string, categoryName: string) => {
+    if (!currentHousehold) {
+      return;
+    }
+    if (
+      !confirm(
+        `Alle bestehenden Buchungen der Kategorie „${categoryName}" rückwirkend einsortieren?\n\nDie Period wird automatisch aus dem Buchungs-Datum abgeleitet (gemäß deinem monthStartDay). Du kannst danach jede Buchung einzeln bearbeiten und die Period anpassen (besonders bei Gutschriften, die einen anderen Zeitraum betreffen).`
+      )
+    ) {
+      return;
+    }
+    setBusyKey(`backfill-${categoryId}`);
+    try {
+      const { data } = await subAccountAPI.backfill(categoryId, {
+        householdId: currentHousehold.id,
+      });
+      toast.success(
+        `${data.updated} Buchung(en) eingeordnet${data.updated === data.total ? "" : ` (von ${data.total} Kandidaten)`}`
+      );
+      load();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Fehler beim Einsortieren");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const availableCategories = allCategories.filter((c) => !c.hasSubAccount);
 
   return (
@@ -236,13 +263,30 @@ export default function SubAccountsPage() {
                 </span>
                 {sa.category.nameDE || sa.category.name}
               </h2>
-              <button
-                className="text-gray-400 text-xs hover:text-red-500"
-                onClick={() => disableSubAccount(sa.category.id)}
-                type="button"
-              >
-                Sub-Konto deaktivieren
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-[var(--primary)] text-xs hover:underline disabled:opacity-50"
+                  disabled={busyKey === `backfill-${sa.category.id}`}
+                  onClick={() =>
+                    backfill(
+                      sa.category.id,
+                      sa.category.nameDE || sa.category.name
+                    )
+                  }
+                  type="button"
+                >
+                  {busyKey === `backfill-${sa.category.id}`
+                    ? "Sortiere..."
+                    : "Bestehende einsortieren"}
+                </button>
+                <button
+                  className="text-gray-400 text-xs hover:text-red-500"
+                  onClick={() => disableSubAccount(sa.category.id)}
+                  type="button"
+                >
+                  Sub-Konto deaktivieren
+                </button>
+              </div>
             </div>
             {sa.periods.length === 0 ? (
               <div className="card p-4 text-center text-gray-400 text-sm">
