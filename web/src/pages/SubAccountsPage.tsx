@@ -1,7 +1,7 @@
-import { Check, ChevronRight, RotateCcw } from "lucide-react";
+import { Check, ChevronRight, Plus, RotateCcw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { categoryUpdateAPI, subAccountAPI } from "../services/api";
+import { categoryAPI, categoryUpdateAPI, subAccountAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 
 interface Period {
@@ -45,8 +45,12 @@ const MONTHS = [
 export default function SubAccountsPage() {
   const { currentHousehold } = useAuthStore();
   const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSelection, setPickerSelection] = useState("");
+  const [pickerSaving, setPickerSaving] = useState(false);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("de-DE", {
@@ -60,12 +64,37 @@ export default function SubAccountsPage() {
     }
     setLoading(true);
     try {
-      const { data } = await subAccountAPI.getAll(currentHousehold.id);
-      setSubAccounts(data.subAccounts || []);
+      const [{ data: sa }, { data: cat }] = await Promise.all([
+        subAccountAPI.getAll(currentHousehold.id),
+        categoryAPI.getAll(currentHousehold.id),
+      ]);
+      setSubAccounts(sa.subAccounts || []);
+      setAllCategories(cat.categories || []);
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Fehler beim Laden");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const enableSubAccount = async () => {
+    if (!(currentHousehold && pickerSelection)) {
+      return;
+    }
+    setPickerSaving(true);
+    try {
+      await categoryUpdateAPI.update(pickerSelection, {
+        hasSubAccount: true,
+        householdId: currentHousehold.id,
+      });
+      toast.success("Sub-Konto aktiviert");
+      setPickerOpen(false);
+      setPickerSelection("");
+      load();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Fehler");
+    } finally {
+      setPickerSaving(false);
     }
   };
 
@@ -153,16 +182,30 @@ export default function SubAccountsPage() {
     }
   };
 
+  const availableCategories = allCategories.filter((c) => !c.hasSubAccount);
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-bold text-2xl text-gray-900 dark:text-white">
           Sub-Konten
         </h1>
-        <p className="text-gray-500 text-sm">
-          Sammelkonten pro Kategorie (z.B. Spesen). Buchungen sind neutral in
-          Statistiken, bis du eine Period schließt.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-gray-500 text-sm">
+            Sammelkonten pro Kategorie (z.B. Spesen). Buchungen sind neutral in
+            Statistiken, bis du eine Period schließt.
+          </p>
+          <button
+            className="btn-primary flex items-center gap-2"
+            onClick={() => {
+              setPickerSelection("");
+              setPickerOpen(true);
+            }}
+            type="button"
+          >
+            <Plus size={16} /> Kategorie als Sub-Konto
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -173,8 +216,8 @@ export default function SubAccountsPage() {
         <div className="card py-12 text-center text-gray-400">
           <p>Noch keine Sub-Konten angelegt.</p>
           <p className="text-sm">
-            Beim Anlegen einer Kategorie (Buchungen → „+"-Button neben dem
-            Kategorie-Dropdown) den Schalter „Mit Sub-Konto" aktivieren.
+            Oben „Kategorie als Sub-Konto" anklicken, um eine bestehende
+            Kategorie (z.B. „Spesen") zum Sammelkonto zu machen.
           </p>
         </div>
       ) : (
@@ -284,6 +327,76 @@ export default function SubAccountsPage() {
             )}
           </section>
         ))
+      )}
+
+      {/* Picker-Modal: bestehende Kategorie zum Sub-Konto machen */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg dark:text-white">
+                Kategorie als Sub-Konto aktivieren
+              </h3>
+              <button
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setPickerOpen(false)}
+                type="button"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mb-4 text-gray-500 text-sm">
+              Nach der Aktivierung werden NEUE Buchungen in dieser Kategorie aus
+              der Statistik ausgeschlossen und einer Period zugeordnet.
+              Bestehende Buchungen bleiben unverändert (du kannst sie bei Bedarf
+              einzeln bearbeiten und die Period nachträglich setzen).
+            </p>
+            {availableCategories.length === 0 ? (
+              <p className="rounded-xl bg-gray-50 p-3 text-center text-gray-400 text-sm dark:bg-slate-700">
+                Alle Kategorien sind bereits Sub-Konten oder es existieren
+                keine.
+              </p>
+            ) : (
+              <select
+                autoFocus
+                className="input mb-4 w-full"
+                onChange={(e) => setPickerSelection(e.target.value)}
+                value={pickerSelection}
+              >
+                <option value="">-- Kategorie wählen --</option>
+                {availableCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.icon} {c.nameDE || c.name}
+                    {c.isSystem ? " (System)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                className="btn-secondary"
+                onClick={() => setPickerOpen(false)}
+                type="button"
+              >
+                Abbrechen
+              </button>
+              <button
+                className="btn-primary disabled:opacity-50"
+                disabled={pickerSaving || !pickerSelection}
+                onClick={enableSubAccount}
+                type="button"
+              >
+                {pickerSaving ? "Aktiviere..." : "Aktivieren"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
