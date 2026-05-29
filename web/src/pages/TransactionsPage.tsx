@@ -38,6 +38,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const toggleSort = (col: "date" | "amount") => {
@@ -138,6 +139,7 @@ export default function TransactionsPage() {
         month: selectedMonth,
         year: selectedYear,
         type: typeFilter === "all" ? undefined : typeFilter,
+        categoryId: categoryFilter || undefined,
         search: search || undefined,
       });
       if (requestId !== loadCountRef.current) {
@@ -155,7 +157,13 @@ export default function TransactionsPage() {
   useEffect(() => {
     setTransactions([]);
     load();
-  }, [currentHousehold, typeFilter, selectedMonth, selectedYear]);
+  }, [
+    currentHousehold,
+    typeFilter,
+    categoryFilter,
+    selectedMonth,
+    selectedYear,
+  ]);
 
   // Debounced live search — waits 350ms after typing before reloading
   useEffect(() => {
@@ -537,7 +545,8 @@ export default function TransactionsPage() {
   const searchIncome = transactions
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + Number.parseFloat(t.amount), 0);
-  const searchActive = search.trim().length > 0;
+  // Treffer-Summen-Zeile erscheint, sobald Suche oder Kategorie-Filter aktiv
+  const searchActive = search.trim().length > 0 || categoryFilter.length > 0;
 
   const favDocTypes =
     paperlessData?.documentTypes?.filter((x: any) => x.isFavorite) || [];
@@ -641,6 +650,32 @@ export default function TransactionsPage() {
             </button>
           ))}
         </div>
+        {typeFilter !== "recurring" && (
+          <div className="relative min-w-[180px]">
+            <select
+              className="input w-full pr-8"
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              value={categoryFilter}
+            >
+              <option value="">Alle Kategorien</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.icon} {c.nameDE || c.name}
+                </option>
+              ))}
+            </select>
+            {categoryFilter && (
+              <button
+                className="absolute top-1/2 right-2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setCategoryFilter("")}
+                title="Filter zurücksetzen"
+                type="button"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Add Form */}
