@@ -529,11 +529,14 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - `GET /api/sub-accounts?householdId=` → `{ subAccounts: [{ category, periods: [{ year, month, income, expense, balance, settledAt? }] }] }`
 - `POST /api/sub-accounts/:categoryId/settle` (Body: `{ householdId, year, month, accountId? }`) → erzeugt Settlement + Audit-Eintrag. UNIQUE(householdId, categoryId, year, month) verhindert mehrfaches Schließen.
 - `DELETE /api/sub-accounts/:categoryId/settle?year=&month=&householdId=` → macht Schließen rückgängig.
+- `POST /api/sub-accounts/:categoryId/backfill` (Body: `{ householdId }`) → ordnet alle bestehenden Buchungen dieser Kategorie nachträglich zu (Period aus Buchungs-Datum via `getPeriodForDate(date, monthStartDay)`, excludeFromStats=true). Idempotent: bereits zugeordnete Buchungen + Settlements werden übersprungen.
 - `PUT /api/categories/:id` (Body: `{ hasSubAccount, householdId? }`) → Sub-Konto pro Kategorie an-/abschalten. Funktioniert auch für System-Kategorien.
 
 **Frontend:**
 - `web/src/pages/SubAccountsPage.tsx` → Sidebar-Eintrag „Sub-Konten" (Briefcase-Icon).
-- TransactionsPage: Period-Picker erscheint im Buchungs-Formular nur wenn die ausgewählte Kategorie `hasSubAccount=true`. Default = `selectedMonth/Year` aus dem PeriodStore (folgt `monthStartDay`).
+  - Header-Button „Kategorie als Sub-Konto" öffnet Picker-Modal mit Dropdown aller (noch nicht aktivierten) Kategorien — eigene + System.
+  - Pro Sub-Konto-Section: Link „Bestehende einsortieren" triggert Backfill-Endpoint, „Sub-Konto deaktivieren" macht hasSubAccount=false.
+- TransactionsPage: Period-Picker erscheint im Buchungs-Formular nur wenn die ausgewählte Kategorie `hasSubAccount=true`. Default = `selectedMonth/Year` aus dem PeriodStore (folgt `monthStartDay`). Layout: `grid grid-cols-2 gap-3` mit `w-full` auf Monat-Dropdown + Jahr-Input.
 - Kategorie-Anlegen-Modal: Checkbox „Mit Sub-Konto".
 
 **Pitfalls:**
@@ -542,9 +545,9 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (unter „Haushaltsbuch"-Logo) als `v1.0.1` angezeigt — so sieht der User auf einen Blick, welche Version live ist.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.8** (Stand 2026-05-29).
 
-**Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. Bei jedem Release MANUELL hochzählen (semver: MAJOR.MINOR.PATCH).
+**Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
 **Synchron halten:** Beim Bump immer alle 5 Stellen anpassen, sonst zeigt UI/Stores eine andere Version als das Bundle:
 - `web/src/version.ts`
@@ -576,6 +579,21 @@ Mobile-App zeigt die Version aktuell noch nicht in der UI (kann später via `Con
 - **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
 - **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
+
+## Session-Notizen 2026-05-29
+- **v1.0.2:** Period bleibt session-übergreifend bei Seitenwechsel erhalten — neuer `web/src/store/periodStore.ts` (Memory, nicht localStorage) + `web/src/hooks/usePeriod.ts` kapselt `selectedMonth/Year` + `prev/next/reset/Label`. DashboardPage, TransactionsPage, StatisticsPage, BudgetPage nutzen den Hook; 4-fache Period-Duplizierung im Web ist damit weg (Mobile hat noch 4 eigene Stellen). Letztes Haushaltsbuch wird im `localStorage` unter `last_household_id` gemerkt — `authStore.setCurrentHousehold` schreibt es, `loadStoredAuth`/`login`/`register` lesen es als initialen Wert.
+- **v1.0.3:** Klick auf Stift-Icon in der Buchungsliste scrollt automatisch zum Bearbeitungs-Formular oben (formRef + `scrollIntoView({behavior: 'smooth', block: 'start'})` — `window.scrollTo` wirkt NICHT, weil `<main>` der echte Scroll-Container ist).
+- **v1.0.4:** Kategorie-Filter in der Buchungsliste — Dropdown neben den Type-Filtern + X-Button zum Zurücksetzen. Backend akzeptierte `categoryId` schon, nur Frontend fehlte. Treffer-Summen-Zeile erscheint jetzt auch bei aktivem Kategorie-Filter (vorher nur bei Suchwort).
+- **v1.0.5:** **Sub-Konten-Feature** (großer Brocken, siehe Section oben). Migration 026 + neue Route `/api/sub-accounts` + neue Seite `SubAccountsPage` mit Briefcase-Icon. Alle Statistik-Endpoints filtern jetzt zusätzlich `excludeFromStats: { Op.ne: true }`; `accounts.computeBalance` filtert `affectsAccountBalance: { Op.ne: false }` für virtuelle Settlement-Buchungen.
+- **v1.0.6:** Bestehende Kategorie als Sub-Konto aktivieren — Picker-Modal auf SubAccountsPage mit Dropdown aller noch nicht aktivierten Kategorien. Nutzt vorhandenen PUT-Endpoint `/api/categories/:id`.
+- **v1.0.7:** Bulk-Backfill — neuer Endpoint `POST /api/sub-accounts/:categoryId/backfill` ordnet alle bestehenden Buchungen einer Sub-Konto-Kategorie nachträglich der Period zu (Period aus Buchungs-Datum via `getPeriodForDate(date, monthStartDay)`). Idempotent — bereits zugeordnete Buchungen + Settlements werden übersprungen. UI: Link „Bestehende einsortieren" pro Sub-Konto-Section.
+- **v1.0.8:** Sub-Konto Period-Picker Layout-Fix — `grid grid-cols-2 gap-3` mit `w-full` auf Monat-Dropdown + Jahr-Input statt vorher `flex-1`+`w-24`. Vorher kollabierte das Monatsfeld in der breiten `md:col-span-2`-Spalte.
+- **Versionsregel:** User möchte bei JEDER Änderung Patch-Stelle +1. Siehe Memory `feedback_version_bump.md`.
+- **Toaster-Position:** Von `top-right` auf `bottom-right` umgestellt (kollidierte mit „Neue Buchung"-Button oben rechts).
+- **AccountsPage Vorzeichen-Konvention:** Saldi werden vorzeichenrichtig gespeichert (Schulden = negativ). Migration 025 normalisiert bestehende positive Liability-Salden. Display ist eine einzige Regel: `balance < 0` = rot, `≥ 0` = grün. Im Anlegen-Modal fragt das Liability-Konto nach „Aktuelle Schulden" (positiv) und speichert intern als negativ.
+- **Statistik-Endpoints folgen jetzt alle dem `monthStartDay`-Period-Schema** (`/yearly`, `/wealth`, `/trends`, `/fixed-balance`) — vorher waren `/yearly` und `/wealth` bewusst Kalender-basiert via `EXTRACT(MONTH FROM date)`. JS-seitige Aggregation via `getPeriodForDate()`.
+- **Fester Saldo-Feature:** Migration 023 (`monthly_fixed_snapshots`), `fixedBalanceService.js`, Cron 1. jeden Monats 02:00 friert Vormonats-Period ein, neuer Tab „Fester Saldo" in StatisticsPage.
+- **Konten-Feature (v1.0.1):** Migration 024 + AccountsPage + Konto-Auswahl im Buchungs-Formular. Transfer zwischen eigenen Konten ist neutral in Statistiken.
 
 ## Session-Notizen 2026-05-28
 - Feature: Spaltenkopf Datum/Betrag in TransactionsPage klickbar zum Sortieren (lokal, kein Reload). Default bleibt Datum absteigend
