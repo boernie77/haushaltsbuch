@@ -876,9 +876,9 @@ export default function TransactionsPage() {
                     Zuordnungs-Zeitraum (Sub-Konto „
                     {selectedCat.nameDE || selectedCat.name}")
                   </label>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     <select
-                      className="input flex-1"
+                      className="input w-full"
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
@@ -897,7 +897,7 @@ export default function TransactionsPage() {
                       ))}
                     </select>
                     <input
-                      className="input w-24"
+                      className="input w-full"
                       onChange={(e) =>
                         setForm((f) => ({
                           ...f,
