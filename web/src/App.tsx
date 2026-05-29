@@ -17,6 +17,7 @@ import PaperlessPage from "./pages/PaperlessPage";
 import RegisterPage from "./pages/RegisterPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import StatisticsPage from "./pages/StatisticsPage";
+import SubAccountsPage from "./pages/SubAccountsPage";
 import TransactionsPage from "./pages/TransactionsPage";
 import { useAuthStore } from "./store/authStore";
 
@@ -73,6 +74,7 @@ export default function App() {
         <Route element={<DashboardPage />} index />
         <Route element={<TransactionsPage />} path="transactions" />
         <Route element={<AccountsPage />} path="accounts" />
+        <Route element={<SubAccountsPage />} path="sub-accounts" />
         <Route element={<StatisticsPage />} path="statistics" />
         <Route element={<BudgetPage />} path="budget" />
         <Route element={<HouseholdPage />} path="household" />

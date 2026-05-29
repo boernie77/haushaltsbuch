@@ -104,7 +104,10 @@ router.get("/monthly", auth, async (req, res) => {
     });
     const { start, end } = getMonthBounds(y, m, household?.monthStartDay || 1);
 
-    const notRecurring = { isRecurring: { [Op.ne]: true } };
+    const notRecurring = {
+      isRecurring: { [Op.ne]: true },
+      excludeFromStats: { [Op.ne]: true },
+    };
     const [expenses, income, byCategory] = await Promise.all([
       Transaction.sum("amount", {
         where: {
@@ -212,6 +215,7 @@ router.get("/yearly", auth, async (req, res) => {
       where: {
         householdId,
         isRecurring: { [Op.ne]: true },
+        excludeFromStats: { [Op.ne]: true },
         type: { [Op.in]: ["expense", "income"] },
         date: { [Op.between]: [janBounds.start, decBounds.end] },
       },
@@ -311,7 +315,10 @@ router.get("/overview", auth, async (req, res) => {
     const thisMonthRange = { [Op.between]: [curStart, curEnd] };
     const lastMonthRange = { [Op.between]: [prevStart, prevEnd] };
 
-    const nr = { isRecurring: { [Op.ne]: true } };
+    const nr = {
+      isRecurring: { [Op.ne]: true },
+      excludeFromStats: { [Op.ne]: true },
+    };
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const [
@@ -478,6 +485,7 @@ router.get("/trends", auth, async (req, res) => {
           householdId,
           type: "expense",
           isRecurring: { [Op.ne]: true },
+          excludeFromStats: { [Op.ne]: true },
           date: { [Op.gte]: since },
         },
         include: [
@@ -492,6 +500,7 @@ router.get("/trends", auth, async (req, res) => {
             householdId,
             type: "expense",
             isRecurring: { [Op.ne]: true },
+            excludeFromStats: { [Op.ne]: true },
             date: { [Op.gte]: since },
           },
         }),
@@ -500,6 +509,7 @@ router.get("/trends", auth, async (req, res) => {
             householdId,
             type: "income",
             isRecurring: { [Op.ne]: true },
+            excludeFromStats: { [Op.ne]: true },
             date: { [Op.gte]: since },
           },
         }),
@@ -562,6 +572,7 @@ router.get("/wealth", auth, async (req, res) => {
         householdId,
         type: { [Op.in]: ["expense", "income"] },
         isRecurring: { [Op.ne]: true },
+        excludeFromStats: { [Op.ne]: true },
       },
       raw: true,
     });
@@ -629,6 +640,7 @@ router.get("/by-person", auth, async (req, res) => {
         type: "expense",
         isPersonal: false,
         isRecurring: { [Op.ne]: true },
+        excludeFromStats: { [Op.ne]: true },
         date: { [Op.between]: [start, end] },
       },
       include: [{ model: User, attributes: ["id", "name", "avatar"] }],

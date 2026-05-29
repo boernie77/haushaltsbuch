@@ -150,6 +150,12 @@ const Category = sequelize.define(
       comment: "null = global system category",
     },
     sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+    hasSubAccount: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment:
+        "Sammelkonto-Logik: Buchungen excludeFromStats, Settlement-Buchung",
+    },
   },
   { tableName: "categories", timestamps: true }
 );
@@ -208,6 +214,13 @@ const Transaction = sequelize.define(
     tip: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
     accountId: { type: DataTypes.UUID, allowNull: true },
     transferTargetAccountId: { type: DataTypes.UUID, allowNull: true },
+    // Sub-Account-Felder (z.B. Spesen). subAccountPeriodMonth/Year ordnet
+    // die Buchung einem Sammel-Zeitraum zu (kann ≠ Buchungs-Datum sein).
+    subAccountPeriodMonth: { type: DataTypes.INTEGER, allowNull: true },
+    subAccountPeriodYear: { type: DataTypes.INTEGER, allowNull: true },
+    excludeFromStats: { type: DataTypes.BOOLEAN, defaultValue: false },
+    isSubAccountSettlement: { type: DataTypes.BOOLEAN, defaultValue: false },
+    affectsAccountBalance: { type: DataTypes.BOOLEAN, defaultValue: true },
   },
   { tableName: "transactions", timestamps: true }
 );
@@ -552,6 +565,36 @@ InviteCode.belongsTo(User, { foreignKey: "usedById", as: "usedBy" });
 Household.hasMany(SavingsGoal, { foreignKey: "householdId" });
 SavingsGoal.belongsTo(Household, { foreignKey: "householdId" });
 
+// ── SubAccountSettlement ──────────────────────────────────────────────────────
+// Audit-Trail: welche Sub-Account-Period geschlossen wurde, mit Verweis auf
+// die erzeugte Settlement-Buchung. UNIQUE(householdId, categoryId, year, month)
+// verhindert mehrfaches Schließen derselben Period.
+const SubAccountSettlement = sequelize.define(
+  "SubAccountSettlement",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    categoryId: { type: DataTypes.UUID, allowNull: false },
+    year: { type: DataTypes.INTEGER, allowNull: false },
+    month: { type: DataTypes.INTEGER, allowNull: false },
+    settlementTransactionId: { type: DataTypes.UUID, allowNull: true },
+    balance: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+    settledByUserId: { type: DataTypes.UUID, allowNull: true },
+    settledAt: { type: DataTypes.DATE, allowNull: false },
+  },
+  {
+    tableName: "sub_account_settlements",
+    timestamps: true,
+    indexes: [
+      { unique: true, fields: ["householdId", "categoryId", "year", "month"] },
+    ],
+  }
+);
+
 Household.hasMany(MonthlyFixedSnapshot, { foreignKey: "householdId" });
 MonthlyFixedSnapshot.belongsTo(Household, { foreignKey: "householdId" });
 
@@ -591,4 +634,5 @@ module.exports = {
   BackupConfig,
   MonthlyFixedSnapshot,
   Account,
+  SubAccountSettlement,
 };

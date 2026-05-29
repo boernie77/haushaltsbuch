@@ -18,7 +18,12 @@ async function checkAccess(userId, householdId) {
 // Bei Liability-Konten dreht sich die Bedeutung: positiver Saldo = Schulden.
 // Die Rechnung ist aber identisch — der Typ ist nur fürs Vorzeichen-Display.
 async function computeBalance(account) {
-  const where = { householdId: account.householdId };
+  // affectsAccountBalance=false → virtuelle Settlement-Buchungen, die nur
+  // in Statistiken auftauchen, aber den Konto-Saldo nicht bewegen.
+  const where = {
+    householdId: account.householdId,
+    affectsAccountBalance: { [Op.ne]: false },
+  };
   const [income, expense, transferIn, transferOut] = await Promise.all([
     Transaction.sum("amount", {
       where: { ...where, type: "income", accountId: account.id },

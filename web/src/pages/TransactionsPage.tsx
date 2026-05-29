@@ -78,6 +78,8 @@ export default function TransactionsPage() {
     targetHouseholdId: "",
     accountId: "",
     transferTargetAccountId: "",
+    subAccountPeriodMonth: 0,
+    subAccountPeriodYear: 0,
     tip: "",
   });
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -120,6 +122,7 @@ export default function TransactionsPage() {
     name: "",
     icon: "📦",
     color: "#6B7280",
+    hasSubAccount: false,
   });
   const [categorySaving, setCategorySaving] = useState(false);
 
@@ -265,6 +268,8 @@ export default function TransactionsPage() {
       targetHouseholdId: "",
       accountId: activeAccounts[0]?.id || "",
       transferTargetAccountId: "",
+      subAccountPeriodMonth: selectedMonth,
+      subAccountPeriodYear: selectedYear,
       tip: "",
     });
     setSplits([]);
@@ -288,6 +293,8 @@ export default function TransactionsPage() {
       targetHouseholdId: t.targetHouseholdId || "",
       accountId: t.accountId || "",
       transferTargetAccountId: t.transferTargetAccountId || "",
+      subAccountPeriodMonth: t.subAccountPeriodMonth || selectedMonth,
+      subAccountPeriodYear: t.subAccountPeriodYear || selectedYear,
       tip: tipVal > 0 ? tipVal.toFixed(2) : "",
     });
     setEditingId(t.id);
@@ -334,6 +341,8 @@ export default function TransactionsPage() {
             form.type === "transfer"
               ? form.transferTargetAccountId || null
               : null,
+          subAccountPeriodMonth: form.subAccountPeriodMonth || null,
+          subAccountPeriodYear: form.subAccountPeriodYear || null,
         });
         toast.success("Buchung aktualisiert");
       } else {
@@ -376,6 +385,13 @@ export default function TransactionsPage() {
         }
         if (form.type === "transfer" && form.transferTargetAccountId) {
           fd.append("transferTargetAccountId", form.transferTargetAccountId);
+        }
+        if (form.subAccountPeriodMonth && form.subAccountPeriodYear) {
+          fd.append(
+            "subAccountPeriodMonth",
+            String(form.subAccountPeriodMonth)
+          );
+          fd.append("subAccountPeriodYear", String(form.subAccountPeriodYear));
         }
         if (splits.length > 0) {
           fd.append(
@@ -469,6 +485,7 @@ export default function TransactionsPage() {
         icon: categoryForm.icon,
         color: categoryForm.color,
         householdId: currentHousehold.id,
+        hasSubAccount: categoryForm.hasSubAccount,
       });
       toast.success("Kategorie angelegt");
       const refreshed = await categoryAPI.getAll(currentHousehold.id);
@@ -816,6 +833,7 @@ export default function TransactionsPage() {
                         name: "",
                         icon: "📦",
                         color: "#6B7280",
+                        hasSubAccount: false,
                       });
                       setShowCategoryModal(true);
                     }}
@@ -827,6 +845,79 @@ export default function TransactionsPage() {
                 </div>
               </div>
             )}
+
+            {/* Sub-Account Period-Picker (nur sichtbar bei Kategorie mit
+                hasSubAccount, z.B. Spesen). Default = aktuelle Period des
+                Haushaltsbuchs; User kann manuell auf Vor-/Folge-Period. */}
+            {(() => {
+              const selectedCat = categories.find(
+                (c) => c.id === form.categoryId
+              );
+              if (!selectedCat?.hasSubAccount) {
+                return null;
+              }
+              const months = [
+                "Januar",
+                "Februar",
+                "März",
+                "April",
+                "Mai",
+                "Juni",
+                "Juli",
+                "August",
+                "September",
+                "Oktober",
+                "November",
+                "Dezember",
+              ];
+              return (
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Zuordnungs-Zeitraum (Sub-Konto „
+                    {selectedCat.nameDE || selectedCat.name}")
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      className="input flex-1"
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          subAccountPeriodMonth: Number.parseInt(
+                            e.target.value,
+                            10
+                          ),
+                        }))
+                      }
+                      value={form.subAccountPeriodMonth || selectedMonth}
+                    >
+                      {months.map((m, i) => (
+                        <option key={m} value={i + 1}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input w-24"
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          subAccountPeriodYear: Number.parseInt(
+                            e.target.value,
+                            10
+                          ),
+                        }))
+                      }
+                      type="number"
+                      value={form.subAccountPeriodYear || selectedYear}
+                    />
+                  </div>
+                  <p className="mt-1 text-gray-400 text-xs">
+                    Buchung erscheint NICHT in der Statistik bis die Period
+                    geschlossen wird. Saldo dann gesammelt unter „Sub-Konten".
+                  </p>
+                </div>
+              );
+            })()}
             {form.type === "transfer" && (
               <div>
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
@@ -1887,6 +1978,30 @@ export default function TransactionsPage() {
                   {categoryForm.name || "Vorschau"}
                 </span>
               </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-gray-200 p-3 dark:border-slate-600">
+                <input
+                  checked={categoryForm.hasSubAccount}
+                  className="mt-1"
+                  onChange={(e) =>
+                    setCategoryForm((f) => ({
+                      ...f,
+                      hasSubAccount: e.target.checked,
+                    }))
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <span className="block font-medium text-gray-700 text-sm dark:text-gray-300">
+                    Mit Sub-Konto (z.B. Spesen)
+                  </span>
+                  <span className="block text-gray-500 text-xs">
+                    Buchungen in dieser Kategorie sind in Statistiken neutral.
+                    Saldos pro Periode werden manuell unter „Sub-Konten"
+                    geschlossen — erst dann erscheinen sie in der Statistik.
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

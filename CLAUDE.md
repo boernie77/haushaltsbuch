@@ -510,6 +510,37 @@ Eigene Konten pro Haushaltsbuch (Girokonto, Kreditkarte, Bargeld, Darlehen, ...)
 - Dashboard zeigt Konto-Saldi noch nicht — wäre eine sinnvolle Karte.
 - Recurring-Buchungen (Cron): `processRecurringTransactions` in `cronService.js` übernimmt `accountId` + `transferTargetAccountId` jetzt auf die generierten Kopien. Bestehende wiederkehrende Templates haben durch Migration 024 das Hauptkonto bekommen — neue Templates erben das beim Anlegen aus dem Formular.
 
+## Sub-Konten-Feature (seit 2026-05-29, v1.0.5)
+Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSubAccount` an + erweitert `transactions` um `subAccountPeriodMonth/Year`, `excludeFromStats`, `isSubAccountSettlement`, `affectsAccountBalance`. Neue Tabelle `sub_account_settlements` als Audit-Trail.
+
+**Konzept:**
+- Eine Kategorie mit `hasSubAccount=true` ist ein Sammelbecken.
+- Buchungen in dieser Kategorie haben `excludeFromStats=true` → tauchen NICHT in Monats-/Jahres-/Trends-Statistiken auf.
+- Jede Buchung wird einer Period zugeordnet (`subAccountPeriodMonth/Year`, Default = aktuelle Period gemäß `monthStartDay`).
+- Auf `/sub-accounts` sieht der User Salden pro Period.
+- Klick auf „Schließen" erzeugt eine **Settlement-Buchung** mit `isSubAccountSettlement=true`, `excludeFromStats=false`, `affectsAccountBalance=false` (virtuell — kein Konto-Saldo bewegt). Diese Buchung erscheint dann in der Statistik als income (Saldo > 0) oder expense (Saldo < 0).
+- Settlement kann rückgängig gemacht werden (DELETE-Endpoint).
+
+**Statistik-Filter:** Alle Statistik-Endpoints filtern `excludeFromStats: { [Op.ne]: true }` zusätzlich zum `isRecurring`-Filter. Pattern in `routes/statistics.js` für neue Endpoints beibehalten.
+
+**Konto-Saldo:** `routes/accounts.js#computeBalance` filtert `affectsAccountBalance: { [Op.ne]: false }` — virtuelle Settlements bewegen keinen Konto-Saldo, weil Cash-Flow schon über die Einzelbuchungen lief.
+
+**Endpoints:**
+- `GET /api/sub-accounts?householdId=` → `{ subAccounts: [{ category, periods: [{ year, month, income, expense, balance, settledAt? }] }] }`
+- `POST /api/sub-accounts/:categoryId/settle` (Body: `{ householdId, year, month, accountId? }`) → erzeugt Settlement + Audit-Eintrag. UNIQUE(householdId, categoryId, year, month) verhindert mehrfaches Schließen.
+- `DELETE /api/sub-accounts/:categoryId/settle?year=&month=&householdId=` → macht Schließen rückgängig.
+- `PUT /api/categories/:id` (Body: `{ hasSubAccount, householdId? }`) → Sub-Konto pro Kategorie an-/abschalten. Funktioniert auch für System-Kategorien.
+
+**Frontend:**
+- `web/src/pages/SubAccountsPage.tsx` → Sidebar-Eintrag „Sub-Konten" (Briefcase-Icon).
+- TransactionsPage: Period-Picker erscheint im Buchungs-Formular nur wenn die ausgewählte Kategorie `hasSubAccount=true`. Default = `selectedMonth/Year` aus dem PeriodStore (folgt `monthStartDay`).
+- Kategorie-Anlegen-Modal: Checkbox „Mit Sub-Konto".
+
+**Pitfalls:**
+- Beim PUT/Edit einer Buchung: Wenn die Kategorie GEWECHSELT wird, werden `excludeFromStats` + Period-Felder neu gesetzt (entweder true + Period übernehmen, oder zurück auf normal). Siehe transactions.js PUT-Endpoint.
+- Settlement-Buchung hat `type=income` oder `expense` je nach Vorzeichen — wird mit Math.abs(balance) gespeichert, das Vorzeichen kommt aus `type`.
+- Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
+
 ## Versionsnummer
 Die App-Version wird in der Sidebar des Webs (unter „Haushaltsbuch"-Logo) als `v1.0.1` angezeigt — so sieht der User auf einen Blick, welche Version live ist.
 

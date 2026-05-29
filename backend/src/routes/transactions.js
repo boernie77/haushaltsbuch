@@ -230,6 +230,8 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
     const accountId = firstValue(req.body.accountId) || null;
     const transferTargetAccountId =
       firstValue(req.body.transferTargetAccountId) || null;
+    const subAccountPeriodMonth = firstValue(req.body.subAccountPeriodMonth);
+    const subAccountPeriodYear = firstValue(req.body.subAccountPeriodYear);
     const splits = firstValue(req.body.splits);
     const tip = firstValue(req.body.tip);
 
@@ -289,6 +291,42 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
         })()
       : [];
 
+    // Sub-Account-Logik: Wenn die Kategorie hasSubAccount=true hat, wird die
+    // Buchung in der Statistik standardmäßig ausgeschlossen und einer Period
+    // zugeordnet (Default = aktuelle Period gemäß monthStartDay des Haushalts).
+    let resolvedSubAccountMonth = null;
+    let resolvedSubAccountYear = null;
+    let resolvedExcludeFromStats = false;
+    if (categoryId) {
+      const { Category, Household } = require("../models");
+      const cat = await Category.findByPk(categoryId);
+      if (cat?.hasSubAccount) {
+        resolvedExcludeFromStats = true;
+        const explicitMonth = subAccountPeriodMonth
+          ? Number.parseInt(subAccountPeriodMonth, 10)
+          : null;
+        const explicitYear = subAccountPeriodYear
+          ? Number.parseInt(subAccountPeriodYear, 10)
+          : null;
+        if (explicitMonth && explicitYear) {
+          resolvedSubAccountMonth = explicitMonth;
+          resolvedSubAccountYear = explicitYear;
+        } else {
+          // Default = aktuelle Period des Haushalts
+          const { getPeriodForDate } = require("../utils/monthBounds");
+          const household = await Household.findByPk(householdId, {
+            attributes: ["monthStartDay"],
+          });
+          const period = getPeriodForDate(
+            new Date(),
+            household?.monthStartDay || 1
+          );
+          resolvedSubAccountMonth = period.month;
+          resolvedSubAccountYear = period.year;
+        }
+      }
+    }
+
     const transaction = await Transaction.create({
       amount: Number.parseFloat(amount),
       description: description || null,
@@ -314,6 +352,9 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       accountId,
       transferTargetAccountId:
         type === "transfer" ? transferTargetAccountId : null,
+      subAccountPeriodMonth: resolvedSubAccountMonth,
+      subAccountPeriodYear: resolvedSubAccountYear,
+      excludeFromStats: resolvedExcludeFromStats,
     });
 
     // Splits speichern falls vorhanden
@@ -421,6 +462,8 @@ router.put("/:id", auth, async (req, res) => {
       tip,
       accountId,
       transferTargetAccountId,
+      subAccountPeriodMonth,
+      subAccountPeriodYear,
     } = req.body;
     const updates = {
       amount,
@@ -444,6 +487,54 @@ router.put("/:id", auth, async (req, res) => {
         (type ?? transaction.type) === "transfer"
           ? transferTargetAccountId || null
           : null;
+    }
+
+    // Sub-Account-Felder beim Edit pflegen: Wenn die Kategorie hasSubAccount
+    // hat → Period übernehmen + excludeFromStats = true. Wenn die Kategorie
+    // GEWECHSELT wird auf eine ohne hasSubAccount → Felder zurücksetzen.
+    const effectiveCategoryId = categoryId ?? transaction.categoryId;
+    if (effectiveCategoryId) {
+      const { Category, Household } = require("../models");
+      const cat = await Category.findByPk(effectiveCategoryId);
+      if (cat?.hasSubAccount) {
+        updates.excludeFromStats = true;
+        const explicitMonth = subAccountPeriodMonth
+          ? Number.parseInt(subAccountPeriodMonth, 10)
+          : null;
+        const explicitYear = subAccountPeriodYear
+          ? Number.parseInt(subAccountPeriodYear, 10)
+          : null;
+        if (explicitMonth && explicitYear) {
+          updates.subAccountPeriodMonth = explicitMonth;
+          updates.subAccountPeriodYear = explicitYear;
+        } else if (
+          !(
+            transaction.subAccountPeriodMonth &&
+            transaction.subAccountPeriodYear
+          )
+        ) {
+          // Bisher keine Period gesetzt (frische Sub-Account-Zuordnung) →
+          // aktuelle Period als Default
+          const { getPeriodForDate } = require("../utils/monthBounds");
+          const household = await Household.findByPk(transaction.householdId, {
+            attributes: ["monthStartDay"],
+          });
+          const period = getPeriodForDate(
+            new Date(),
+            household?.monthStartDay || 1
+          );
+          updates.subAccountPeriodMonth = period.month;
+          updates.subAccountPeriodYear = period.year;
+        }
+      } else if (
+        !transaction.isSubAccountSettlement &&
+        transaction.excludeFromStats
+      ) {
+        // Kategorie war Sub-Account, jetzt nicht mehr → zurück in Statistik
+        updates.excludeFromStats = false;
+        updates.subAccountPeriodMonth = null;
+        updates.subAccountPeriodYear = null;
+      }
     }
 
     const isRecurringBool =

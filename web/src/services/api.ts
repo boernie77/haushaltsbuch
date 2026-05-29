@@ -174,6 +174,28 @@ export const accountAPI = {
   delete: (id: string) => api.delete(`/accounts/${id}`),
 };
 
+export const categoryUpdateAPI = {
+  update: (id: string, d: any) => api.put(`/categories/${id}`, d),
+};
+
+export const subAccountAPI = {
+  getAll: (householdId: string) =>
+    api.get("/sub-accounts", { params: { householdId } }),
+  settle: (
+    categoryId: string,
+    payload: {
+      householdId: string;
+      year: number;
+      month: number;
+      accountId?: string;
+    }
+  ) => api.post(`/sub-accounts/${categoryId}/settle`, payload),
+  unsettle: (
+    categoryId: string,
+    params: { householdId: string; year: number; month: number }
+  ) => api.delete(`/sub-accounts/${categoryId}/settle`, { params }),
+};
+
 export const reportsAPI = {
   downloadMonthly: (householdId: string, year: number, month: number) =>
     api.get("/reports/monthly", {
