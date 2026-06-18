@@ -298,5 +298,5 @@ In den Einstellungen kannst du das Erscheinungsbild wählen, u. a. ein helles
 
 ---
 
-*Stand: v1.0.9 (Juni 2026). Die App wird laufend weiterentwickelt – die Versionsnummer
+*Stand: v1.0.10 (Juni 2026). Die App wird laufend weiterentwickelt – die Versionsnummer
 siehst du unten in der Seitenleiste der Web-App.*

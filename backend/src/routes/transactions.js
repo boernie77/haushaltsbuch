@@ -99,10 +99,14 @@ router.get("/", auth, async (req, res) => {
       // amount wird als Text gecastet, damit Teiltreffer funktionieren.
       const amountSearch = search.trim().replace(",", ".");
       if (/\d/.test(amountSearch)) {
+        // Spalte qualifizieren: TransactionSplit (Include "splits") hat
+        // ebenfalls eine Spalte "amount" → unqualifiziert wäre der Verweis in
+        // SQL mehrdeutig und die ganze Suche bräche mit einem Fehler ab.
         orConds.push(
-          sequelize.where(sequelize.cast(sequelize.col("amount"), "text"), {
-            [Op.iLike]: `%${amountSearch}%`,
-          })
+          sequelize.where(
+            sequelize.cast(sequelize.col("Transaction.amount"), "text"),
+            { [Op.iLike]: `%${amountSearch}%` }
+          )
         );
       }
       where[Op.or] = orConds;

@@ -10,6 +10,7 @@ import CalendarPage from "./pages/CalendarPage";
 import DashboardPage from "./pages/DashboardPage";
 import DatenschutzPage from "./pages/DatenschutzPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import HelpPage from "./pages/HelpPage";
 import HouseholdPage from "./pages/HouseholdPage";
 import ImpressumPage from "./pages/ImpressumPage";
 import JoinPage from "./pages/JoinPage";
@@ -81,6 +82,7 @@ export default function App() {
         <Route element={<BudgetPage />} path="budget" />
         <Route element={<HouseholdPage />} path="household" />
         <Route element={<PaperlessPage />} path="paperless" />
+        <Route element={<HelpPage />} path="help" />
         <Route element={<AdminPage />} path="admin" />
         <Route element={<BackupPage />} path="backup" />
       </Route>

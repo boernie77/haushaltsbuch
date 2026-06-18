@@ -1,6 +1,7 @@
 import { clsx } from "clsx";
 import {
   BarChart2,
+  BookOpen,
   Briefcase,
   CalendarDays,
   Check,
@@ -41,6 +42,7 @@ const navItems = [
   { to: "/household", icon: Home, label: "Haushalt" },
   { to: "/backup", icon: HardDrive, label: "Datensicherung" },
   { to: "/paperless", icon: FileText, label: "Paperless" },
+  { to: "/help", icon: BookOpen, label: "Anleitung" },
 ];
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
