@@ -260,6 +260,10 @@ export default function HelpPage() {
             <strong>Vorausschau:</strong> Für zukünftige Tage werden auch
             Daueraufträge eingerechnet (gestrichelt, „Vorschau").
           </li>
+          <li>
+            <strong>Bearbeiten:</strong> Klick auf eine Buchung öffnet sie
+            direkt zum Bearbeiten in der Buchungsliste.
+          </li>
         </ul>
       </Section>
 

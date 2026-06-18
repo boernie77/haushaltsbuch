@@ -569,6 +569,8 @@ Kalenderansicht pro Haushaltsbuch — zeigt je Kalendertag (Vergangenheit + Zuku
 
 **Frontend:** `web/src/pages/CalendarPage.tsx` → Sidebar-Eintrag „Kalender" (CalendarDays-Icon, zwischen Sub-Konten und Statistiken). Monatsgitter mit Pfeil-Navigation + Heute-Button (eigener `year`/`month`-State, NICHT der periodStore — Kalender ≠ Period). Klick auf Tag → Detail-Panel rechts: Kontostände am Tagesende (je Konto + Gesamt) + Buchungsliste (projizierte gestrichelt markiert „Vorschau"). `calendarAPI.get` in `services/api.ts`.
 
+**Buchung bearbeiten aus dem Kalender (v1.0.12):** Klick auf eine Buchung im Detail-Panel → `setPeriod()` auf die Period des Buchungsdatums (gleiche Logik wie `getPeriodForDate`) + `navigate('/transactions?edit=<id>')`. TransactionsPage liest `?edit=` via `useSearchParams`, sucht die Buchung in der geladenen Period und ruft `openEdit(t)` (Effect wartet auf `loading=false`). Projizierte Dauerauftrag-Vorschauen (id `proj-…`) sind nicht direkt editierbar → Toast-Hinweis auf Tab „Wiederkehrend".
+
 ## Betrags-Suche in Buchungen (seit 2026-06-18, v1.0.9)
 Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/merchant) auch den **Betrag**. Backend (`transactions.js` GET /): `amount` wird als Text gecastet und per `iLike '%term%'` gematcht (Komma → Punkt normalisiert, nur wenn Suchterm eine Ziffer enthält) → Teiltreffer wie „12" oder „12,50" funktionieren. Placeholder: „Suchen (Text oder Betrag)...".
 

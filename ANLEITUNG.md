@@ -192,6 +192,9 @@ Zukunft**.
 - **Vorausschau:** Für zukünftige Tage werden auch deine **Daueraufträge** als Vorschau
   eingerechnet (gestrichelt markiert mit „Vorschau"). So siehst du, wie sich deine
   Kontostände voraussichtlich entwickeln.
+- **Bearbeiten:** Ein **Klick auf eine Buchung** öffnet sie direkt zum Bearbeiten in
+  der Buchungsliste (die Vorschau-Buchungen der Daueraufträge bearbeitest du im Tab
+  „Wiederkehrend").
 
 > Der Kalender arbeitet mit echten Kalendertagen – der verschiebbare Monatsanfang
 > wirkt sich hier **nicht** aus.

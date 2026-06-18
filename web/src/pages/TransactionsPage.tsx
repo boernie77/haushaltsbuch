@@ -19,6 +19,7 @@ import {
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router-dom";
 import { usePeriod } from "../hooks/usePeriod";
 import {
   accountAPI,
@@ -33,6 +34,7 @@ import { useAuthStore } from "../store/authStore";
 
 export default function TransactionsPage() {
   const { currentHousehold } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [transactions, setTransactions] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -310,6 +312,24 @@ export default function TransactionsPage() {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
+
+  // Aus dem Kalender heraus: ?edit=<id> öffnet das Bearbeiten-Formular,
+  // sobald die Buchung der aktuellen Periode geladen ist. Die Periode wird
+  // vom Kalender vor der Navigation passend gesetzt.
+  const editParam = searchParams.get("edit");
+  useEffect(() => {
+    if (!editParam || loading) {
+      return;
+    }
+    const t = transactions.find((x) => x.id === editParam);
+    if (t) {
+      openEdit(t);
+    } else {
+      toast.error("Buchung nicht gefunden");
+    }
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, loading, transactions]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

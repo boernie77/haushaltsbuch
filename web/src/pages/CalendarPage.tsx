@@ -6,8 +6,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import { calendarAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import { usePeriodStore } from "../store/periodStore";
 
 interface CalAccount {
   color: string;
@@ -70,6 +72,8 @@ const MONTHS = [
 
 export default function CalendarPage() {
   const { currentHousehold } = useAuthStore();
+  const navigate = useNavigate();
+  const { setPeriod } = usePeriodStore();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1); // 1-12
@@ -195,6 +199,32 @@ export default function CalendarPage() {
       return "text-[var(--expense)]";
     }
     return "text-gray-500";
+  };
+
+  // Klick auf eine Buchung → zur Buchungsliste mit geöffnetem Bearbeiten-
+  // Formular. Periode wird passend zum Buchungsdatum gesetzt (gleiche Logik
+  // wie getPeriodForDate im Backend), damit die Buchung dort geladen ist.
+  const editTransaction = (t: CalTransaction) => {
+    if (t.projected) {
+      toast(
+        "Vorschau eines Dauerauftrags – bearbeitbar unter „Buchungen“ → Tab „Wiederkehrend“."
+      );
+      return;
+    }
+    const startDay = currentHousehold?.monthStartDay || 1;
+    const [y, m, d] = t.date.split("-").map(Number);
+    let periodMonth = m;
+    let periodYear = y;
+    if (startDay > 1 && d >= startDay) {
+      if (periodMonth === 12) {
+        periodMonth = 1;
+        periodYear += 1;
+      } else {
+        periodMonth += 1;
+      }
+    }
+    setPeriod(periodMonth, periodYear);
+    navigate(`/transactions?edit=${t.id}`);
   };
 
   return (
@@ -403,13 +433,20 @@ export default function CalendarPage() {
                   ) : (
                     <div className="space-y-2">
                       {selectedDay.transactions.map((t) => (
-                        <div
-                          className={`flex items-center gap-2 rounded-lg border p-2 ${
+                        <button
+                          className={`flex w-full items-center gap-2 rounded-lg border p-2 text-left transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 ${
                             t.projected
                               ? "border-[var(--primary)] border-dashed bg-[var(--primary)]/5"
                               : "border-gray-100 dark:border-slate-700"
                           }`}
                           key={t.id}
+                          onClick={() => editTransaction(t)}
+                          title={
+                            t.projected
+                              ? "Vorschau eines Dauerauftrags"
+                              : "Buchung bearbeiten"
+                          }
+                          type="button"
                         >
                           <span
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm"
@@ -455,7 +492,7 @@ export default function CalendarPage() {
                           >
                             {txAmountLabel(t)}
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
