@@ -462,6 +462,9 @@ const Account = sequelize.define(
     icon: { type: DataTypes.STRING(50), defaultValue: "💳" },
     color: { type: DataTypes.STRING(7), defaultValue: "#3B82F6" },
     startingBalance: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 },
+    // Datum, auf das sich startingBalance bezieht (Stand am ...). NULL = alle
+    // Buchungen zählen (wie vor dem Kalender-Feature).
+    startingBalanceDate: { type: DataTypes.DATEONLY, allowNull: true },
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
     sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   },

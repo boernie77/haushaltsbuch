@@ -24,6 +24,11 @@ async function computeBalance(account) {
     householdId: account.householdId,
     affectsAccountBalance: { [Op.ne]: false },
   };
+  // startingBalanceDate gesetzt → Buchungen davor sind bereits im
+  // Anfangsbestand enthalten und werden nicht doppelt gezählt.
+  if (account.startingBalanceDate) {
+    where.date = { [Op.gte]: account.startingBalanceDate };
+  }
   const [income, expense, transferIn, transferOut] = await Promise.all([
     Transaction.sum("amount", {
       where: { ...where, type: "income", accountId: account.id },
@@ -77,6 +82,7 @@ router.get("/", auth, async (req, res) => {
         icon: a.icon,
         color: a.color,
         startingBalance: Number(a.startingBalance),
+        startingBalanceDate: a.startingBalanceDate,
         isActive: a.isActive,
         sortOrder: a.sortOrder,
         balance: await computeBalance(a),
@@ -92,8 +98,16 @@ router.get("/", auth, async (req, res) => {
 // POST /api/accounts
 router.post("/", auth, async (req, res) => {
   try {
-    const { householdId, name, type, icon, color, startingBalance, sortOrder } =
-      req.body;
+    const {
+      householdId,
+      name,
+      type,
+      icon,
+      color,
+      startingBalance,
+      startingBalanceDate,
+      sortOrder,
+    } = req.body;
     if (!(householdId && name)) {
       return res.status(400).json({ error: "householdId & name required" });
     }
@@ -107,6 +121,7 @@ router.post("/", auth, async (req, res) => {
       icon: icon || "💳",
       color: color || "#3B82F6",
       startingBalance: Number.parseFloat(startingBalance) || 0,
+      startingBalanceDate: startingBalanceDate || null,
       sortOrder: Number.parseInt(sortOrder, 10) || 0,
     });
     res.json({
@@ -131,8 +146,16 @@ router.put("/:id", auth, async (req, res) => {
     if (!(await checkAccess(req.user.id, account.householdId))) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const { name, type, icon, color, startingBalance, isActive, sortOrder } =
-      req.body;
+    const {
+      name,
+      type,
+      icon,
+      color,
+      startingBalance,
+      startingBalanceDate,
+      isActive,
+      sortOrder,
+    } = req.body;
     await account.update({
       ...(name !== undefined && { name: name.trim() }),
       ...(type !== undefined && {
@@ -142,6 +165,9 @@ router.put("/:id", auth, async (req, res) => {
       ...(color !== undefined && { color }),
       ...(startingBalance !== undefined && {
         startingBalance: Number.parseFloat(startingBalance) || 0,
+      }),
+      ...(startingBalanceDate !== undefined && {
+        startingBalanceDate: startingBalanceDate || null,
       }),
       ...(isActive !== undefined && { isActive: Boolean(isActive) }),
       ...(sortOrder !== undefined && {

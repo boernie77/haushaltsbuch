@@ -633,7 +633,7 @@ export default function TransactionsPage() {
           <input
             className="input w-full"
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Suchen..."
+            placeholder="Suchen (Text oder Betrag)..."
             style={{
               paddingLeft: "2.25rem",
               paddingRight: search ? "2.25rem" : undefined,

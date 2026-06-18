@@ -545,7 +545,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.8** (Stand 2026-05-29).
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.9** (Stand 2026-06-18).
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -557,6 +557,20 @@ Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch be
 - `mobile/app.json` (`expo.version` — wichtig für TestFlight/Store-Submissions)
 
 Mobile-App zeigt die Version aktuell noch nicht in der UI (kann später via `Constants.expoConfig?.version` ergänzt werden — z.B. in einem Settings-Screen).
+
+## Kalender-Feature (seit 2026-06-18, v1.0.9)
+Kalenderansicht pro Haushaltsbuch — zeigt je Kalendertag (Vergangenheit + Zukunft) die Buchungen sowie den Konto-Saldo am Tagesende. Migration 027 fügt `accounts.startingBalanceDate` (DATE, nullbar) an.
+
+**Anfangsbestand-Datum:** `startingBalance` bezieht sich jetzt auf `startingBalanceDate` (Stand am ...). Buchungen VOR diesem Datum gelten als bereits im Anfangsbestand enthalten und werden ab da nicht mehr gezählt. `accounts.js#computeBalance` filtert `date >= startingBalanceDate`, wenn gesetzt. NULL = wie bisher (alle Buchungen zählen) → rückwärtskompatibel. AccountsPage erfasst das Datum im Anlegen/Bearbeiten-Modal („Stand am") und zeigt es auf der Kontokarte.
+
+**Daueraufträge-Projektion:** Zukünftige Tage zeigen noch nicht erzeugte wiederkehrende Buchungen als Vorschau (`projected:true`) + projizierten Saldo. Projektion startet exakt bei `recurringNextDate` (reale Cron-Kopien existieren nur davor) → kein Doppelzählen. Logik (`calcNextDate`) ist UTC-basiert in `routes/calendar.js` nachgebaut (identisch zu `cronService.calcNextDate`).
+
+**Endpoint:** `GET /api/calendar?householdId=&year=&month=` (year+month = **Kalendermonat**, unabhängig von `monthStartDay` — ein Kalender zeigt echte Tage). Response: `{ year, month, gridStart, gridEnd, today, accounts:[{id,name,icon,color,type,startingBalance,startingBalanceDate}], days:[{date, day, inMonth, isToday, isFuture, balances:{accId:num}, total, transactions:[...]}] }`. Gitter = Montag der Woche des 1. bis Sonntag der Woche des Letzten. Salden werden kumulativ aus allen realen Buchungen (≤ gridEnd) + projizierten Daueraufträgen berechnet; `total` = Gesamtvermögen (signiert) am Tagesende.
+
+**Frontend:** `web/src/pages/CalendarPage.tsx` → Sidebar-Eintrag „Kalender" (CalendarDays-Icon, zwischen Sub-Konten und Statistiken). Monatsgitter mit Pfeil-Navigation + Heute-Button (eigener `year`/`month`-State, NICHT der periodStore — Kalender ≠ Period). Klick auf Tag → Detail-Panel rechts: Kontostände am Tagesende (je Konto + Gesamt) + Buchungsliste (projizierte gestrichelt markiert „Vorschau"). `calendarAPI.get` in `services/api.ts`.
+
+## Betrags-Suche in Buchungen (seit 2026-06-18, v1.0.9)
+Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/merchant) auch den **Betrag**. Backend (`transactions.js` GET /): `amount` wird als Text gecastet und per `iLike '%term%'` gematcht (Komma → Punkt normalisiert, nur wenn Suchterm eine Ziffer enthält) → Teiltreffer wie „12" oder „12,50" funktionieren. Placeholder: „Suchen (Text oder Betrag)...".
 
 ## Wichtige Konventionen
 - Hauptrepo-VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
@@ -579,6 +593,10 @@ Mobile-App zeigt die Version aktuell noch nicht in der UI (kann später via `Con
 - **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
 - **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
+
+## Session-Notizen 2026-06-18
+- **v1.0.9:** **Kalender-Feature** (siehe Section oben). Migration 027 (`accounts.startingBalanceDate`), neue Route `/api/calendar`, neue Seite `CalendarPage` (Sidebar „Kalender", CalendarDays-Icon). Daueraufträge werden in die Zukunft projiziert; `computeBalance` respektiert jetzt `startingBalanceDate`.
+- **v1.0.9:** **Betrags-Suche** — Suchfeld in TransactionsPage matcht zusätzlich den Betrag (amount-Cast → iLike, Komma→Punkt). Backend-only Filter im GET `/api/transactions`.
 
 ## Session-Notizen 2026-05-29
 - **v1.0.2:** Period bleibt session-übergreifend bei Seitenwechsel erhalten — neuer `web/src/store/periodStore.ts` (Memory, nicht localStorage) + `web/src/hooks/usePeriod.ts` kapselt `selectedMonth/Year` + `prev/next/reset/Label`. DashboardPage, TransactionsPage, StatisticsPage, BudgetPage nutzen den Hook; 4-fache Period-Duplizierung im Web ist damit weg (Mobile hat noch 4 eigene Stellen). Letztes Haushaltsbuch wird im `localStorage` unter `last_household_id` gemerkt — `authStore.setCurrentHousehold` schreibt es, `loadStoredAuth`/`login`/`register` lesen es als initialen Wert.

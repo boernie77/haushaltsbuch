@@ -10,6 +10,7 @@ const {
   Household,
   HouseholdMember,
   Budget,
+  sequelize,
 } = require("../models");
 const { auth } = require("../middleware/auth");
 const { checkBudgetWarning } = require("../services/budgetService");
@@ -90,10 +91,21 @@ router.get("/", auth, async (req, res) => {
       where.categoryId = categoryId;
     }
     if (search) {
-      where[Op.or] = [
+      const orConds = [
         { description: { [Op.iLike]: `%${search}%` } },
         { merchant: { [Op.iLike]: `%${search}%` } },
       ];
+      // Auch nach Betrag suchen: "12,50" oder "12.50" oder Teilstring "12".
+      // amount wird als Text gecastet, damit Teiltreffer funktionieren.
+      const amountSearch = search.trim().replace(",", ".");
+      if (/\d/.test(amountSearch)) {
+        orConds.push(
+          sequelize.where(sequelize.cast(sequelize.col("amount"), "text"), {
+            [Op.iLike]: `%${amountSearch}%`,
+          })
+        );
+      }
+      where[Op.or] = orConds;
     }
 
     if (month && year) {

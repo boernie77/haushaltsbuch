@@ -6,6 +6,7 @@ import AccountsPage from "./pages/AccountsPage";
 import AdminPage from "./pages/AdminPage";
 import BackupPage from "./pages/BackupPage";
 import BudgetPage from "./pages/BudgetPage";
+import CalendarPage from "./pages/CalendarPage";
 import DashboardPage from "./pages/DashboardPage";
 import DatenschutzPage from "./pages/DatenschutzPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -75,6 +76,7 @@ export default function App() {
         <Route element={<TransactionsPage />} path="transactions" />
         <Route element={<AccountsPage />} path="accounts" />
         <Route element={<SubAccountsPage />} path="sub-accounts" />
+        <Route element={<CalendarPage />} path="calendar" />
         <Route element={<StatisticsPage />} path="statistics" />
         <Route element={<BudgetPage />} path="budget" />
         <Route element={<HouseholdPage />} path="household" />

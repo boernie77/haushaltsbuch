@@ -37,6 +37,7 @@ app.use("/api/backup", require("./src/routes/backup"));
 app.use("/api/savings-goals", require("./src/routes/savingsGoals"));
 app.use("/api/accounts", require("./src/routes/accounts"));
 app.use("/api/sub-accounts", require("./src/routes/subAccounts"));
+app.use("/api/calendar", require("./src/routes/calendar"));
 app.use("/api/reports", require("./src/routes/reports").router);
 
 // App config — gibt öffentliche Konfigurationsflags zurück

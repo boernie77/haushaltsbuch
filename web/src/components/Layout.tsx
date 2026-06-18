@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import {
   BarChart2,
   Briefcase,
+  CalendarDays,
   Check,
   ChevronDown,
   CreditCard,
@@ -34,6 +35,7 @@ const navItems = [
   { to: "/transactions", icon: Receipt, label: "Buchungen" },
   { to: "/accounts", icon: CreditCard, label: "Konten" },
   { to: "/sub-accounts", icon: Briefcase, label: "Sub-Konten" },
+  { to: "/calendar", icon: CalendarDays, label: "Kalender" },
   { to: "/statistics", icon: BarChart2, label: "Statistiken" },
   { to: "/budget", icon: Wallet, label: "Budget" },
   { to: "/household", icon: Home, label: "Haushalt" },

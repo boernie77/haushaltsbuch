@@ -174,6 +174,11 @@ export const accountAPI = {
   delete: (id: string) => api.delete(`/accounts/${id}`),
 };
 
+export const calendarAPI = {
+  get: (householdId: string, year: number, month: number) =>
+    api.get("/calendar", { params: { householdId, year, month } }),
+};
+
 export const categoryUpdateAPI = {
   update: (id: string, d: any) => api.put(`/categories/${id}`, d),
 };

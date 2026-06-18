@@ -13,6 +13,7 @@ interface Account {
   name: string;
   sortOrder: number;
   startingBalance: number;
+  startingBalanceDate: string | null;
   type: "asset" | "liability";
 }
 
@@ -22,6 +23,7 @@ const DEFAULT_FORM = {
   icon: "💳",
   color: "#3B82F6",
   startingBalance: "0",
+  startingBalanceDate: "",
   isActive: true,
 };
 
@@ -111,6 +113,7 @@ export default function AccountsPage() {
       startingBalance: String(
         a.type === "liability" ? -a.startingBalance : a.startingBalance
       ),
+      startingBalanceDate: a.startingBalanceDate || "",
       isActive: a.isActive,
     });
     setModalOpen(true);
@@ -138,6 +141,7 @@ export default function AccountsPage() {
         icon: form.icon,
         color: form.color,
         startingBalance,
+        startingBalanceDate: form.startingBalanceDate || null,
         isActive: form.isActive,
       };
       if (editingId) {
@@ -204,6 +208,12 @@ export default function AccountsPage() {
               {fmt(
                 a.type === "liability" ? -a.startingBalance : a.startingBalance
               )}
+            </>
+          )}
+          {a.startingBalanceDate && (
+            <>
+              {" (Stand "}
+              {new Date(a.startingBalanceDate).toLocaleDateString("de-DE")})
             </>
           )}
         </div>
@@ -409,6 +419,26 @@ export default function AccountsPage() {
                   step="0.01"
                   type="number"
                   value={form.startingBalance}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  Stand am
+                  <span className="ml-1 text-gray-400 text-xs">
+                    (Datum des Anfangsbestands — Buchungen davor zählen nicht)
+                  </span>
+                </label>
+                <input
+                  className="input"
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      startingBalanceDate: e.target.value,
+                    }))
+                  }
+                  type="date"
+                  value={form.startingBalanceDate}
                 />
               </div>
 
