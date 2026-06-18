@@ -159,14 +159,15 @@ export default function HelpPage() {
           </li>
         </ul>
         <p>
-          Beim Anlegen gibst du den aktuellen Saldo und das Feld{" "}
-          <strong>„Stand am"</strong> an – das Datum, auf das sich der
-          Startsaldo bezieht.
+          Beim Anlegen gibst du den Kontostand und einen{" "}
+          <strong>Stichtag</strong> an – den Tag, an dem dieser Saldo galt.
         </p>
         <Callout>
-          <strong>Wichtig:</strong> Buchungen <em>vor</em> dem „Stand am"-Datum
-          werden nicht mitgezählt – sie gelten als bereits im Anfangsbestand
-          enthalten. Ohne Datum zählen alle Buchungen.
+          <strong>Wichtig:</strong> Nur Buchungen <em>nach</em> dem Stichtag
+          werden zum Saldo addiert; Buchungen am Stichtag und davor gelten als
+          bereits enthalten. Ohne Stichtag zählen alle Buchungen. Eine
+          Live-Vorschau zeigt dir beim Bearbeiten den daraus berechneten
+          heutigen Saldo.
         </Callout>
         <p>
           <strong>Umbuchung:</strong> Buchungstyp „Umbuchung" wählen, dann

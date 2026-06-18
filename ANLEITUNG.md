@@ -80,14 +80,17 @@ Sparkonto, Kreditkarte, Darlehen usw.
 Die Übersicht oben zeigt **Aktiva**, **Passiva** und dein **Reinvermögen** (alles
 zusammengerechnet).
 
-### Anfangsbestand mit Datum („Stand am")
-Beim Anlegen/Bearbeiten eines Kontos gibst du den **aktuellen Saldo** und das Feld
-**„Stand am"** ein. Das ist das Datum, auf das sich dieser Startsaldo bezieht.
+### Kontostand mit Stichtag
+Beim Anlegen/Bearbeiten eines Kontos gibst du den **Kontostand** und einen
+**Stichtag** ein – den Tag, an dem dieser Saldo galt.
 
-> **Wichtig:** Buchungen **vor** diesem Datum werden **nicht** mitgezählt – sie gelten
-> als bereits im Anfangsbestand enthalten. So vermeidest du Doppelzählungen, wenn du
-> mit einem Konto erst ab einem bestimmten Tag startest. Lässt du das Datum leer,
-> zählen wie bisher alle Buchungen.
+> **Wichtig:** Nur Buchungen **nach** dem Stichtag werden zum Saldo **addiert**.
+> Buchungen am Stichtag selbst und davor gelten als bereits im eingegebenen Saldo
+> enthalten und werden nicht erneut gezählt. So vermeidest du Doppelzählungen. Lässt
+> du den Stichtag leer, zählen wie bisher alle Buchungen.
+>
+> Beim Bearbeiten zeigt dir eine **Live-Vorschau** sofort den daraus berechneten
+> heutigen Saldo – so siehst du direkt, ob dein Wert passt.
 
 ### Umbuchen zwischen Konten (Transfer)
 Wählst du als Buchungstyp **„Umbuchung"**, gibst du ein **Quellkonto** und ein

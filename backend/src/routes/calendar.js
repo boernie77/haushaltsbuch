@@ -205,8 +205,9 @@ router.get("/", auth, async (req, res) => {
           return;
         }
         const acc = accountsById[accId];
-        // Buchungen vor dem Anfangsbestand-Datum sind dort schon enthalten.
-        if (acc.startingBalanceDate && ev.date < acc.startingBalanceDate) {
+        // Stichtag = Tagesabschluss: Buchungen am Stichtag und davor sind
+        // bereits im Anfangsbestand enthalten (konsistent zu accounts.js > ).
+        if (acc.startingBalanceDate && ev.date <= acc.startingBalanceDate) {
           return;
         }
         balances[accId] += delta;

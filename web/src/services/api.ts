@@ -172,6 +172,8 @@ export const accountAPI = {
   create: (d: any) => api.post("/accounts", d),
   update: (id: string, d: any) => api.put(`/accounts/${id}`, d),
   delete: (id: string) => api.delete(`/accounts/${id}`),
+  netAfter: (id: string, date?: string) =>
+    api.get(`/accounts/${id}/net-after`, { params: date ? { date } : {} }),
 };
 
 export const calendarAPI = {

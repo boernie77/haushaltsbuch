@@ -65,6 +65,9 @@ export default function AccountsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  // Netto-Veränderung der Buchungen NACH dem Stichtag (für Live-Vorschau des
+  // resultierenden heutigen Saldos). Nur relevant beim Bearbeiten.
+  const [netAfter, setNetAfter] = useState<number | null>(null);
 
   const fmt = (n: number) =>
     new Intl.NumberFormat("de-DE", {
@@ -93,6 +96,41 @@ export default function AccountsPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentHousehold]);
+
+  // Live-Vorschau: Buchungen nach dem Stichtag laden (nur beim Bearbeiten).
+  useEffect(() => {
+    if (!(modalOpen && editingId)) {
+      setNetAfter(null);
+      return;
+    }
+    let cancelled = false;
+    accountAPI
+      .netAfter(editingId, form.startingBalanceDate || undefined)
+      .then(({ data }) => {
+        if (!cancelled) {
+          setNetAfter(data.netAfter);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNetAfter(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modalOpen, editingId, form.startingBalanceDate]);
+
+  // Resultierender heutiger Saldo aus eingegebenem Saldo + Buchungen danach.
+  const previewToday = (() => {
+    if (netAfter === null) {
+      return null;
+    }
+    const userInput = Number.parseFloat(form.startingBalance) || 0;
+    const signedStart =
+      form.type === "liability" ? -Math.abs(userInput) : userInput;
+    return Math.round((signedStart + netAfter) * 100) / 100;
+  })();
 
   const openCreate = () => {
     setEditingId(null);
@@ -402,12 +440,12 @@ export default function AccountsPage() {
               <div>
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
                   {form.type === "liability"
-                    ? "Aktuelle Schulden"
-                    : "Aktueller Saldo"}
+                    ? "Schuldenstand am Stichtag"
+                    : "Kontostand am Stichtag"}
                   <span className="ml-1 text-gray-400 text-xs">
                     {form.type === "liability"
                       ? "(positiv eingeben — z.B. 500 = 500€ Schulden)"
-                      : "(Stand am Tag der Anlage)"}
+                      : "(Stand am unten gewählten Datum)"}
                   </span>
                 </label>
                 <input
@@ -424,9 +462,9 @@ export default function AccountsPage() {
 
               <div>
                 <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
-                  Stand am
+                  Stichtag
                   <span className="ml-1 text-gray-400 text-xs">
-                    (Datum des Anfangsbestands — Buchungen davor zählen nicht)
+                    (Tag, an dem der oben eingegebene Saldo galt)
                   </span>
                 </label>
                 <input
@@ -440,6 +478,28 @@ export default function AccountsPage() {
                   type="date"
                   value={form.startingBalanceDate}
                 />
+                <p className="mt-1 text-gray-400 text-xs">
+                  Buchungen <strong>nach</strong> dem Stichtag werden zum Saldo
+                  addiert, Buchungen davor (und am Stichtag selbst) gelten als
+                  bereits enthalten. Ohne Stichtag zählen alle Buchungen.
+                </p>
+                {/* Live-Vorschau des resultierenden heutigen Saldos */}
+                {editingId && previewToday !== null && (
+                  <div className="mt-2 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-slate-700">
+                    <span className="text-gray-600 dark:text-gray-300">
+                      Daraus berechneter heutiger Saldo
+                    </span>
+                    <span
+                      className={`font-bold ${
+                        previewToday < 0
+                          ? "text-[var(--expense)]"
+                          : "text-green-600"
+                      }`}
+                    >
+                      {fmt(previewToday)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div>

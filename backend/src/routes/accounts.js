@@ -24,10 +24,12 @@ async function computeBalance(account) {
     householdId: account.householdId,
     affectsAccountBalance: { [Op.ne]: false },
   };
-  // startingBalanceDate gesetzt → Buchungen davor sind bereits im
-  // Anfangsbestand enthalten und werden nicht doppelt gezählt.
+  // startingBalanceDate gesetzt → der eingegebene Saldo ist der Stand am ENDE
+  // dieses Tages (Tagesabschluss). Nur Buchungen NACH dem Stichtag werden
+  // addiert; Buchungen am Stichtag selbst (und davor) gelten als bereits im
+  // Saldo enthalten. Darum > statt >=.
   if (account.startingBalanceDate) {
-    where.date = { [Op.gte]: account.startingBalanceDate };
+    where.date = { [Op.gt]: account.startingBalanceDate };
   }
   const [income, expense, transferIn, transferOut] = await Promise.all([
     Transaction.sum("amount", {
@@ -89,6 +91,56 @@ router.get("/", auth, async (req, res) => {
       }))
     );
     res.json({ accounts: enriched });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
+// GET /api/accounts/:id/net-after?date=YYYY-MM-DD
+// Netto-Veränderung (income − expense + transferIn − transferOut) der
+// Buchungen NACH dem Stichtag. Für die Live-Vorschau im Konto-Modal:
+// heutiger Saldo = eingegebener Saldo + netAfter. Ohne date-Param: alle.
+router.get("/:id/net-after", auth, async (req, res) => {
+  try {
+    const account = await Account.findByPk(req.params.id);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+    if (!(await checkAccess(req.user.id, account.householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const where = {
+      householdId: account.householdId,
+      affectsAccountBalance: { [Op.ne]: false },
+    };
+    if (req.query.date) {
+      where.date = { [Op.gt]: req.query.date };
+    }
+    const [income, expense, transferIn, transferOut] = await Promise.all([
+      Transaction.sum("amount", {
+        where: { ...where, type: "income", accountId: account.id },
+      }),
+      Transaction.sum("amount", {
+        where: { ...where, type: "expense", accountId: account.id },
+      }),
+      Transaction.sum("amount", {
+        where: {
+          ...where,
+          type: "transfer",
+          transferTargetAccountId: account.id,
+        },
+      }),
+      Transaction.sum("amount", {
+        where: { ...where, type: "transfer", accountId: account.id },
+      }),
+    ]);
+    const netAfter =
+      (Number.parseFloat(income) || 0) -
+      (Number.parseFloat(expense) || 0) +
+      (Number.parseFloat(transferIn) || 0) -
+      (Number.parseFloat(transferOut) || 0);
+    res.json({ netAfter: Math.round(netAfter * 100) / 100 });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
