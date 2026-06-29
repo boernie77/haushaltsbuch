@@ -545,7 +545,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.9** (Stand 2026-06-18).
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.12** (Stand 2026-06-18).
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -561,7 +561,9 @@ Mobile-App zeigt die Version aktuell noch nicht in der UI (kann später via `Con
 ## Kalender-Feature (seit 2026-06-18, v1.0.9)
 Kalenderansicht pro Haushaltsbuch — zeigt je Kalendertag (Vergangenheit + Zukunft) die Buchungen sowie den Konto-Saldo am Tagesende. Migration 027 fügt `accounts.startingBalanceDate` (DATE, nullbar) an.
 
-**Anfangsbestand-Datum:** `startingBalance` bezieht sich jetzt auf `startingBalanceDate` (Stand am ...). Buchungen VOR diesem Datum gelten als bereits im Anfangsbestand enthalten und werden ab da nicht mehr gezählt. `accounts.js#computeBalance` filtert `date >= startingBalanceDate`, wenn gesetzt. NULL = wie bisher (alle Buchungen zählen) → rückwärtskompatibel. AccountsPage erfasst das Datum im Anlegen/Bearbeiten-Modal („Stand am") und zeigt es auf der Kontokarte.
+**Stichtag-Saldo (`startingBalanceDate`):** Der eingegebene `startingBalance` ist der Saldo am **Ende des Stichtags** (Tagesabschluss). `accounts.js#computeBalance` filtert `date > startingBalanceDate` (seit v1.0.11 **exklusiv** `Op.gt`, nicht `>=`) — Buchungen am Stichtag selbst UND davor gelten als bereits im Saldo enthalten; nur Buchungen DANACH werden addiert. NULL = alle Buchungen zählen (rückwärtskompatibel). Kalender-Running-Balance konsistent: Event übersprungen wenn `ev.date <= startingBalanceDate`.
+- ⚠️ **UX-Falle:** Das Feld hieß ursprünglich „Aktueller Saldo" → User gaben den HEUTIGEN Saldo mit einem VERGANGENEN Stichtag ein, wodurch die Buchungen seither oben drauf addiert wurden (schien „komplett falsch"/verdoppelt). Fix v1.0.11: Labels „Kontostand am Stichtag" / „Stichtag" + Erklärtext + **Live-Vorschau** des resultierenden heutigen Saldos im Modal.
+- **Endpoint `GET /api/accounts/:id/net-after?date=`** → `{ netAfter }` (income − expense + transferIn − transferOut für `date > date`). Frontend-Vorschau: `signedStart + netAfter`.
 
 **Daueraufträge-Projektion:** Zukünftige Tage zeigen noch nicht erzeugte wiederkehrende Buchungen als Vorschau (`projected:true`) + projizierten Saldo. Projektion startet exakt bei `recurringNextDate` (reale Cron-Kopien existieren nur davor) → kein Doppelzählen. Logik (`calcNextDate`) ist UTC-basiert in `routes/calendar.js` nachgebaut (identisch zu `cronService.calcNextDate`).
 
@@ -599,6 +601,9 @@ Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/me
 ## Session-Notizen 2026-06-18
 - **v1.0.9:** **Kalender-Feature** (siehe Section oben). Migration 027 (`accounts.startingBalanceDate`), neue Route `/api/calendar`, neue Seite `CalendarPage` (Sidebar „Kalender", CalendarDays-Icon). Daueraufträge werden in die Zukunft projiziert; `computeBalance` respektiert jetzt `startingBalanceDate`.
 - **v1.0.9:** **Betrags-Suche** — Suchfeld in TransactionsPage matcht zusätzlich den Betrag (amount-Cast → iLike, Komma→Punkt). Backend-only Filter im GET `/api/transactions`.
+- **v1.0.10:** **In-App-Anleitung** — neue Seite `HelpPage.tsx` (Sidebar „Anleitung", BookOpen-Icon, Route `/help`), Inhaltsverzeichnis + 14 Sektionen, inhaltlich synchron zu `ANLEITUNG.md` (Repo-Root). Bewusst als JSX gepflegt (kein Markdown-Renderer). **Fix Betrags-Suche:** `sequelize.col("amount")` war mehrdeutig (TransactionSplit-Include „splits" hat auch `amount`) → ganze Suche brach ab. Jetzt `Transaction.amount` qualifiziert.
+- **v1.0.11:** **Stichtag-Saldo-Fix** (siehe Kalender-Section). `Op.gte` → `Op.gt` (Tagesabschluss-Semantik), klarere Labels „Kontostand am Stichtag"/„Stichtag", Erklärtext, **Live-Vorschau** via neuem Endpoint `GET /api/accounts/:id/net-after`. Ursache der User-Verwirrung: heutiger Saldo mit vergangenem Stichtag eingegeben → spätere Buchungen addiert.
+- **v1.0.12:** **Buchung aus Kalender bearbeiten** — Klick auf Buchung im Detail-Panel → `setPeriod()` (Period des Buchungsdatums) + `navigate('/transactions?edit=<id>')`. TransactionsPage liest `?edit=` (`useSearchParams`), findet Buchung in geladener Period, ruft `openEdit` (Effect wartet auf `loading=false`). Projizierte Vorschauen (`proj-…`) nicht editierbar → Toast.
 
 ## Session-Notizen 2026-05-29
 - **v1.0.2:** Period bleibt session-übergreifend bei Seitenwechsel erhalten — neuer `web/src/store/periodStore.ts` (Memory, nicht localStorage) + `web/src/hooks/usePeriod.ts` kapselt `selectedMonth/Year` + `prev/next/reset/Label`. DashboardPage, TransactionsPage, StatisticsPage, BudgetPage nutzen den Hook; 4-fache Period-Duplizierung im Web ist damit weg (Mobile hat noch 4 eigene Stellen). Letztes Haushaltsbuch wird im `localStorage` unter `last_household_id` gemerkt — `authStore.setCurrentHousehold` schreibt es, `loadStoredAuth`/`login`/`register` lesen es als initialen Wert.
