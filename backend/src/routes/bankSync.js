@@ -74,6 +74,32 @@ async function findPossibleManualDuplicate(householdId, accountId, tx) {
   return !!candidate;
 }
 
+// DELETE /api/bank-sync/imported?householdId=&accountId= — löscht alle bisher
+// per Bank-Sync importierten Buchungen eines Kontos (externalRef IS NOT
+// NULL, betrifft also nie manuell erfasste Buchungen). Nötig z.B. nach einer
+// Parser-Verbesserung, bei der sich der Dedup-Hash ändert und ein erneuter
+// Import sonst Dubletten statt Ersetzung erzeugen würde.
+router.delete("/imported", auth, async (req, res) => {
+  try {
+    const { householdId, accountId } = req.query;
+    if (!(householdId && accountId)) {
+      return res
+        .status(400)
+        .json({ error: "householdId & accountId required" });
+    }
+    if (!(await checkAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const deleted = await Transaction.destroy({
+      where: { householdId, accountId, externalRef: { [Op.ne]: null } },
+    });
+    res.json({ deleted });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
 // POST /api/bank-sync/bootstrap-mappings — lernt Merchant→Kategorie einmalig
 // rückwirkend aus bereits bestehenden (auch manuell erfassten) Buchungen mit
 // gesetztem merchant + categoryId, statt nur vorwärts ab dem ersten Import zu

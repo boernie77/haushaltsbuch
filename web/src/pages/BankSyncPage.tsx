@@ -1,4 +1,4 @@
-import { AlertTriangle, GraduationCap, Upload } from "lucide-react";
+import { AlertTriangle, GraduationCap, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
@@ -36,6 +36,7 @@ export default function BankSyncPage() {
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
+  const [deletingImported, setDeletingImported] = useState(false);
 
   const [format, setFormat] = useState<"csv" | "mt940" | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -94,6 +95,31 @@ export default function BankSyncPage() {
       toast.error(err.response?.data?.error || "Lernen fehlgeschlagen");
     } finally {
       setBootstrapping(false);
+    }
+  };
+
+  const deleteImported = async () => {
+    if (!(currentHousehold && accountId)) {
+      return;
+    }
+    if (
+      !confirm(
+        "Alle bisher per Bank-Sync importierten Buchungen dieses Kontos wirklich löschen? Manuell erfasste Buchungen bleiben unberührt."
+      )
+    ) {
+      return;
+    }
+    setDeletingImported(true);
+    try {
+      const { data } = await bankSyncAPI.deleteImported(
+        currentHousehold.id,
+        accountId
+      );
+      toast.success(`${data.deleted} importierte Buchungen gelöscht`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Löschen fehlgeschlagen");
+    } finally {
+      setDeletingImported(false);
     }
   };
 
@@ -284,6 +310,25 @@ export default function BankSyncPage() {
           <Upload size={16} />
           {previewing ? "Analysiere..." : "Vorschau"}
         </button>
+
+        <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-amber-800 text-xs dark:text-amber-300">
+            Nach einer Parser-Verbesserung können bereits importierte Buchungen
+            des ausgewählten Kontos veraltet/fehlerhaft sein. Vor einem erneuten
+            Import erst hier bereinigen.
+          </p>
+          <button
+            className="flex shrink-0 items-center gap-2 text-red-600 text-xs hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+            disabled={!accountId || deletingImported}
+            onClick={deleteImported}
+            type="button"
+          >
+            <Trash2 size={14} />
+            {deletingImported
+              ? "Lösche..."
+              : "Importierte Buchungen dieses Kontos löschen"}
+          </button>
+        </div>
       </div>
 
       {format && (

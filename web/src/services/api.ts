@@ -179,6 +179,8 @@ export const accountAPI = {
 export const bankSyncAPI = {
   bootstrapMappings: (householdId: string) =>
     api.post("/bank-sync/bootstrap-mappings", { householdId }),
+  deleteImported: (householdId: string, accountId: string) =>
+    api.delete("/bank-sync/imported", { params: { householdId, accountId } }),
   preview: (
     householdId: string,
     accountId: string,

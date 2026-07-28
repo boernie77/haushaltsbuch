@@ -26,6 +26,40 @@ function parseGermanOrPlainNumber(raw) {
   return Number.parseFloat(trimmed.replace(/,/g, ""));
 }
 
+// Deutsche Banken strukturieren Feld 86 in Unterfelder (?20-?29 = Verwendungs-
+// zweck, oft mit Markern wie "SVWZ+"/"EREF+"/"MREF+" davor, ?32/?33 = Name des
+// Auftraggebers/Empfängers). mt940js erkennt diese automatisch als
+// `structuredDetails` (Objekt {tagNr: value}). Ohne diese Extraktion bleibt
+// nur der rohe Tag-Text ("?22SVWZ+...?32...") übrig - unlesbar und ohne
+// nutzbaren Empfänger-Namen (der aber für Kategorie-Zuordnung/Lernen
+// essenziell ist, siehe routes/bankSync.js).
+function extractMt940Purpose(structuredDetails, rawDetails) {
+  const parts = [];
+  for (let i = 20; i <= 29; i++) {
+    const value = structuredDetails?.[String(i)];
+    if (value) {
+      parts.push(value);
+    }
+  }
+  const joined = parts.join(" ").trim();
+  if (!joined) {
+    return (rawDetails || "").replace(/\n/g, " ").trim();
+  }
+  // Häufigster Fall: "SVWZ+eigentlicher Verwendungszweck EREF+... MREF+..."
+  // Nur den SVWZ-Teil herausziehen, Rest sind technische Referenzen.
+  const svwzMatch = joined.match(
+    /SVWZ\+(.*?)(?=(?:EREF\+|MREF\+|CRED\+|KREF\+|ABWA\+|SVWZ\+|$))/i
+  );
+  return (svwzMatch ? svwzMatch[1] : joined).trim();
+}
+
+function extractMt940CounterpartyName(structuredDetails) {
+  const parts = ["32", "33"]
+    .map((tag) => structuredDetails?.[tag])
+    .filter(Boolean);
+  return parts.join(" ").trim() || null;
+}
+
 function parseMt940(text) {
   const parser = new mt940js.Parser();
   const statements = parser.parse(text);
@@ -35,8 +69,8 @@ function parseMt940(text) {
       transactions.push({
         date: t.date ? t.date.toISOString().slice(0, 10) : null,
         amount: typeof t.amount === "number" ? t.amount : null,
-        purpose: (t.details || "").replace(/\n/g, " ").trim(),
-        counterpartyName: null,
+        purpose: extractMt940Purpose(t.structuredDetails, t.details),
+        counterpartyName: extractMt940CounterpartyName(t.structuredDetails),
       });
     }
   }
