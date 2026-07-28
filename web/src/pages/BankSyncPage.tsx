@@ -266,7 +266,7 @@ export default function BankSyncPage() {
               Datei (CSV oder MT940)
             </label>
             <input
-              accept=".csv,.sta,.txt,.mt940"
+              accept=".csv,.sta,.txt,.mt940,.mta"
               className="input"
               onChange={onFileChange}
               ref={fileInputRef}
