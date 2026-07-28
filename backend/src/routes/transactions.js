@@ -605,6 +605,18 @@ router.put("/:id", auth, async (req, res) => {
 
     await transaction.update(updates);
 
+    // Bank-Sync-Lernmechanismus: Wenn eine importierte Buchung (externalRef
+    // gesetzt) manuell kategorisiert wird, merken wir uns Merchant→Kategorie
+    // für künftige Importe (siehe routes/bankSync.js).
+    if (categoryId && transaction.externalRef && transaction.merchant) {
+      const { MerchantCategoryMapping } = require("../models");
+      await MerchantCategoryMapping.upsert({
+        householdId: transaction.householdId,
+        merchantPattern: transaction.merchant.trim().toLowerCase(),
+        categoryId,
+      });
+    }
+
     const full = await Transaction.findByPk(transaction.id, {
       include: [
         {

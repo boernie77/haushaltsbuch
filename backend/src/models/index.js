@@ -221,6 +221,11 @@ const Transaction = sequelize.define(
     excludeFromStats: { type: DataTypes.BOOLEAN, defaultValue: false },
     isSubAccountSettlement: { type: DataTypes.BOOLEAN, defaultValue: false },
     affectsAccountBalance: { type: DataTypes.BOOLEAN, defaultValue: true },
+    externalRef: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: "Dedup-Hash für Bank-Sync-Importe (siehe bankSync.js)",
+    },
   },
   { tableName: "transactions", timestamps: true }
 );
@@ -617,6 +622,69 @@ Transaction.hasMany(TransactionSplit, {
 TransactionSplit.belongsTo(Transaction, { foreignKey: "transactionId" });
 TransactionSplit.belongsTo(Category, { foreignKey: "categoryId" });
 
+// ── BankImportProfile ─────────────────────────────────────────────────────────
+// Merkt sich pro Konto die zuletzt bestätigte CSV-Spalten-Zuordnung für den
+// Bank-Sync-Datei-Import (siehe routes/bankSync.js + utils/bankImport.js),
+// damit der User sie beim nächsten Import nicht neu eingeben muss.
+const BankImportProfile = sequelize.define(
+  "BankImportProfile",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    accountId: { type: DataTypes.UUID, allowNull: false },
+    format: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      comment: "csv | mt940",
+    },
+    columnMapping: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "JSON: {date, amount, purpose, counterpartyName} → CSV-Header",
+    },
+  },
+  {
+    tableName: "bank_import_profiles",
+    timestamps: true,
+    indexes: [{ unique: true, fields: ["householdId", "accountId"] }],
+  }
+);
+
+// ── MerchantCategoryMapping ───────────────────────────────────────────────────
+// Lernt "Verwendungszweck/Merchant → Kategorie" aus manuellen Zuordnungen
+// importierter Bank-Sync-Buchungen (siehe transactions.js PUT-Handler).
+const MerchantCategoryMapping = sequelize.define(
+  "MerchantCategoryMapping",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    merchantPattern: { type: DataTypes.TEXT, allowNull: false },
+    categoryId: { type: DataTypes.UUID, allowNull: false },
+  },
+  {
+    tableName: "merchant_category_mappings",
+    timestamps: true,
+    indexes: [{ unique: true, fields: ["householdId", "merchantPattern"] }],
+  }
+);
+
+Household.hasMany(BankImportProfile, { foreignKey: "householdId" });
+BankImportProfile.belongsTo(Household, { foreignKey: "householdId" });
+Account.hasMany(BankImportProfile, { foreignKey: "accountId" });
+BankImportProfile.belongsTo(Account, { foreignKey: "accountId" });
+
+Household.hasMany(MerchantCategoryMapping, { foreignKey: "householdId" });
+MerchantCategoryMapping.belongsTo(Household, { foreignKey: "householdId" });
+MerchantCategoryMapping.belongsTo(Category, { foreignKey: "categoryId" });
+
 module.exports = {
   sequelize,
   User,
@@ -638,4 +706,6 @@ module.exports = {
   MonthlyFixedSnapshot,
   Account,
   SubAccountSettlement,
+  BankImportProfile,
+  MerchantCategoryMapping,
 };

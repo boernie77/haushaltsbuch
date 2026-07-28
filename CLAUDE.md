@@ -545,7 +545,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.12** (Stand 2026-06-18).
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.13** (Stand 2026-07-28).
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -597,6 +597,42 @@ Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/me
 - **Datenmodelle:** `Household` in der DB = "Haushaltsbuch" in der UI (siehe Begriffe-Sektion oben)
 - **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
+
+## Bank-Sync-Feature (seit 2026-07-28)
+Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg und ING. Rein privat für Christian selbst (kein SaaS-Ziel, siehe Memory `project_commercial_intent.md`). Migration 028 legt `bank_import_profiles` + `merchant_category_mappings` an + `transactions."externalRef"` (Dedup-Hash, partial UNIQUE INDEX auf `(accountId, externalRef)`).
+
+**Architektur-Entscheidung:** Ein direkter FinTS/HBCI-Live-Zugang wurde verworfen — das erfordert eine PSD2-Produktregistrierung bei der Deutschen Kreditwirtschaft (kostenlos, aber ~10–15 Werktage, an Hersteller/Firmen adressiertes Formular), was für ein privates Projekt zu aufwendig ist. Stattdessen: Sparda-Bank Nürnberg bietet im Online-Banking CSV-/MT940-/CAMT.052-Export, ING bietet CSV-Export unter „Umsätze" — beides manuell exportierbar und hochladbar, ohne PIN-Speicherung oder Sidecar-Service.
+
+**Parser (`backend/src/utils/bankImport.js`):**
+- **MT940** via npm-Paket `mt940js` (`new mt940js.Parser().parse(text)`), Format-Erkennung: Datei beginnt mit `:20:`.
+- **CSV** via npm-Paket `papaparse` (robustes Delimiter/Quoting-Handling für deutsche Bank-Exporte). Spalten-Mapping (Datum/Betrag/Verwendungszweck/Empfänger) wird per Header-Namen automatisch geraten (`suggestMapping`) und vom User im Frontend bestätigt/korrigiert.
+- Deutsches Zahlenformat (`1.234,56`) und deutsches Datumsformat (`DD.MM.YYYY`) werden normalisiert.
+- Gemeinsame Ausgabe: `{ date, amount, purpose, counterpartyName }[]`.
+
+**Modelle:** `BankImportProfile` (householdId, accountId, format [`csv`|`mt940`], columnMapping JSON, UNIQUE(householdId, accountId)) — merkt sich die zuletzt bestätigte CSV-Spalten-Zuordnung pro Konto, damit sie beim nächsten Import nicht neu eingegeben werden muss. `MerchantCategoryMapping` (householdId, merchantPattern, categoryId, UNIQUE) — lernt Merchant→Kategorie aus manuellen Zuordnungen importierter Buchungen (Hook in `transactions.js` PUT-Handler: sobald eine Buchung mit `externalRef` manuell kategorisiert wird, wird das Mapping upserted) UND rückwirkend aus bestehenden Buchungen via `/bootstrap-mappings` (siehe unten).
+
+**Endpoints:**
+- `POST /api/bank-sync/bootstrap-mappings` — Body `{householdId}`. Lernt einmalig rückwirkend aus allen bestehenden Buchungen mit gesetztem `merchant` + `categoryId` (auch manuell erfasste, nicht nur importierte): pro Merchant wird die häufigste bisher verwendete Kategorie ermittelt und upserted. Idempotent, beliebig oft wiederholbar. UI-Button „Aus bestehenden Buchungen lernen" auf `BankSyncPage`.
+- `POST /api/bank-sync/preview` — multipart (`file`, `householdId`, `accountId`, optional `columnMapping` JSON-String zum erneuten Parsen mit geändertem Mapping), parst die Datei (multer `memoryStorage`, keine Disk-Persistenz). Markiert jede Zeile mit `alreadyImported` (exakter `externalRef`-Treffer) und `possibleDuplicate` (Fuzzy-Abgleich: Datum ±3 Tage + Betrag ±0.01 + gleicher Typ gegen ALLE Buchungen des Kontos, auch manuell erfasste ohne `externalRef`). Importiert noch nichts.
+- `POST /api/bank-sync/import` — JSON-Body `{householdId, accountId, format, transactions, columnMapping?}`. **Kein Datei-Upload mehr nötig** — das Frontend schickt die vom User bestätigte/gekürzte Zeilenliste aus `/preview` direkt mit (JSON, damit einzelne Zeilen per Checkbox ausgeschlossen werden können, z.B. `possibleDuplicate`-Warnungen). `externalRef`-Dedup läuft serverseitig zusätzlich als Sicherheitsnetz. Speichert `BankImportProfile` bei CSV. Gibt `{imported, skipped, uncategorized}` zurück.
+
+**Dedup — zwei Ebenen:**
+1. **Exakt** (`alreadyImported`): `externalRef` = SHA-256-Hash aus Datum+Betrag+Verwendungszweck+Gegenkonto-Name. Erkennt Buchungen, die schon einmal per Datei-Import reinkamen (`Transaction.findOne({accountId, externalRef})`).
+2. **Fuzzy** (`possibleDuplicate`): Datum ±3 Tage + Betrag ±0.01 + gleicher Typ gegen ALLE Buchungen des Kontos — erkennt auch Treffer gegen manuell eingetippte Buchungen (die nie einen `externalRef` haben). Blockt den Import NICHT automatisch (Fuzzy-Logik hat False-Positive-Risiko bei wiederkehrenden ähnlichen Beträgen), sondern startet in der Vorschau abgewählt — User entscheidet pro Zeile per Checkbox.
+
+**Frontend:** `web/src/pages/BankSyncPage.tsx`, Sidebar-Eintrag „Bank-Sync" (Landmark-Icon). Ablauf: Konto wählen → Datei hochladen → „Vorschau" zeigt erkannte Buchungen mit Checkbox pro Zeile (Duplikat-Warnungen gelb hervorgehoben, vorab abgewählt) + bei CSV 4 Mapping-Dropdowns (ändert Mapping → automatischer Re-Preview-Request) → „X importieren" schickt nur die angehakten Zeilen.
+
+**Mobile:** noch nicht angepasst (wie bei Konten-/Sub-Konten-Feature — web-only in Iteration 1).
+
+**Bekannte Einschränkung:** CAMT.052 (von Sparda-Bank Nürnberg ebenfalls angeboten) wird nicht geparst — bewusst nicht umgesetzt, MT940 deckt den Anwendungsfall ab.
+
+## Session-Notizen 2026-07-28
+- Bank-Sync-Feature (siehe Section oben) — **zwei Anläufe in derselben Session:**
+  1. Erster Entwurf: FinTS/HBCI-Live-Sync über Python-Sidecar (`fints-service/`, FastAPI + `python-fints`, TAN-Flow via `pause_dialog()`/`deconstruct()`). Wurde komplett gebaut, dann verworfen, nachdem klar wurde, dass die PSD2-Produktregistrierung (~10-15 Werktage, Formular an Hersteller/Firmen adressiert) für ein privates Projekt zu aufwendig ist.
+  2. Zweiter Entwurf (umgesetzt): manueller CSV/MT940-Datei-Upload, kein Produkt-ID/PIN/Sidecar nötig. `fints-service/` gelöscht, `docker-compose.yml` zurückgesetzt, Migration 028 umgeschrieben (`bank_import_profiles` statt `bank_connections`). `Transaction.externalRef` + `MerchantCategoryMapping` aus dem ersten Entwurf blieben unverändert bestehen.
+  - **Lektion:** Bei Bank-Integrationen immer zuerst prüfen, ob die Bank strukturierten Datei-Export (CSV/MT940/CAMT.052) anbietet, bevor ein FinTS/HBCI-Live-Zugang samt PSD2-Registrierung geplant wird — für Privatnutzer meist der pragmatischere Weg.
+- Nachträgliche Härtung vor Deploy: Fuzzy-Duplikat-Erkennung (`possibleDuplicate`) gegen manuell erfasste Buchungen ergänzt (der ursprüngliche `externalRef`-Dedup erkannte nur bereits importierte, nicht handisch eingetippte Buchungen). `/import` läuft jetzt JSON-basiert mit Zeilen aus `/preview` statt erneutem Datei-Upload, damit einzelne Zeilen per Checkbox ausgeschlossen werden können. Zusätzlich `POST /api/bank-sync/bootstrap-mappings` — lernt einmalig rückwirkend aus bestehenden manuell kategorisierten Buchungen (häufigste Kategorie pro Merchant), nicht nur vorwärts ab dem ersten Import.
+- Projektkontext geändert: App wird aktuell nur noch privat für Christian weiterentwickelt, kein 1000+-Haushalte-SaaS-Ziel mehr (siehe Memory `project_commercial_intent.md`, aktualisiert).
 
 ## Session-Notizen 2026-06-18
 - **v1.0.9:** **Kalender-Feature** (siehe Section oben). Migration 027 (`accounts.startingBalanceDate`), neue Route `/api/calendar`, neue Seite `CalendarPage` (Sidebar „Kalender", CalendarDays-Icon). Daueraufträge werden in die Zukunft projiziert; `computeBalance` respektiert jetzt `startingBalanceDate`.

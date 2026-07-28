@@ -5,6 +5,7 @@ import Layout from "./components/Layout";
 import AccountsPage from "./pages/AccountsPage";
 import AdminPage from "./pages/AdminPage";
 import BackupPage from "./pages/BackupPage";
+import BankSyncPage from "./pages/BankSyncPage";
 import BudgetPage from "./pages/BudgetPage";
 import CalendarPage from "./pages/CalendarPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -78,6 +79,7 @@ export default function App() {
         <Route element={<AccountsPage />} path="accounts" />
         <Route element={<SubAccountsPage />} path="sub-accounts" />
         <Route element={<CalendarPage />} path="calendar" />
+        <Route element={<BankSyncPage />} path="bank-sync" />
         <Route element={<StatisticsPage />} path="statistics" />
         <Route element={<BudgetPage />} path="budget" />
         <Route element={<HouseholdPage />} path="household" />

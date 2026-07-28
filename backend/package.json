@@ -1,6 +1,6 @@
 {
   "name": "haushaltsbuch-backend",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Haushaltsbuch Backend API",
   "main": "server.js",
   "scripts": {
@@ -9,24 +9,26 @@
     "migrate": "node src/utils/migrate.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "sequelize": "^6.37.8",
-    "pg": "^8.20.0",
-    "pg-hstore": "^2.3.4",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.3",
-    "multer": "^1.4.5-lts.1",
-    "sharp": "^0.33.5",
+    "@anthropic-ai/sdk": "^0.36.3",
     "axios": "^1.14.0",
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "express-validator": "^7.0.1",
-    "nodemailer": "^6.9.8",
     "form-data": "^4.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mt940js": "^1.3.5",
+    "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
-    "@anthropic-ai/sdk": "^0.36.3",
-    "ssh2-sftp-client": "^10.0.3",
-    "openid-client": "^5.7.1"
+    "nodemailer": "^6.9.8",
+    "openid-client": "^5.7.1",
+    "papaparse": "^5.5.4",
+    "pg": "^8.20.0",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.8",
+    "sharp": "^0.33.5",
+    "ssh2-sftp-client": "^10.0.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

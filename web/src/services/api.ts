@@ -176,6 +176,42 @@ export const accountAPI = {
     api.get(`/accounts/${id}/net-after`, { params: date ? { date } : {} }),
 };
 
+export const bankSyncAPI = {
+  bootstrapMappings: (householdId: string) =>
+    api.post("/bank-sync/bootstrap-mappings", { householdId }),
+  preview: (
+    householdId: string,
+    accountId: string,
+    file: File,
+    columnMapping?: Record<string, string | null>
+  ) => {
+    const fd = new FormData();
+    fd.append("householdId", householdId);
+    fd.append("accountId", accountId);
+    fd.append("file", file);
+    if (columnMapping) {
+      fd.append("columnMapping", JSON.stringify(columnMapping));
+    }
+    return api.post("/bank-sync/preview", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  import: (
+    householdId: string,
+    accountId: string,
+    format: string,
+    transactions: any[],
+    columnMapping?: Record<string, string | null>
+  ) =>
+    api.post("/bank-sync/import", {
+      householdId,
+      accountId,
+      format,
+      transactions,
+      columnMapping,
+    }),
+};
+
 export const calendarAPI = {
   get: (householdId: string, year: number, month: number) =>
     api.get("/calendar", { params: { householdId, year, month } }),
