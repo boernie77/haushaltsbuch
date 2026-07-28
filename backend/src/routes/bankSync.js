@@ -258,13 +258,19 @@ router.post("/import", auth, async (req, res) => {
         uncategorized++;
       }
 
+      // description/merchant sind VARCHAR(255) - der rohe MT940-Verwendungs-
+      // zweck (Feld 86) kann länger sein. Kürzen für description, voller Text
+      // bleibt im unbegrenzten note-Feld erhalten.
+      const purpose = tx.purpose || "";
+
       // eslint-disable-next-line no-await-in-loop
       await Transaction.create({
         amount: Math.abs(tx.amount),
         type: tx.amount < 0 ? "expense" : "income",
         date: tx.date,
-        description: tx.purpose || null,
-        merchant: merchant || null,
+        description: purpose ? purpose.slice(0, 255) : null,
+        note: purpose.length > 255 ? purpose : null,
+        merchant: merchant ? merchant.slice(0, 255) : null,
         categoryId,
         householdId,
         userId: req.user.id,
