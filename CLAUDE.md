@@ -394,10 +394,10 @@ cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 ### ⚠️ OIDC-Schutz beim Deploy
 Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `docker-compose.yml` (OIDC_*-Env-Vars) und `.github/workflows/deploy.yml` (set_env OIDC_*) nicht versehentlich angefasst wurden. SSO via Authentik bricht sonst.
 
-### SSH-Status (Stand 2026-04-28)
-- Alter Key `~/.ssh/emailrelay_vps` ist auf dem aktuellen Dev-Rechner **nicht mehr vorhanden** (Neuinstallation von `~/.ssh/`)
-- Aktiv: `~/.ssh/id_ed25519` — muss noch in `/root/.ssh/authorized_keys` auf dem VPS eingetragen werden (via Hetzner Cloud Console, https://console.hetzner.cloud)
-- Bis dahin: Deploy nur via `git push origin main` (GitHub Actions hat eigenen Key in Secret `HETZNER_SSH_KEY`); VPS-Inspektion via curl auf Public-URL
+### SSH-Status (Stand 2026-08-30, neuer Mac)
+- Aktiv: `~/.ssh/emailrelay_vps` (ED25519) — funktioniert direkt als root auf dem großen VPS, kein sshpass nötig. `~/.ssh/id_rsa` geht ebenfalls als Fallback.
+- `~/.ssh/id_ed25519` existiert auf diesem Mac **nicht** (frühere Doku-Referenz veraltet).
+- Alternativ Deploy via `git push origin main` (GitHub Actions hat eigenen Key in Secret `HETZNER_SSH_KEY`); VPS-Inspektion via curl auf Public-URL
 
 ## iOS Mobile App
 - **Expo SDK 52**, expo-router
@@ -579,7 +579,7 @@ Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/me
 ## Wichtige Konventionen
 - Hauptrepo-VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
 - haushaltsbuch-home auf VPS verwendet `docker compose` (Plugin-Variante — anderer Stack!)
-- SSH-Key für VPS: `~/.ssh/id_ed25519` (funktioniert direkt, kein sshpass nötig)
+- SSH-Key für VPS: `~/.ssh/emailrelay_vps` (funktioniert direkt, kein sshpass nötig; `~/.ssh/id_rsa` als Fallback)
 - Web-Build: `npm install` (kein `npm ci`, kein Lockfile committed)
 - Backend ENV auf VPS: `/opt/haushaltsbuch/.env`
 - DB-User: `haushalt`, DB-Name: `haushaltsbuch`
@@ -669,7 +669,7 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg u
 - Bug behoben: Dashboard-„Vormonat"-Zeile bei Einnahmen zeigte fälschlich `lastMonth` (Ausgaben) → jetzt `lastMonthIncome`
 - Feature: Eigene Kategorien anlegen via „+"-Button neben Kategorie-Dropdown im Buchungsformular
 - Feature: Pfeil-Navigation auf Dashboard (← →, Heute-Button), `statsAPI.overview` akzeptiert `month`/`year`, Prognose-Karte nur für laufenden Monat
-- SSH-Key zum VPS: `~/.ssh/id_ed25519` funktioniert direkt (`ssh root@VPS-IP-ENTFERNT`)
+- SSH-Key zum VPS: `~/.ssh/emailrelay_vps` funktioniert direkt (`ssh -i ~/.ssh/emailrelay_vps root@VPS-IP-ENTFERNT`) — Stand 2026-04-28 war hier `~/.ssh/id_ed25519` genannt, der auf dem aktuellen Mac nicht existiert
 - haushaltsbuch-home mit Hauptrepo synchronisiert (alle Fixes seit 2026-04-05 portiert, inkl. OIDC)
 - haushaltsbuch-home auf VPS deployed: https://money.bernauer24.com (Port 8481, `/opt/haushaltsbuch-home/`)
 - `/api/config` gibt jetzt `oidcEnabled` zurück; SSO-Button nur sichtbar wenn OIDC konfiguriert
