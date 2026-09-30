@@ -18,7 +18,9 @@ interface Settings {
   localHasApiKey: boolean;
   localModel: string;
   localUrl: string;
+  matchPaperless: boolean;
   matchQuickEntries: boolean;
+  paperlessConfigured: boolean;
   rulesEnabled: boolean;
 }
 
@@ -523,14 +525,26 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
         <p className="mb-2 text-gray-500 text-xs dark:text-gray-400">
           Beim Import wird für jede Buchung ein Vorschlag für Kategorie und
           Beschreibung gesucht, in dieser Reihenfolge: Schnellerfassung → Regeln
-          → gelernte Empfänger → KI. Du kannst jeden Vorschlag vor dem Import
-          ändern.
+          → gelernte Empfänger → KI. Ein passendes Paperless-Dokument liefert
+          zusätzlich die Beschreibung und wird mit der Buchung verknüpft. Du
+          kannst jeden Vorschlag vor dem Import ändern.
         </p>
         <ToggleRow
           checked={settings.matchQuickEntries}
           description="Buchungen, die du in der App per Schnellerfassung angelegt hast, werden mit dem Bankumsatz verschmolzen (gleicher Betrag, Datum ±5 Tage). Deine Kategorie und Notiz bleiben erhalten."
           label="Schnellerfassungen abgleichen"
           onChange={(v) => updateSetting({ matchQuickEntries: v })}
+        />
+        <ToggleRow
+          checked={settings.matchPaperless}
+          description={
+            settings.paperlessConfigured
+              ? "Sucht zu jedem Umsatz eine Rechnung oder einen Beleg in Paperless: Betrag im Dokumenttext oder im Betragsfeld, Dokumentdatum bis 45 Tage vor der Zahlung. Der Dokumenttitel wird zur Beschreibung, die Buchung wird mit dem Dokument verknüpft."
+              : "Paperless ist für dieses Haushaltsbuch nicht eingerichtet (Menü „Paperless“)."
+          }
+          disabled={!settings.paperlessConfigured}
+          label="Mit Paperless-Dokumenten abgleichen"
+          onChange={(v) => updateSetting({ matchPaperless: v })}
         />
         <ToggleRow
           checked={settings.rulesEnabled}

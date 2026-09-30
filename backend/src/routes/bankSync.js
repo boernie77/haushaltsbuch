@@ -11,6 +11,7 @@ const {
   Category,
   Household,
   HouseholdMember,
+  PaperlessConfig,
   Transaction,
   MerchantCategoryMapping,
 } = require("../models");
@@ -35,6 +36,7 @@ const {
   applyCsvMapping,
 } = require("../utils/bankImport");
 const { getPeriodForDate } = require("../utils/monthBounds");
+const { matchPaperlessDocuments } = require("../utils/paperlessMatcher");
 
 const TEXT_MAX_LENGTH = 255;
 // Quellen, aus denen beim Import ein Merchant→Kategorie-Mapping gelernt
@@ -266,6 +268,25 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     }
   }
 
+  // Paperless-Dokumente liefern Beschreibung + Verknüpfung, aber keine
+  // Kategorie → die kommt weiter aus Regel/Mapping/KI (siehe unten).
+  let paperlessMatches = new Map();
+  let paperlessError = null;
+  if (household.bankSyncMatchPaperless) {
+    const quickMatched = new Set(skip);
+    suggestions.forEach((s, i) => {
+      if (s) {
+        quickMatched.add(i);
+      }
+    });
+    ({ matches: paperlessMatches, error: paperlessError } =
+      await matchPaperlessDocuments({
+        householdId,
+        rows,
+        skipIndexes: quickMatched,
+      }));
+  }
+
   const rules = household.bankSyncRulesEnabled
     ? await loadRules(householdId)
     : [];
@@ -320,6 +341,30 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     suggestions,
   });
 
+  // Paperless-Dokument an den Vorschlag hängen. Dokumenttitel schlägt die
+  // generische KI-Beschreibung, eine Regel-Beschreibung bleibt aber stehen.
+  for (const [index, doc] of paperlessMatches) {
+    const suggestion = suggestions[index];
+    if (!suggestion) {
+      suggestions[index] = {
+        source: "paperless",
+        categoryId: null,
+        description: doc.title,
+        paperlessDoc: doc,
+      };
+      continue;
+    }
+    suggestion.paperlessDoc = doc;
+    if (!suggestion.description || suggestion.source === "ai") {
+      suggestion.description = doc.title;
+    }
+  }
+  const paperlessStatus = {
+    enabled: household.bankSyncMatchPaperless,
+    matched: paperlessMatches.size,
+    error: paperlessError,
+  };
+
   // Schnellerfassungen im Zeitraum der Datei ohne passenden Bankumsatz →
   // Hinweis (Barzahlung? Tippfehler beim Betrag?).
   const dates = rows
@@ -337,7 +382,7 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
         .map(quickEntryJson)
     : [];
 
-  return { suggestions, aiStatus, unmatchedQuickEntries };
+  return { suggestions, aiStatus, paperlessStatus, unmatchedQuickEntries };
 }
 
 // DELETE /api/bank-sync/imported?householdId=&accountId= — löscht alle bisher
@@ -488,7 +533,7 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
     );
 
     const household = await Household.findByPk(householdId);
-    const { suggestions, aiStatus, unmatchedQuickEntries } =
+    const { suggestions, aiStatus, paperlessStatus, unmatchedQuickEntries } =
       await buildSuggestions({
         household,
         userId: req.user.id,
@@ -505,6 +550,7 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
       })),
       suggestedMapping,
       aiStatus,
+      paperlessStatus,
       unmatchedQuickEntries,
     });
   } catch (err) {
@@ -534,6 +580,7 @@ async function mergeIntoQuickEntry({
     accountId,
     externalRef,
     pendingBankMatch: false,
+    paperlessDocId: entry.paperlessDocId || parsePaperlessDocId(tx),
     merchant: entry.merchant || merchant.slice(0, TEXT_MAX_LENGTH) || null,
     categoryId: tx.categoryId === undefined ? entry.categoryId : categoryId,
     description: description
@@ -541,6 +588,11 @@ async function mergeIntoQuickEntry({
       : entry.description,
     note,
   });
+}
+
+function parsePaperlessDocId(tx) {
+  const id = Number.parseInt(tx.paperlessDocId, 10);
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 // Sub-Konto-Kategorien (z.B. Spesen) wie beim manuellen Anlegen behandeln:
@@ -675,6 +727,7 @@ router.post("/import", auth, async (req, res) => {
           userId: req.user.id,
           accountId,
           externalRef,
+          paperlessDocId: parsePaperlessDocId(tx),
           ...subAccountFields(
             categoriesById.get(categoryId),
             tx.date,
@@ -726,9 +779,14 @@ router.post("/import", auth, async (req, res) => {
 
 // ── Einstellungen: automatische Zuordnung ────────────────────────────────────
 
-function settingsJson(household, aiKeyAvailable, canEditLocalServer) {
+function settingsJson(
+  household,
+  { aiKeyAvailable, canEditLocalServer, paperlessConfigured }
+) {
   return {
     matchQuickEntries: household.bankSyncMatchQuickEntries,
+    matchPaperless: household.bankSyncMatchPaperless,
+    paperlessConfigured,
     rulesEnabled: household.bankSyncRulesEnabled,
     aiEnabled: household.bankSyncAiEnabled,
     aiProvider: household.bankSyncAiProvider || AI_PROVIDERS.anthropic,
@@ -746,7 +804,17 @@ function settingsJson(household, aiKeyAvailable, canEditLocalServer) {
 
 async function sendSettings(res, household, member, userId) {
   const apiKey = await resolveApiKey(household.id, userId);
-  res.json(settingsJson(household, !!apiKey, member?.role === "admin"));
+  const paperlessConfig = await PaperlessConfig.findOne({
+    where: { householdId: household.id, isActive: true },
+    attributes: ["id"],
+  });
+  res.json(
+    settingsJson(household, {
+      aiKeyAvailable: !!apiKey,
+      canEditLocalServer: member?.role === "admin",
+      paperlessConfigured: !!paperlessConfig,
+    })
+  );
 }
 
 // GET /api/bank-sync/settings?householdId=
@@ -800,6 +868,7 @@ router.put("/settings", auth, async (req, res) => {
     const household = await Household.findByPk(householdId);
     const fields = {
       matchQuickEntries: "bankSyncMatchQuickEntries",
+      matchPaperless: "bankSyncMatchPaperless",
       rulesEnabled: "bankSyncRulesEnabled",
       aiEnabled: "bankSyncAiEnabled",
       aiDescriptions: "bankSyncAiDescriptions",

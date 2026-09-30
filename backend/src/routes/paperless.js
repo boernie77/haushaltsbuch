@@ -15,56 +15,15 @@ const {
   Transaction,
 } = require("../models");
 const { auth } = require("../middleware/auth");
+const {
+  fetchAllPages,
+  getPaperlessClient,
+} = require("../utils/paperlessClient");
 
 async function checkAccess(userId, householdId) {
   return HouseholdMember.findOne({ where: { userId, householdId } });
 }
 
-async function getPaperlessClient(householdId) {
-  const config = await PaperlessConfig.findOne({
-    where: { householdId, isActive: true },
-  });
-  if (!config) {
-    throw new Error("Paperless not configured");
-  }
-  return {
-    baseURL: config.baseUrl.replace(/\/$/, ""),
-    headers: {
-      Authorization: `Token ${config.apiToken}`,
-      "Content-Type": "application/json",
-    },
-  };
-}
-
-// Holt alle Seiten einer paginierten Paperless-API-Ressource
-// Normalisiert data.next auf den konfigurierten Host (Paperless gibt oft interne URLs zurück)
-async function fetchAllPages(baseUrl, headers) {
-  const results = [];
-  let nextUrl = baseUrl;
-  let configuredOrigin;
-  try {
-    configuredOrigin = new URL(baseUrl).origin;
-  } catch {}
-  while (nextUrl) {
-    const { data } = await axios.get(nextUrl, { headers, timeout: 30_000 });
-    results.push(...(data.results || []));
-    if (data.next && configuredOrigin) {
-      try {
-        const u = new URL(data.next);
-        u.protocol = new URL(baseUrl).protocol;
-        u.host = new URL(baseUrl).host;
-        nextUrl = u.toString();
-      } catch {
-        nextUrl = null;
-      }
-    } else {
-      nextUrl = null;
-    }
-  }
-  return results;
-}
-
-// GET /api/paperless/config/:householdId
 router.get("/config/:householdId", auth, async (req, res) => {
   try {
     if (!(await checkAccess(req.user.id, req.params.householdId))) {
@@ -335,7 +294,18 @@ router.get("/data/:householdId", auth, async (req, res) => {
         order: [["fullName", "ASC"]],
       }),
     ]);
-    res.json({ documentTypes, correspondents, tags, users });
+    const config = await PaperlessConfig.findOne({
+      where: { householdId, isActive: true },
+      attributes: ["baseUrl"],
+    });
+    res.json({
+      documentTypes,
+      correspondents,
+      tags,
+      users,
+      // Für Links auf verknüpfte Dokumente (/documents/:id/details)
+      baseUrl: config?.baseUrl?.replace(/\/$/, "") || null,
+    });
   } catch {
     res.status(500).json({ error: "Failed to fetch data" });
   }

@@ -343,10 +343,7 @@ router.put("/quick-categories", auth, async (req, res) => {
     const config = parseQuickCategories(member.quickCategories);
     config[type] = ids;
     await member.update({ quickCategories: JSON.stringify(config) });
-    return getQuickCategories(
-      { ...req, query: { householdId, type } },
-      res
-    );
+    return getQuickCategories({ ...req, query: { householdId, type } }, res);
   } catch (err) {
     console.error("[PUT /transactions/quick-categories]", err);
     res.status(500).json({ error: `Fehler: ${err.message}` });

@@ -30,13 +30,35 @@ interface QuickEntry {
   type: "expense" | "income";
 }
 
-type SuggestionSource = "quick" | "rule" | "mapping" | "ai" | "manual";
+type SuggestionSource =
+  | "quick"
+  | "rule"
+  | "mapping"
+  | "ai"
+  | "paperless"
+  | "manual";
+
+interface PaperlessDoc {
+  confidence: "high" | "low";
+  correspondent: string | null;
+  date: string;
+  id: number;
+  title: string;
+  url: string;
+}
+
+interface PaperlessStatus {
+  enabled: boolean;
+  error: string | null;
+  matched: number;
+}
 
 interface Suggestion {
   categoryId: string | null;
   confidence?: "high" | "low";
   description: string | null;
   matchTransactionId?: string;
+  paperlessDoc?: PaperlessDoc;
   quickEntry?: QuickEntry;
   rulePattern?: string;
   source: SuggestionSource;
@@ -92,6 +114,10 @@ const SOURCE_BADGES: Record<SuggestionSource, { label: string; cls: string }> =
       label: "✨ KI",
       cls: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
     },
+    paperless: {
+      label: "📄 Paperless",
+      cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+    },
     manual: {
       label: "Geändert",
       cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
@@ -145,6 +171,8 @@ export default function BankSyncPage() {
   const [included, setIncluded] = useState<boolean[]>([]);
   const [edits, setEdits] = useState<RowEdit[]>([]);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [paperlessStatus, setPaperlessStatus] =
+    useState<PaperlessStatus | null>(null);
   const [unmatchedQuickEntries, setUnmatchedQuickEntries] = useState<
     QuickEntry[]
   >([]);
@@ -197,6 +225,7 @@ export default function BankSyncPage() {
     setIncluded([]);
     setEdits([]);
     setAiStatus(null);
+    setPaperlessStatus(null);
     setUnmatchedQuickEntries([]);
   };
 
@@ -258,6 +287,7 @@ export default function BankSyncPage() {
     );
     setEdits(newRows.map(initialEdit));
     setAiStatus(data.aiStatus || null);
+    setPaperlessStatus(data.paperlessStatus || null);
     setUnmatchedQuickEntries(data.unmatchedQuickEntries || []);
   };
 
@@ -357,6 +387,7 @@ export default function BankSyncPage() {
         description: edit?.description || null,
         suggestionSource: edit?.source || null,
         matchTransactionId: row.suggestion?.matchTransactionId || null,
+        paperlessDocId: row.suggestion?.paperlessDoc?.id || null,
       }));
     if (selected.length === 0) {
       toast.error("Keine Buchungen ausgewählt");
@@ -615,6 +646,19 @@ export default function BankSyncPage() {
                 </div>
               </div>
 
+              {paperlessStatus?.error && (
+                <p className="rounded-lg bg-amber-50 p-2 text-amber-800 text-xs dark:bg-amber-950/30 dark:text-amber-300">
+                  {paperlessStatus.error}
+                </p>
+              )}
+              {!paperlessStatus?.error &&
+                (paperlessStatus?.matched ?? 0) > 0 && (
+                  <p className="text-orange-700 text-xs dark:text-orange-300">
+                    📄 {paperlessStatus?.matched} Buchungen mit einem
+                    Paperless-Dokument verknüpft. Die Beschreibung kommt aus dem
+                    Dokumenttitel.
+                  </p>
+                )}
               {aiStatus?.enabled && aiStatus.error && (
                 <p className="rounded-lg bg-amber-50 p-2 text-amber-800 text-xs dark:bg-amber-950/30 dark:text-amber-300">
                   {aiStatus.error}
@@ -833,6 +877,18 @@ function SuggestionCell({
           </span>
         )}
       </div>
+      {suggestion?.paperlessDoc && (
+        <a
+          className="block truncate text-[11px] text-orange-700 hover:underline dark:text-orange-300"
+          href={suggestion.paperlessDoc.url}
+          rel="noopener noreferrer"
+          target="_blank"
+          title={`${suggestion.paperlessDoc.title} vom ${fmtDate(suggestion.paperlessDoc.date)}${suggestion.paperlessDoc.confidence === "low" ? ", Absender nicht eindeutig: bitte prüfen" : ""}`}
+        >
+          📄 {suggestion.paperlessDoc.title}
+          {suggestion.paperlessDoc.confidence === "low" && " (prüfen)"}
+        </a>
+      )}
       <select
         aria-label="Kategorie"
         className="input py-1 text-xs"

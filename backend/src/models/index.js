@@ -109,6 +109,7 @@ const Household = sequelize.define(
     // Bank-Sync: Quellen für die automatische Zuordnung beim Import
     // (siehe utils/bankCategorizer.js). KI standardmäßig aus.
     bankSyncMatchQuickEntries: { type: DataTypes.BOOLEAN, defaultValue: true },
+    bankSyncMatchPaperless: { type: DataTypes.BOOLEAN, defaultValue: true },
     bankSyncRulesEnabled: { type: DataTypes.BOOLEAN, defaultValue: true },
     bankSyncAiEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
     bankSyncAiModel: {

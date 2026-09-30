@@ -1563,6 +1563,21 @@ export default function TransactionsPage() {
                           <FileText size={16} />
                         </button>
                       )}
+                      {/* Per Bank-Sync verknüpftes Paperless-Dokument (ohne
+                          eigenes Quittungsfoto) → direkt öffnen */}
+                      {!t.receiptImage &&
+                        t.paperlessDocId &&
+                        paperlessData?.baseUrl && (
+                          <a
+                            className="text-green-500 transition-colors hover:text-green-600"
+                            href={`${paperlessData.baseUrl}/documents/${t.paperlessDocId}/details`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                            title="Dokument in Paperless öffnen"
+                          >
+                            <FileText size={16} />
+                          </a>
+                        )}
                     </div>
                   </td>
                 </tr>
