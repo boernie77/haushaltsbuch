@@ -151,6 +151,12 @@ const HouseholdMember = sequelize.define(
       defaultValue: "member",
     },
     joinedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+    quickCategories: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment:
+        'Schnellerfassung: JSON {"expense": [categoryId], "income": [...]}',
+    },
   },
   { tableName: "household_members", timestamps: false }
 );

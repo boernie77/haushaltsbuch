@@ -40,9 +40,19 @@ export const transactionAPI = {
     }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
-  frequentCategories: (householdId: string, type: "expense" | "income") =>
-    api.get("/transactions/frequent-categories", {
+  quickCategories: (householdId: string, type: "expense" | "income") =>
+    api.get("/transactions/quick-categories", {
       params: { householdId, type },
+    }),
+  setQuickCategories: (
+    householdId: string,
+    type: "expense" | "income",
+    categoryIds: string[]
+  ) =>
+    api.put("/transactions/quick-categories", {
+      householdId,
+      type,
+      categoryIds,
     }),
 };
 

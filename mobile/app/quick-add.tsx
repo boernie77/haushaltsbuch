@@ -4,7 +4,9 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -12,8 +14,6 @@ import {
 } from "react-native";
 import {
   Button,
-  Modal,
-  Portal,
   SegmentedButtons,
   Text,
   TextInput,
@@ -32,6 +32,9 @@ import { useAuthStore } from "../src/store/authStore";
 // Schnellerfassung: Betrag + Kategorie + Stichwort in wenigen Sekunden direkt
 // beim Bezahlen. Die Buchung wird mit pendingBankMatch angelegt und beim
 // nächsten Bank-Sync-Import (Web) mit dem passenden Bankumsatz verschmolzen.
+//
+// Hinweis: Dieser Screen ist ein natives Modal (presentation: "modal"). Paper-
+// Portals rendern hinter nativen Modals → hier nur React-Native-<Modal>.
 
 interface QuickCategory {
   icon: string;
@@ -42,8 +45,8 @@ interface QuickCategory {
 
 type TxType = "expense" | "income";
 
-// 7 Kacheln + "Mehr" = 2 Reihen à 4.
-const TILE_COUNT = 7;
+// Standard laut Backend (GET /transactions/quick-categories), falls offline.
+const DEFAULT_MAX_TILES = 11;
 const MAX_DECIMALS = 2;
 const MAX_INTEGER_DIGITS = 7;
 const KEYPAD_KEYS = [
@@ -90,6 +93,323 @@ function parseAmount(input: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function moveItem<T>(list: T[], from: number, to: number) {
+  if (to < 0 || to >= list.length) {
+    return list;
+  }
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+interface TileProps {
+  category: QuickCategory;
+  highlighted: boolean;
+  onPress: () => void;
+}
+
+function CategoryTile({ category, highlighted, onPress }: TileProps) {
+  const theme = useTheme() as any;
+  return (
+    <TouchableOpacity
+      accessibilityLabel={categoryName(category)}
+      accessibilityState={{ selected: highlighted }}
+      onPress={onPress}
+      style={[
+        styles.tile,
+        {
+          backgroundColor: highlighted
+            ? theme.colors.primaryContainer
+            : theme.colors.cardBackground,
+          borderColor: highlighted
+            ? theme.colors.primary
+            : theme.colors.outline,
+        },
+      ]}
+    >
+      <Text style={styles.tileIcon}>{category.icon}</Text>
+      <Text
+        numberOfLines={1}
+        style={[styles.tileLabel, { color: theme.colors.onSurface }]}
+      >
+        {categoryName(category)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+interface AllCategoriesModalProps {
+  categories: QuickCategory[];
+  onClose: () => void;
+  onSelect: (category: QuickCategory) => void;
+  selectedId: string | null;
+  visible: boolean;
+}
+
+function AllCategoriesModal({
+  categories,
+  onClose,
+  onSelect,
+  selectedId,
+  visible,
+}: AllCategoriesModalProps) {
+  const theme = useTheme() as any;
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onClose}
+      transparent
+      visible={visible}
+    >
+      <Pressable
+        accessibilityLabel="Schließen"
+        onPress={onClose}
+        style={styles.backdrop}
+      >
+        {/* Innerer Pressable fängt Taps ab, damit sie nicht schließen. */}
+        <Pressable
+          style={[styles.sheet, { backgroundColor: theme.colors.surface }]}
+        >
+          <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
+            Kategorie wählen
+          </Text>
+          <ScrollView>
+            <View style={styles.tileGrid}>
+              {categories.map((category) => (
+                <CategoryTile
+                  category={category}
+                  highlighted={selectedId === category.id}
+                  key={category.id}
+                  onPress={() => onSelect(category)}
+                />
+              ))}
+            </View>
+            {categories.length === 0 && (
+              <Text style={{ color: theme.colors.onSurface, opacity: 0.6 }}>
+                Kategorien konnten nicht geladen werden.
+              </Text>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+interface EditTilesModalProps {
+  allCategories: QuickCategory[];
+  custom: boolean;
+  initialTiles: QuickCategory[];
+  maxTiles: number;
+  onClose: () => void;
+  onSave: (categoryIds: string[]) => Promise<void>;
+  type: TxType;
+  visible: boolean;
+}
+
+// Kacheln auswählen + sortieren. Pfeile statt Drag & Drop, damit keine
+// zusätzliche native Bibliothek nötig ist.
+function EditTilesModal({
+  allCategories,
+  custom,
+  initialTiles,
+  maxTiles,
+  onClose,
+  onSave,
+  type,
+  visible,
+}: EditTilesModalProps) {
+  const theme = useTheme() as any;
+  const insets = useSafeAreaInsets();
+  const [chosen, setChosen] = useState<QuickCategory[]>(initialTiles);
+  const [saving, setSaving] = useState(false);
+
+  const chosenIds = new Set(chosen.map((c) => c.id));
+  const available = allCategories.filter((c) => !chosenIds.has(c.id));
+  const full = chosen.length >= maxTiles;
+
+  const save = async (ids: string[]) => {
+    setSaving(true);
+    try {
+      await onSave(ids);
+      onClose();
+    } catch {
+      // Fehler-Toast kommt aus onSave; Modal bleibt offen zum Wiederholen.
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const iconButton = (
+    icon: string,
+    label: string,
+    onPress: () => void,
+    disabled = false
+  ) => (
+    <TouchableOpacity
+      accessibilityLabel={label}
+      disabled={disabled}
+      hitSlop={8}
+      onPress={onPress}
+      style={{ opacity: disabled ? 0.25 : 1, padding: 4 }}
+    >
+      <MaterialCommunityIcons
+        color={theme.colors.onSurface}
+        name={icon as any}
+        size={22}
+      />
+    </TouchableOpacity>
+  );
+
+  return (
+    <Modal
+      animationType="slide"
+      onRequestClose={onClose}
+      // Beim Öffnen den aktuellen Stand übernehmen (nicht bei jedem Render,
+      // sonst gehen Änderungen verloren).
+      onShow={() => setChosen(initialTiles)}
+      presentationStyle="pageSheet"
+      visible={visible}
+    >
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.colors.background,
+            paddingBottom: insets.bottom,
+          },
+        ]}
+      >
+        <View
+          style={[styles.editHeader, { borderColor: theme.colors.outline }]}
+        >
+          <TouchableOpacity disabled={saving} onPress={onClose}>
+            <Text style={{ color: theme.colors.primary, fontSize: 16 }}>
+              Abbrechen
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.editTitle, { color: theme.colors.onSurface }]}>
+            Kacheln {type === "expense" ? "Ausgaben" : "Einnahmen"}
+          </Text>
+          <TouchableOpacity
+            disabled={saving}
+            onPress={() => save(chosen.map((c) => c.id))}
+          >
+            <Text
+              style={{
+                color: theme.colors.primary,
+                fontSize: 16,
+                fontWeight: "600",
+              }}
+            >
+              Fertig
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.editContent}>
+          <Text
+            style={[styles.sectionLabel, { color: theme.colors.onSurface }]}
+          >
+            Deine Kacheln ({chosen.length}/{maxTiles})
+          </Text>
+          {chosen.length === 0 && (
+            <Text style={[styles.hint, { color: theme.colors.onSurface }]}>
+              Noch keine Kacheln. Tippe unten auf eine Kategorie, um sie
+              hinzuzufügen.
+            </Text>
+          )}
+          {chosen.map((category, index) => (
+            <View
+              key={category.id}
+              style={[
+                styles.editRow,
+                { backgroundColor: theme.colors.cardBackground },
+              ]}
+            >
+              <Text style={styles.editRowIcon}>{category.icon}</Text>
+              <Text
+                numberOfLines={1}
+                style={[styles.editRowLabel, { color: theme.colors.onSurface }]}
+              >
+                {categoryName(category)}
+              </Text>
+              {iconButton(
+                "arrow-up",
+                "Nach oben",
+                () => setChosen((prev) => moveItem(prev, index, index - 1)),
+                index === 0
+              )}
+              {iconButton(
+                "arrow-down",
+                "Nach unten",
+                () => setChosen((prev) => moveItem(prev, index, index + 1)),
+                index === chosen.length - 1
+              )}
+              {iconButton("close", "Entfernen", () =>
+                setChosen((prev) => prev.filter((c) => c.id !== category.id))
+              )}
+            </View>
+          ))}
+
+          <Text
+            style={[
+              styles.sectionLabel,
+              { color: theme.colors.onSurface, marginTop: 20 },
+            ]}
+          >
+            Hinzufügen
+          </Text>
+          {full && (
+            <Text style={[styles.hint, { color: theme.colors.onSurface }]}>
+              Maximal {maxTiles} Kacheln. Entferne erst eine.
+            </Text>
+          )}
+          {available.map((category) => (
+            <TouchableOpacity
+              disabled={full}
+              key={category.id}
+              onPress={() => setChosen((prev) => [...prev, category])}
+              style={[
+                styles.editRow,
+                {
+                  backgroundColor: theme.colors.cardBackground,
+                  opacity: full ? 0.4 : 1,
+                },
+              ]}
+            >
+              <Text style={styles.editRowIcon}>{category.icon}</Text>
+              <Text
+                numberOfLines={1}
+                style={[styles.editRowLabel, { color: theme.colors.onSurface }]}
+              >
+                {categoryName(category)}
+              </Text>
+              <MaterialCommunityIcons
+                color={theme.colors.primary}
+                name="plus-circle-outline"
+                size={22}
+              />
+            </TouchableOpacity>
+          ))}
+
+          {custom && (
+            <Button
+              disabled={saving}
+              mode="text"
+              onPress={() => save([])}
+              style={{ marginTop: 16 }}
+            >
+              Zurücksetzen: automatisch nach Nutzung
+            </Button>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
 export default function QuickAddScreen() {
   const theme = useTheme() as any;
   const insets = useSafeAreaInsets();
@@ -98,47 +418,84 @@ export default function QuickAddScreen() {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [tiles, setTiles] = useState<QuickCategory[]>([]);
+  const [customTiles, setCustomTiles] = useState(false);
+  const [maxTiles, setMaxTiles] = useState(DEFAULT_MAX_TILES);
   const [allCategories, setAllCategories] = useState<QuickCategory[]>([]);
   const [selected, setSelected] = useState<QuickCategory | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const householdId = currentHousehold?.id;
+
   useEffect(() => {
-    if (!currentHousehold) {
+    if (!householdId) {
       return;
     }
-    const cacheKey = `quick_categories_${currentHousehold.id}_${type}`;
+    const cacheKey = `quick_all_categories_${householdId}`;
     const load = async () => {
       try {
-        const { data } = await transactionAPI.frequentCategories(
-          currentHousehold.id,
-          type
-        );
-        setTiles(data.categories || []);
+        const { data } = await categoryAPI.getAll(householdId);
+        setAllCategories(data.categories || []);
         await cache.set(cacheKey, data.categories || []);
       } catch {
-        setTiles((await cache.get<QuickCategory[]>(cacheKey)) || []);
+        setAllCategories((await cache.get<QuickCategory[]>(cacheKey)) || []);
       }
     };
     load();
-  }, [currentHousehold, type]);
+  }, [householdId]);
 
-  const openAllCategories = async () => {
-    setShowAll(true);
-    if (allCategories.length > 0 || !currentHousehold) {
+  useEffect(() => {
+    if (!householdId) {
       return;
     }
-    const cacheKey = `quick_all_categories_${currentHousehold.id}`;
+    const cacheKey = `quick_tiles_${householdId}_${type}`;
+    const load = async () => {
+      try {
+        const { data } = await transactionAPI.quickCategories(
+          householdId,
+          type
+        );
+        setTiles(data.categories || []);
+        setCustomTiles(!!data.custom);
+        setMaxTiles(data.maxTiles || DEFAULT_MAX_TILES);
+        await cache.set(cacheKey, data);
+      } catch {
+        const cached = await cache.get<any>(cacheKey);
+        setTiles(cached?.categories || []);
+        setCustomTiles(!!cached?.custom);
+      }
+    };
+    load();
+  }, [householdId, type]);
+
+  const saveTiles = async (categoryIds: string[]) => {
+    if (!householdId) {
+      return;
+    }
     try {
-      const { data } = await categoryAPI.getAll(currentHousehold.id);
-      setAllCategories(data.categories || []);
-      await cache.set(cacheKey, data.categories || []);
-    } catch {
-      setAllCategories((await cache.get<QuickCategory[]>(cacheKey)) || []);
+      const { data } = await transactionAPI.setQuickCategories(
+        householdId,
+        type,
+        categoryIds
+      );
+      setTiles(data.categories || []);
+      setCustomTiles(!!data.custom);
+      await cache.set(`quick_tiles_${householdId}_${type}`, data);
+      Toast.show({ type: "success", text1: "Kacheln gespeichert" });
+    } catch (err: any) {
+      Toast.show({
+        type: "error",
+        text1: "Kacheln nicht gespeichert",
+        text2: isNetworkError(err)
+          ? "Keine Verbindung zum Server"
+          : err.response?.data?.error || err.message,
+      });
+      throw err;
     }
   };
 
-  const visibleTiles = tiles.slice(0, TILE_COUNT);
+  const visibleTiles = tiles.slice(0, maxTiles);
   const selectedIsTile = visibleTiles.some((c) => c.id === selected?.id);
   const amountValue = parseAmount(amount);
   const accent =
@@ -214,36 +571,7 @@ export default function QuickAddScreen() {
     }
   };
 
-  const renderTile = (category: QuickCategory) => {
-    const isSelected = selected?.id === category.id;
-    return (
-      <TouchableOpacity
-        accessibilityLabel={categoryName(category)}
-        accessibilityState={{ selected: isSelected }}
-        key={category.id}
-        onPress={() => setSelected(isSelected ? null : category)}
-        style={[
-          styles.tile,
-          {
-            backgroundColor: isSelected
-              ? theme.colors.primaryContainer
-              : theme.colors.cardBackground,
-            borderColor: isSelected
-              ? theme.colors.primary
-              : theme.colors.outline,
-          },
-        ]}
-      >
-        <Text style={styles.tileIcon}>{category.icon}</Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.tileLabel, { color: theme.colors.onSurface }]}
-        >
-          {categoryName(category)}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
+  const moreHighlighted = !!selected && !selectedIsTile;
 
   return (
     <KeyboardAvoidingView
@@ -294,33 +622,40 @@ export default function QuickAddScreen() {
           <Text style={[styles.amountCurrency, { color: accent }]}> €</Text>
         </Text>
 
-        <View style={styles.tileGrid}>
-          {visibleTiles.map(renderTile)}
+        <View>
+          <View style={styles.tileGrid}>
+            {visibleTiles.map((category) => (
+              <CategoryTile
+                category={category}
+                highlighted={selected?.id === category.id}
+                key={category.id}
+                onPress={() =>
+                  setSelected(selected?.id === category.id ? null : category)
+                }
+              />
+            ))}
+            <CategoryTile
+              category={
+                moreHighlighted && selected
+                  ? selected
+                  : { id: "more", icon: "⋯", name: "Mehr" }
+              }
+              highlighted={moreHighlighted}
+              onPress={() => setShowAll(true)}
+            />
+          </View>
           <TouchableOpacity
-            accessibilityLabel="Weitere Kategorien"
-            onPress={openAllCategories}
-            style={[
-              styles.tile,
-              {
-                backgroundColor:
-                  selected && !selectedIsTile
-                    ? theme.colors.primaryContainer
-                    : theme.colors.cardBackground,
-                borderColor:
-                  selected && !selectedIsTile
-                    ? theme.colors.primary
-                    : theme.colors.outline,
-              },
-            ]}
+            accessibilityLabel="Kacheln anpassen"
+            onPress={() => setEditing(true)}
+            style={styles.editLink}
           >
-            <Text style={styles.tileIcon}>
-              {selected && !selectedIsTile ? selected.icon : "⋯"}
-            </Text>
-            <Text
-              numberOfLines={1}
-              style={[styles.tileLabel, { color: theme.colors.onSurface }]}
-            >
-              {selected && !selectedIsTile ? categoryName(selected) : "Mehr"}
+            <MaterialCommunityIcons
+              color={theme.colors.primary}
+              name="pencil-outline"
+              size={14}
+            />
+            <Text style={{ color: theme.colors.primary, fontSize: 13 }}>
+              {customTiles ? "Kacheln anpassen" : "Eigene Kacheln festlegen"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -379,54 +714,26 @@ export default function QuickAddScreen() {
         </Text>
       </ScrollView>
 
-      <Portal>
-        <Modal
-          contentContainerStyle={[
-            styles.modal,
-            { backgroundColor: theme.colors.surface },
-          ]}
-          onDismiss={() => setShowAll(false)}
-          visible={showAll}
-        >
-          <Text style={[styles.modalTitle, { color: theme.colors.onSurface }]}>
-            Kategorie wählen
-          </Text>
-          <ScrollView>
-            <View style={styles.tileGrid}>
-              {allCategories.map((category) => (
-                <TouchableOpacity
-                  key={category.id}
-                  onPress={() => {
-                    setSelected(category);
-                    setShowAll(false);
-                  }}
-                  style={[
-                    styles.tile,
-                    {
-                      backgroundColor:
-                        selected?.id === category.id
-                          ? theme.colors.primaryContainer
-                          : theme.colors.cardBackground,
-                      borderColor: theme.colors.outline,
-                    },
-                  ]}
-                >
-                  <Text style={styles.tileIcon}>{category.icon}</Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.tileLabel,
-                      { color: theme.colors.onSurface },
-                    ]}
-                  >
-                    {categoryName(category)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </Modal>
-      </Portal>
+      <AllCategoriesModal
+        categories={allCategories}
+        onClose={() => setShowAll(false)}
+        onSelect={(category) => {
+          setSelected(category);
+          setShowAll(false);
+        }}
+        selectedId={selected?.id || null}
+        visible={showAll}
+      />
+      <EditTilesModal
+        allCategories={allCategories}
+        custom={customTiles}
+        initialTiles={visibleTiles}
+        maxTiles={maxTiles}
+        onClose={() => setEditing(false)}
+        onSave={saveTiles}
+        type={type}
+        visible={editing}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -449,14 +756,15 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
   },
   amountCurrency: { fontSize: 28, fontWeight: "400" },
+  // 4 Spalten, linksbündig (auch bei unvollständiger letzter Reihe).
   tileGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "space-between",
+    columnGap: 6,
     rowGap: 8,
   },
   tile: {
-    width: "23.5%",
+    width: "23%",
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 8,
@@ -465,6 +773,13 @@ const styles = StyleSheet.create({
   },
   tileIcon: { fontSize: 22 },
   tileLabel: { fontSize: 11, marginTop: 2 },
+  editLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    gap: 4,
+    paddingTop: 8,
+  },
   keypad: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -480,6 +795,40 @@ const styles = StyleSheet.create({
   },
   keyText: { fontSize: 22, fontWeight: "500" },
   meta: { fontSize: 12, textAlign: "center", opacity: 0.6 },
-  modal: { margin: 20, borderRadius: 16, padding: 16, maxHeight: "80%" },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  sheet: { borderRadius: 16, padding: 16, maxHeight: "80%" },
   modalTitle: { fontSize: 18, fontWeight: "600", marginBottom: 12 },
+  editHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  editTitle: { fontSize: 17, fontWeight: "600" },
+  editContent: { padding: 16, gap: 6 },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    opacity: 0.6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  hint: { fontSize: 13, opacity: 0.6, marginBottom: 6 },
+  editRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  editRowIcon: { fontSize: 20 },
+  editRowLabel: { flex: 1, fontSize: 15 },
 });

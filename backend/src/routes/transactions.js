@@ -223,69 +223,137 @@ router.delete("/recurring/:id", auth, async (req, res) => {
   }
 });
 
-// POST /api/transactions
-// GET /api/transactions/frequent-categories?householdId=&type=&limit=
-// Meistgenutzte Kategorien der letzten 90 Tage (für die Schnellerfassung).
-// Wird mit selten genutzten Kategorien aufgefüllt, falls es zu wenige gibt.
-const FREQUENT_CATEGORY_DAYS = 90;
-const FREQUENT_CATEGORY_DEFAULT_LIMIT = 8;
-router.get("/frequent-categories", auth, async (req, res) => {
+// ── Schnellerfassung: Kategorie-Kacheln ──────────────────────────────────────
+// Pro Mitglied + Haushaltsbuch selbst gewählt und sortiert
+// (household_members."quickCategories"). Ohne eigene Auswahl: automatisch
+// nach Nutzung der letzten 90 Tage — nur von Hand erfasste Buchungen, damit
+// Daueraufträge und Bank-Importe (Kredit, Versicherung, …) nicht dominieren.
+const QUICK_CATEGORY_USAGE_DAYS = 90;
+// 3 Reihen à 4 Kacheln, eine davon ist "Mehr".
+const QUICK_CATEGORY_MAX_TILES = 11;
+const QUICK_CATEGORY_DEFAULT_TILES = 7;
+
+function quickCategoryType(value) {
+  return value === "income" ? "income" : "expense";
+}
+
+function parseQuickCategories(raw) {
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadHouseholdCategories(householdId) {
+  return Category.findAll({
+    where: {
+      [Op.or]: [{ householdId }, { householdId: null, isSystem: true }],
+    },
+    order: [
+      ["sortOrder", "ASC"],
+      ["name", "ASC"],
+    ],
+  });
+}
+
+async function mostUsedCategoryIds(householdId, type) {
+  const since = new Date();
+  since.setDate(since.getDate() - QUICK_CATEGORY_USAGE_DAYS);
+  const usage = await Transaction.findAll({
+    attributes: [
+      "categoryId",
+      [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+    ],
+    where: {
+      householdId,
+      type,
+      categoryId: { [Op.ne]: null },
+      isRecurring: { [Op.ne]: true },
+      recurringSourceId: null,
+      externalRef: null,
+      date: { [Op.gte]: since },
+    },
+    group: ["categoryId"],
+    order: [[sequelize.literal("count"), "DESC"]],
+    raw: true,
+  });
+  return usage.map((u) => u.categoryId);
+}
+
+// GET /api/transactions/quick-categories?householdId=&type=
+// → { categories, custom, maxTiles }
+async function getQuickCategories(req, res) {
   try {
     const { householdId } = req.query;
-    const type = req.query.type === "income" ? "income" : "expense";
-    const limit =
-      Number.parseInt(req.query.limit, 10) || FREQUENT_CATEGORY_DEFAULT_LIMIT;
-    if (!(await checkHouseholdAccess(req.user.id, householdId))) {
+    const type = quickCategoryType(req.query.type);
+    const member = await checkHouseholdAccess(req.user.id, householdId);
+    if (!member) {
       return res.status(403).json({ error: "Access denied" });
     }
-    const since = new Date();
-    since.setDate(since.getDate() - FREQUENT_CATEGORY_DAYS);
-    const usage = await Transaction.findAll({
-      attributes: [
-        "categoryId",
-        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
-      ],
-      where: {
-        householdId,
-        type,
-        categoryId: { [Op.ne]: null },
-        isRecurring: { [Op.ne]: true },
-        date: { [Op.gte]: since },
-      },
-      group: ["categoryId"],
-      order: [[sequelize.literal("count"), "DESC"]],
-      raw: true,
-    });
-    const categories = await Category.findAll({
-      where: {
-        [Op.or]: [{ householdId }, { householdId: null, isSystem: true }],
-      },
-      order: [
-        ["sortOrder", "ASC"],
-        ["name", "ASC"],
-      ],
-    });
+    const categories = await loadHouseholdCategories(householdId);
     const byId = new Map(categories.map((c) => [c.id, c]));
-    const frequent = usage
-      .map((u) => byId.get(u.categoryId))
-      .filter(Boolean)
-      .slice(0, limit);
-    const frequentIds = new Set(frequent.map((c) => c.id));
-    for (const c of categories) {
-      if (frequent.length >= limit) {
-        break;
-      }
-      if (!frequentIds.has(c.id)) {
-        frequent.push(c);
-      }
+
+    const customIds = parseQuickCategories(member.quickCategories)[type];
+    const custom = Array.isArray(customIds) && customIds.length > 0;
+    let tiles;
+    if (custom) {
+      // Gelöschte Kategorien fallen still heraus.
+      tiles = customIds.map((id) => byId.get(id)).filter(Boolean);
+    } else {
+      const usedIds = await mostUsedCategoryIds(householdId, type);
+      tiles = usedIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .slice(0, QUICK_CATEGORY_DEFAULT_TILES);
     }
-    res.json({ categories: frequent });
+    res.json({
+      categories: tiles.slice(0, QUICK_CATEGORY_MAX_TILES),
+      custom,
+      maxTiles: QUICK_CATEGORY_MAX_TILES,
+    });
   } catch (err) {
-    console.error("[GET /transactions/frequent-categories]", err);
+    console.error("[GET /transactions/quick-categories]", err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+}
+router.get("/quick-categories", auth, getQuickCategories);
+// Alter Pfad (App v1.0.17/18) — gleiche Logik.
+router.get("/frequent-categories", auth, getQuickCategories);
+
+// PUT /api/transactions/quick-categories — { householdId, type, categoryIds }
+// Leere Liste = zurück auf automatisch.
+router.put("/quick-categories", auth, async (req, res) => {
+  try {
+    const { householdId, categoryIds } = req.body;
+    const type = quickCategoryType(req.body.type);
+    const member = await checkHouseholdAccess(req.user.id, householdId);
+    if (!member) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    if (!Array.isArray(categoryIds)) {
+      return res.status(400).json({ error: "categoryIds required" });
+    }
+    const categories = await loadHouseholdCategories(householdId);
+    const validIds = new Set(categories.map((c) => c.id));
+    const ids = [...new Set(categoryIds)]
+      .filter((id) => validIds.has(id))
+      .slice(0, QUICK_CATEGORY_MAX_TILES);
+    const config = parseQuickCategories(member.quickCategories);
+    config[type] = ids;
+    await member.update({ quickCategories: JSON.stringify(config) });
+    return getQuickCategories(
+      { ...req, query: { householdId, type } },
+      res
+    );
+  } catch (err) {
+    console.error("[PUT /transactions/quick-categories]", err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
   }
 });
 
+// POST /api/transactions
 router.post("/", auth, upload.single("receipt"), async (req, res) => {
   try {
     // multer kann bei doppelt angehängten Feldern Arrays liefern → normalisieren
