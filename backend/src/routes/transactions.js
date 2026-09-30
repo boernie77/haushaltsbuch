@@ -224,6 +224,68 @@ router.delete("/recurring/:id", auth, async (req, res) => {
 });
 
 // POST /api/transactions
+// GET /api/transactions/frequent-categories?householdId=&type=&limit=
+// Meistgenutzte Kategorien der letzten 90 Tage (für die Schnellerfassung).
+// Wird mit selten genutzten Kategorien aufgefüllt, falls es zu wenige gibt.
+const FREQUENT_CATEGORY_DAYS = 90;
+const FREQUENT_CATEGORY_DEFAULT_LIMIT = 8;
+router.get("/frequent-categories", auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    const type = req.query.type === "income" ? "income" : "expense";
+    const limit =
+      Number.parseInt(req.query.limit, 10) || FREQUENT_CATEGORY_DEFAULT_LIMIT;
+    if (!(await checkHouseholdAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const since = new Date();
+    since.setDate(since.getDate() - FREQUENT_CATEGORY_DAYS);
+    const usage = await Transaction.findAll({
+      attributes: [
+        "categoryId",
+        [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+      ],
+      where: {
+        householdId,
+        type,
+        categoryId: { [Op.ne]: null },
+        isRecurring: { [Op.ne]: true },
+        date: { [Op.gte]: since },
+      },
+      group: ["categoryId"],
+      order: [[sequelize.literal("count"), "DESC"]],
+      raw: true,
+    });
+    const categories = await Category.findAll({
+      where: {
+        [Op.or]: [{ householdId }, { householdId: null, isSystem: true }],
+      },
+      order: [
+        ["sortOrder", "ASC"],
+        ["name", "ASC"],
+      ],
+    });
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const frequent = usage
+      .map((u) => byId.get(u.categoryId))
+      .filter(Boolean)
+      .slice(0, limit);
+    const frequentIds = new Set(frequent.map((c) => c.id));
+    for (const c of categories) {
+      if (frequent.length >= limit) {
+        break;
+      }
+      if (!frequentIds.has(c.id)) {
+        frequent.push(c);
+      }
+    }
+    res.json({ categories: frequent });
+  } catch (err) {
+    console.error("[GET /transactions/frequent-categories]", err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
 router.post("/", auth, upload.single("receipt"), async (req, res) => {
   try {
     // multer kann bei doppelt angehängten Feldern Arrays liefern → normalisieren
@@ -250,6 +312,7 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
     const subAccountPeriodYear = firstValue(req.body.subAccountPeriodYear);
     const splits = firstValue(req.body.splits);
     const tip = firstValue(req.body.tip);
+    const pendingBankMatch = firstValue(req.body.pendingBankMatch);
 
     const access = await checkHouseholdAccess(req.user.id, householdId);
     if (!access) {
@@ -371,6 +434,11 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
       subAccountPeriodMonth: resolvedSubAccountMonth,
       subAccountPeriodYear: resolvedSubAccountYear,
       excludeFromStats: resolvedExcludeFromStats,
+      // Schnellerfassung (Mobile): wird beim nächsten Bank-Sync-Import mit
+      // dem passenden Bankumsatz verschmolzen (siehe routes/bankSync.js).
+      pendingBankMatch:
+        !recurringActive &&
+        (pendingBankMatch === "true" || pendingBankMatch === true),
     });
 
     // Splits speichern falls vorhanden

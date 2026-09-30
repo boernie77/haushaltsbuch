@@ -40,6 +40,10 @@ export const transactionAPI = {
     }),
   update: (id: string, data: any) => api.put(`/transactions/${id}`, data),
   delete: (id: string) => api.delete(`/transactions/${id}`),
+  frequentCategories: (householdId: string, type: "expense" | "income") =>
+    api.get("/transactions/frequent-categories", {
+      params: { householdId, type },
+    }),
 };
 
 // ── Statistics API ────────────────────────────────────────────────────────────

@@ -2,9 +2,15 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import {
   ActivityIndicator,
   Card,
@@ -139,6 +145,18 @@ export default function HomeScreen() {
         colors={[theme.colors.gradientStart, theme.colors.gradientEnd]}
         style={styles.header}
       >
+        <TouchableOpacity
+          accessibilityLabel="Schnell erfassen"
+          onPress={() => router.push("/quick-add")}
+          style={styles.quickAddButton}
+        >
+          <MaterialCommunityIcons
+            color="#fff"
+            name="lightning-bolt"
+            size={20}
+          />
+          <Text style={styles.quickAddLabel}>Schnell</Text>
+        </TouchableOpacity>
         <Text style={styles.greeting}>
           Hallo, {user?.name?.split(" ")[0]} 👋
         </Text>
@@ -592,6 +610,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: { padding: 24, paddingTop: 56, paddingBottom: 32 },
+  quickAddButton: {
+    position: "absolute",
+    top: 52,
+    right: 20,
+    zIndex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  quickAddLabel: { color: "#fff", fontWeight: "600", fontSize: 13 },
   greeting: { fontSize: 26, fontWeight: "bold", color: "#fff" },
   headerDate: { fontSize: 14, color: "rgba(255,255,255,0.8)", marginTop: 4 },
   householdChip: {

@@ -3,13 +3,8 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { auth } = require("../middleware/auth");
-const {
-  Category,
-  Household,
-  HouseholdMember,
-  GlobalSettings,
-  User,
-} = require("../models");
+const { Category } = require("../models");
+const { resolveApiKey } = require("../utils/anthropicKey");
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -23,38 +18,6 @@ const storage = multer.diskStorage({
     cb(null, `ocr_${Date.now()}${path.extname(file.originalname)}`),
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
-
-// Key priority: 1. Household own key  2. Global key (if user has access)  3. Server env
-async function resolveApiKey(householdId, userId) {
-  // 1. Household's own key
-  if (householdId) {
-    const member = await HouseholdMember.findOne({
-      where: { householdId, userId },
-    });
-    if (!member) {
-      return null;
-    }
-    const household = await Household.findByPk(householdId);
-    if (household?.aiEnabled && household?.anthropicApiKey) {
-      return household.anthropicApiKey;
-    }
-  }
-
-  // 2. Global key — available if public OR if this user has been granted access
-  const global = await GlobalSettings.findByPk("global");
-  if (global?.anthropicApiKey) {
-    if (global.aiKeyPublic) {
-      return global.anthropicApiKey;
-    }
-    const user = await User.findByPk(userId, { attributes: ["aiKeyGranted"] });
-    if (user?.aiKeyGranted) {
-      return global.anthropicApiKey;
-    }
-  }
-
-  // 3. Server env fallback
-  return process.env.ANTHROPIC_API_KEY || null;
-}
 
 // GET /api/ocr/status?householdId=
 router.get("/status", auth, async (req, res) => {

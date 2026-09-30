@@ -1,6 +1,7 @@
 // Bank-Sync-Datei-Import: parst MT940- oder CSV-Exporte aus dem Online-Banking
 // (Sparda-Bank Nürnberg bietet CSV/MT940/CAMT.052, ING bietet CSV) in ein
-// gemeinsames Format {date, amount, purpose, counterpartyName}[], damit
+// gemeinsames Format {date, amount, purpose, counterpartyName,
+// counterpartyIban}[], damit
 // routes/bankSync.js unabhängig vom Ursprungsformat weiterverarbeiten kann.
 const mt940js = require("mt940js");
 const Papa = require("papaparse");
@@ -60,6 +61,13 @@ function extractMt940CounterpartyName(structuredDetails) {
   return parts.join(" ").trim() || null;
 }
 
+// ?31 = Kontonummer/IBAN des Gegenkontos. Nur für IBAN-Regeln genutzt, fließt
+// bewusst NICHT in den Dedup-Hash ein (sonst Dubletten bei Altimporten).
+function extractMt940CounterpartyIban(structuredDetails) {
+  const raw = (structuredDetails?.["31"] || "").replace(/\s/g, "");
+  return raw ? raw.toUpperCase() : null;
+}
+
 function parseMt940(text) {
   const parser = new mt940js.Parser();
   const statements = parser.parse(text);
@@ -71,6 +79,7 @@ function parseMt940(text) {
         amount: typeof t.amount === "number" ? t.amount : null,
         purpose: extractMt940Purpose(t.structuredDetails, t.details),
         counterpartyName: extractMt940CounterpartyName(t.structuredDetails),
+        counterpartyIban: extractMt940CounterpartyIban(t.structuredDetails),
       });
     }
   }
@@ -95,6 +104,14 @@ const COLUMN_GUESSES = {
     "beguenstigter/zahlungspflichtiger",
     "begünstigter/zahlungspflichtiger",
   ],
+  counterpartyIban: [
+    "iban",
+    "kontonummer/iban",
+    "iban auftraggeber",
+    "iban empfänger",
+    "iban zahlungsbeteiligter",
+    "kontonummer",
+  ],
 };
 
 function guessColumn(headers, candidates) {
@@ -114,6 +131,7 @@ function suggestMapping(headers) {
     amount: guessColumn(headers, COLUMN_GUESSES.amount),
     purpose: guessColumn(headers, COLUMN_GUESSES.purpose),
     counterpartyName: guessColumn(headers, COLUMN_GUESSES.counterpartyName),
+    counterpartyIban: guessColumn(headers, COLUMN_GUESSES.counterpartyIban),
   };
 }
 
@@ -144,6 +162,11 @@ function applyCsvMapping(rawRows, columnMapping) {
       : "",
     counterpartyName: columnMapping.counterpartyName
       ? (row[columnMapping.counterpartyName] || "").trim()
+      : null,
+    counterpartyIban: columnMapping.counterpartyIban
+      ? (row[columnMapping.counterpartyIban] || "")
+          .replace(/\s/g, "")
+          .toUpperCase() || null
       : null,
   }));
 }

@@ -212,6 +212,21 @@ export const bankSyncAPI = {
       transactions,
       columnMapping,
     }),
+  getSettings: (householdId: string) =>
+    api.get("/bank-sync/settings", { params: { householdId } }),
+  updateSettings: (householdId: string, d: Record<string, unknown>) =>
+    api.put("/bank-sync/settings", { householdId, ...d }),
+  getRules: (householdId: string) =>
+    api.get("/bank-sync/rules", { params: { householdId } }),
+  createRule: (householdId: string, d: Record<string, unknown>) =>
+    api.post("/bank-sync/rules", { householdId, ...d }),
+  updateRule: (id: string, d: Record<string, unknown>) =>
+    api.put(`/bank-sync/rules/${id}`, d),
+  deleteRule: (id: string) => api.delete(`/bank-sync/rules/${id}`),
+  getQuickEntries: (householdId: string) =>
+    api.get("/bank-sync/quick-entries", { params: { householdId } }),
+  dismissQuickEntry: (id: string) =>
+    api.put(`/bank-sync/quick-entries/${id}/dismiss`),
 };
 
 export const calendarAPI = {

@@ -28,6 +28,12 @@ async function flushOfflineQueue() {
       if (tx.categoryId) {
         form.append("categoryId", tx.categoryId);
       }
+      if (tx.note) {
+        form.append("note", tx.note);
+      }
+      if (tx.pendingBankMatch) {
+        form.append("pendingBankMatch", "true");
+      }
       await transactionAPI.create(form);
       await offlineQueue.remove(tx._offlineId);
       synced++;
@@ -73,6 +79,10 @@ export default function RootLayout() {
             <Stack.Screen name="admin" />
             <Stack.Screen name="paperless-settings" />
             <Stack.Screen name="transaction-detail" />
+            <Stack.Screen
+              name="quick-add"
+              options={{ presentation: "modal" }}
+            />
           </Stack>
           <Toast />
         </PaperProvider>

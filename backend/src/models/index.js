@@ -106,6 +106,16 @@ const Household = sequelize.define(
       defaultValue: 1,
       comment: "Day of month the budget period starts (1-28)",
     },
+    // Bank-Sync: Quellen für die automatische Zuordnung beim Import
+    // (siehe utils/bankCategorizer.js). KI standardmäßig aus.
+    bankSyncMatchQuickEntries: { type: DataTypes.BOOLEAN, defaultValue: true },
+    bankSyncRulesEnabled: { type: DataTypes.BOOLEAN, defaultValue: true },
+    bankSyncAiEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
+    bankSyncAiModel: {
+      type: DataTypes.TEXT,
+      defaultValue: "claude-haiku-4-5",
+    },
+    bankSyncAiDescriptions: { type: DataTypes.BOOLEAN, defaultValue: false },
   },
   { tableName: "households", timestamps: true }
 );
@@ -225,6 +235,12 @@ const Transaction = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
       comment: "Dedup-Hash für Bank-Sync-Importe (siehe bankSync.js)",
+    },
+    pendingBankMatch: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment:
+        "Schnellerfassung, die beim nächsten Bank-Import verschmolzen wird",
     },
   },
   { tableName: "transactions", timestamps: true }
@@ -676,6 +692,39 @@ const MerchantCategoryMapping = sequelize.define(
   }
 );
 
+// ── BankCategorizationRule ────────────────────────────────────────────────────
+// Vom User gepflegte Regeln für den Bank-Sync-Import: "Feld enthält Muster
+// (+ optional Betragsbereich) → Kategorie/Beschreibung". Greifen vor dem
+// gelernten Merchant-Mapping und der KI (siehe utils/bankCategorizer.js).
+const BankCategorizationRule = sequelize.define(
+  "BankCategorizationRule",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    field: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: "any",
+      comment: "any | counterparty | purpose | iban",
+    },
+    pattern: { type: DataTypes.TEXT, allowNull: false },
+    minAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    maxAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    categoryId: { type: DataTypes.UUID, allowNull: false },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  },
+  { tableName: "bank_categorization_rules", timestamps: true }
+);
+
+Household.hasMany(BankCategorizationRule, { foreignKey: "householdId" });
+BankCategorizationRule.belongsTo(Household, { foreignKey: "householdId" });
+BankCategorizationRule.belongsTo(Category, { foreignKey: "categoryId" });
+
 Household.hasMany(BankImportProfile, { foreignKey: "householdId" });
 BankImportProfile.belongsTo(Household, { foreignKey: "householdId" });
 Account.hasMany(BankImportProfile, { foreignKey: "accountId" });
@@ -708,4 +757,5 @@ module.exports = {
   SubAccountSettlement,
   BankImportProfile,
   MerchantCategoryMapping,
+  BankCategorizationRule,
 };

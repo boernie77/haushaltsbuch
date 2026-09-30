@@ -56,6 +56,8 @@ export interface OfflineTransaction {
   description: string;
   householdId: string;
   merchant: string;
+  note?: string;
+  pendingBankMatch?: boolean;
   type: "expense" | "income";
 }
 
