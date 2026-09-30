@@ -440,31 +440,78 @@ export default function BankSyncPage() {
       </div>
 
       {tab === "settings" && currentHousehold && (
-        <BankSyncSettings
-          categories={categories}
-          householdId={currentHousehold.id}
-        />
+        <>
+          <BankSyncSettings
+            categories={categories}
+            householdId={currentHousehold.id}
+          />
+          <div className="card space-y-4 p-4">
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">
+                Wartung
+              </h2>
+              <p className="text-gray-500 text-xs dark:text-gray-400">
+                Selten gebrauchte Werkzeuge. Im normalen Ablauf brauchst du sie
+                nicht.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="max-w-2xl text-gray-600 text-sm dark:text-gray-300">
+                Übernimmt einmalig die häufigste Kategorie pro
+                Empfänger/Auftraggeber aus deinen bereits bestehenden Buchungen,
+                damit künftige Importe direkt richtig zugeordnet werden.
+              </p>
+              <button
+                className="btn-secondary flex shrink-0 items-center gap-2 disabled:opacity-50"
+                disabled={bootstrapping}
+                onClick={bootstrapMappings}
+                type="button"
+              >
+                <GraduationCap size={16} />
+                {bootstrapping
+                  ? "Lerne..."
+                  : "Aus bestehenden Buchungen lernen"}
+              </button>
+            </div>
+            <div className="flex flex-wrap items-end justify-between gap-3 border-gray-100 border-t pt-4 dark:border-slate-800">
+              <div className="max-w-2xl space-y-2">
+                <p className="text-gray-600 text-sm dark:text-gray-300">
+                  Löscht alle per Bank-Sync importierten Buchungen eines Kontos,
+                  z. B. um eine Datei nach einer Import-Verbesserung neu
+                  einzulesen. Von Hand erfasste Buchungen bleiben unberührt.
+                </p>
+                <select
+                  aria-label="Konto"
+                  className="input max-w-xs"
+                  disabled={loadingAccounts}
+                  onChange={(e) => setAccountId(e.target.value)}
+                  value={accountId}
+                >
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.icon} {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="flex shrink-0 items-center gap-2 text-red-600 text-sm hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+                disabled={!accountId || deletingImported}
+                onClick={deleteImported}
+                type="button"
+              >
+                <Trash2 size={14} />
+                {deletingImported
+                  ? "Lösche..."
+                  : "Importierte Buchungen löschen"}
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {tab === "import" && (
         <>
-          <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-gray-600 text-sm dark:text-gray-300">
-              Übernimmt einmalig die häufigste Kategorie pro
-              Empfänger/Auftraggeber aus deinen bereits bestehenden Buchungen,
-              damit künftige Importe direkt korrekt kategorisiert werden.
-            </p>
-            <button
-              className="btn-secondary flex shrink-0 items-center gap-2 disabled:opacity-50"
-              disabled={bootstrapping}
-              onClick={bootstrapMappings}
-              type="button"
-            >
-              <GraduationCap size={16} />
-              {bootstrapping ? "Lerne..." : "Aus bestehenden Buchungen lernen"}
-            </button>
-          </div>
-
           <div className="card space-y-4 p-4">
             <p className="text-gray-600 text-sm dark:text-gray-300">
               Exportiere Umsätze aus deinem Online-Banking als CSV oder MT940
@@ -523,25 +570,6 @@ export default function BankSyncPage() {
                 eigenen KI-Server je nach Hardware auch mehrere Minuten.
               </p>
             )}
-
-            <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
-              <p className="text-amber-800 text-xs dark:text-amber-300">
-                Nach einer Parser-Verbesserung können bereits importierte
-                Buchungen des ausgewählten Kontos veraltet/fehlerhaft sein. Vor
-                einem erneuten Import erst hier bereinigen.
-              </p>
-              <button
-                className="flex shrink-0 items-center gap-2 text-red-600 text-xs hover:text-red-700 disabled:opacity-50 dark:text-red-400"
-                disabled={!accountId || deletingImported}
-                onClick={deleteImported}
-                type="button"
-              >
-                <Trash2 size={14} />
-                {deletingImported
-                  ? "Lösche..."
-                  : "Importierte Buchungen dieses Kontos löschen"}
-              </button>
-            </div>
           </div>
 
           {format && (
