@@ -45,6 +45,7 @@ interface QuickCategory {
 
 type TxType = "expense" | "income";
 
+const QUICK_ADD_HEADER_COLOR = "#2196F3";
 // Standard laut Backend (GET /transactions/quick-categories), falls offline.
 const DEFAULT_MAX_TILES = 11;
 const MAX_DECIMALS = 2;
@@ -582,8 +583,9 @@ export default function QuickAddScreen() {
         style={[
           styles.header,
           {
-            backgroundColor: theme.colors.primary,
-            paddingTop: insets.top + 12,
+            // iOS: Sheet beginnt unter der Statusleiste → kein Safe-Area-
+            // Abstand nötig. Android zeigt den Screen vollflächig.
+            paddingTop: Platform.OS === "ios" ? 10 : insets.top + 10,
           },
         ]}
       >
@@ -740,14 +742,17 @@ export default function QuickAddScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  // Bewusst festes Blau (wie im Konzept) statt Theme-Farbe: hebt die
+  // Schnellerfassung als eigenen, kompakten Modus hervor.
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingBottom: 10,
+    backgroundColor: QUICK_ADD_HEADER_COLOR,
   },
-  headerTitle: { color: "#fff", fontSize: 18, fontWeight: "600" },
+  headerTitle: { color: "#fff", fontSize: 16, fontWeight: "600" },
   content: { padding: 16, gap: 14 },
   amount: {
     fontSize: 44,
