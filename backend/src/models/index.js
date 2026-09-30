@@ -116,6 +116,21 @@ const Household = sequelize.define(
       defaultValue: "claude-haiku-4-5",
     },
     bankSyncAiDescriptions: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // "anthropic" = Claude, "openai_compatible" = eigener KI-Server
+    // (Ollama, LM Studio, vLLM, …) unter bankSyncLocalUrl.
+    bankSyncAiProvider: { type: DataTypes.TEXT, defaultValue: "anthropic" },
+    bankSyncLocalUrl: { type: DataTypes.TEXT, allowNull: true },
+    bankSyncLocalModel: { type: DataTypes.TEXT, allowNull: true },
+    bankSyncLocalApiKey: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        return decrypt(this.getDataValue("bankSyncLocalApiKey"));
+      },
+      set(v) {
+        this.setDataValue("bankSyncLocalApiKey", encrypt(v));
+      },
+    },
   },
   { tableName: "households", timestamps: true }
 );

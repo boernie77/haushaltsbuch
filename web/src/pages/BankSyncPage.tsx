@@ -517,6 +517,12 @@ export default function BankSyncPage() {
               <Upload size={16} />
               {previewing ? "Analysiere..." : "Vorschau"}
             </button>
+            {previewing && (
+              <p className="text-gray-500 text-xs dark:text-gray-400">
+                Mit eingeschalteter KI kann die Vorschau etwas dauern, mit einem
+                eigenen KI-Server je nach Hardware auch mehrere Minuten.
+              </p>
+            )}
 
             <div className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
               <p className="text-amber-800 text-xs dark:text-amber-300">

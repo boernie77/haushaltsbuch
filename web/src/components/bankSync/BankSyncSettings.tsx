@@ -5,12 +5,19 @@ import { Link } from "react-router-dom";
 import { bankSyncAPI } from "../../services/api";
 import { type Category, categoryLabel } from "./types";
 
+type AiProvider = "anthropic" | "openai_compatible";
+
 interface Settings {
   aiDescriptions: boolean;
   aiEnabled: boolean;
   aiKeyAvailable: boolean;
   aiModel: string;
   aiModels: { id: string; label: string }[];
+  aiProvider: AiProvider;
+  canEditLocalServer: boolean;
+  localHasApiKey: boolean;
+  localModel: string;
+  localUrl: string;
   matchQuickEntries: boolean;
   rulesEnabled: boolean;
 }
@@ -214,6 +221,184 @@ function RuleForm({
   );
 }
 
+interface LocalAiServerFormProps {
+  householdId: string;
+  onSaved: (settings: Settings) => void;
+  settings: Settings;
+}
+
+// Eigener KI-Server mit OpenAI-kompatibler Schnittstelle. Funktioniert mit
+// Ollama, LM Studio, vLLM, llama.cpp-Server, LocalAI u.a.
+function LocalAiServerForm({
+  householdId,
+  onSaved,
+  settings,
+}: LocalAiServerFormProps) {
+  const [url, setUrl] = useState(settings.localUrl);
+  const [model, setModel] = useState(settings.localModel);
+  // Leer = gespeicherten Key behalten (wird nie an den Browser geschickt).
+  const [apiKey, setApiKey] = useState("");
+  const [models, setModels] = useState<string[]>([]);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    error?: string;
+    ok: boolean;
+  } | null>(null);
+  const readOnly = !settings.canEditLocalServer;
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data } = await bankSyncAPI.testLocalAi(householdId, {
+        localUrl: url,
+        ...(apiKey ? { localApiKey: apiKey } : {}),
+      });
+      setModels(data.models || []);
+      setTestResult({ ok: data.ok, error: data.error });
+      if (data.ok && !model && data.models?.length) {
+        setModel(data.models[0]);
+      }
+    } catch (err: any) {
+      setTestResult({
+        ok: false,
+        error: err.response?.data?.error || "Test fehlgeschlagen",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const save = async (removeKey = false) => {
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        localUrl: url,
+        localModel: model,
+      };
+      if (removeKey) {
+        payload.localApiKey = "";
+      } else if (apiKey) {
+        payload.localApiKey = apiKey;
+      }
+      const { data } = await bankSyncAPI.updateSettings(householdId, payload);
+      onSaved(data);
+      setApiKey("");
+      toast.success("KI-Server gespeichert");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Speichern fehlgeschlagen");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 border-gray-100 border-b py-3 dark:border-slate-800">
+      <p className="text-gray-500 text-xs dark:text-gray-400">
+        Funktioniert mit jedem Server mit OpenAI-kompatibler Schnittstelle, z.
+        B. Ollama (Port 11434), LM Studio (Port 1234), vLLM oder llama.cpp. Der
+        Server muss vom Haushaltsbuch-Server aus erreichbar sein, nicht nur von
+        deinem Browser. Empfehlung: ein Modell ab ca. 7–8 Milliarden Parametern
+        (z. B. Qwen 2.5 7B, Llama 3.1 8B). Kleinere Modelle ordnen spürbar
+        ungenauer zu.
+      </p>
+      {readOnly && (
+        <p className="rounded-lg bg-gray-50 p-2 text-gray-600 text-xs dark:bg-slate-800 dark:text-gray-300">
+          Nur Admins des Haushaltsbuchs können den KI-Server ändern.
+        </p>
+      )}
+      <label className="block text-xs">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
+          Adresse
+        </span>
+        <input
+          className="input"
+          disabled={readOnly}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="http://192.168.1.10:11434/v1"
+          value={url}
+        />
+      </label>
+      <label className="block text-xs">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
+          Modell
+        </span>
+        <input
+          className="input"
+          disabled={readOnly}
+          list="local-ai-models"
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="z. B. qwen2.5:7b (nach „Verbindung testen“ auswählbar)"
+          value={model}
+        />
+        <datalist id="local-ai-models">
+          {models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      </label>
+      <label className="block text-xs">
+        <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
+          API-Key (optional)
+        </span>
+        <input
+          autoComplete="off"
+          className="input"
+          disabled={readOnly}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={
+            settings.localHasApiKey
+              ? "gespeichert, leer lassen zum Behalten"
+              : "nur nötig, wenn dein Server einen verlangt"
+          }
+          type="password"
+          value={apiKey}
+        />
+      </label>
+      {testResult && (
+        <p
+          className={`rounded-lg p-2 text-xs ${testResult.ok ? "bg-green-50 text-green-800 dark:bg-green-950/30 dark:text-green-300" : "bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300"}`}
+        >
+          {testResult.ok
+            ? `Verbindung ok, ${models.length} Modelle gefunden.`
+            : testResult.error}
+        </p>
+      )}
+      {!readOnly && (
+        <div className="flex flex-wrap gap-2">
+          <button
+            className="btn-secondary text-sm disabled:opacity-50"
+            disabled={!url || testing}
+            onClick={testConnection}
+            type="button"
+          >
+            {testing ? "Teste…" : "Verbindung testen"}
+          </button>
+          <button
+            className="btn-primary text-sm disabled:opacity-50"
+            disabled={!(url && model) || saving}
+            onClick={() => save()}
+            type="button"
+          >
+            Speichern
+          </button>
+          {settings.localHasApiKey && (
+            <button
+              className="text-red-600 text-xs underline disabled:opacity-50"
+              disabled={saving}
+              onClick={() => save(true)}
+              type="button"
+            >
+              gespeicherten API-Key entfernen
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function describeRule(rule: Rule) {
   const amountParts: string[] = [];
   if (rule.minAmount !== null) {
@@ -327,6 +512,7 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
   if (!settings) {
     return <div className="card p-4 text-gray-500 text-sm">Lade…</div>;
   }
+  const isLocal = settings.aiProvider === "openai_compatible";
 
   return (
     <div className="space-y-6">
@@ -356,17 +542,57 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
 
       <div className="card p-4">
         <h2 className="mb-1 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-          <Sparkles size={16} /> KI-Vorschläge (Claude)
+          <Sparkles size={16} /> KI-Vorschläge
         </h2>
         <p className="mb-2 text-gray-500 text-xs dark:text-gray-400">
           Für Buchungen ohne Schnellerfassung, Regel oder gelernten Empfänger
           fragt der Import die KI. Dabei gehen nur Betrag, Empfängername,
-          Verwendungszweck und deine Kategorienamen an Anthropic. Keine IBAN,
-          kein Kontostand. Die KI läuft nur beim Import, nie im Hintergrund.
+          Verwendungszweck und deine Kategorienamen an{" "}
+          {isLocal ? "deinen eigenen KI-Server" : "Anthropic"}. Keine IBAN, kein
+          Kontostand. Die KI läuft nur beim Import, nie im Hintergrund.
           Korrigierst oder bestätigst du einen KI-Vorschlag, merkt sich die App
           den Empfänger. Beim nächsten Mal ist dafür keine KI mehr nötig.
         </p>
-        {!settings.aiKeyAvailable && (
+        <ToggleRow
+          checked={settings.aiEnabled}
+          description={
+            isLocal
+              ? "Keine Kosten pro Import, aber je nach Hardware deutlich langsamer."
+              : "Kosten mit Haiku: etwa 1 Cent pro Import mit ~100 Buchungen."
+          }
+          label="KI-Vorschläge aktivieren"
+          onChange={(v) => updateSetting({ aiEnabled: v })}
+        />
+        <label className="flex items-center justify-between gap-4 border-gray-100 border-b py-3 dark:border-slate-800">
+          <span>
+            <span className="block font-medium text-gray-900 text-sm dark:text-white">
+              Anbieter
+            </span>
+            <span className="block text-gray-500 text-xs dark:text-gray-400">
+              Claude in der Cloud oder ein KI-Server, den du selbst betreibst.
+            </span>
+          </span>
+          <select
+            className="input max-w-xs"
+            onChange={(e) =>
+              updateSetting({ aiProvider: e.target.value as AiProvider })
+            }
+            value={settings.aiProvider}
+          >
+            <option value="anthropic">Claude (Anthropic, Cloud)</option>
+            <option value="openai_compatible">
+              Eigener KI-Server (Ollama, LM Studio, …)
+            </option>
+          </select>
+        </label>
+        {isLocal && (
+          <LocalAiServerForm
+            householdId={householdId}
+            onSaved={setSettings}
+            settings={settings}
+          />
+        )}
+        {!(isLocal || settings.aiKeyAvailable) && (
           <p className="mb-2 rounded-lg bg-amber-50 p-2 text-amber-800 text-xs dark:bg-amber-950/30 dark:text-amber-300">
             Kein API-Key verfügbar. Hinterlege einen unter{" "}
             <Link className="underline" to="/household">
@@ -375,34 +601,30 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
             .
           </p>
         )}
-        <ToggleRow
-          checked={settings.aiEnabled}
-          description="Kosten mit Haiku: etwa 1 Cent pro Import mit ~100 Buchungen."
-          label="KI-Vorschläge aktivieren"
-          onChange={(v) => updateSetting({ aiEnabled: v })}
-        />
-        <label className="flex items-center justify-between gap-4 border-gray-100 border-b py-3 dark:border-slate-800">
-          <span>
-            <span className="block font-medium text-gray-900 text-sm dark:text-white">
-              KI-Modell
+        {!isLocal && (
+          <label className="flex items-center justify-between gap-4 border-gray-100 border-b py-3 dark:border-slate-800">
+            <span>
+              <span className="block font-medium text-gray-900 text-sm dark:text-white">
+                KI-Modell
+              </span>
+              <span className="block text-gray-500 text-xs dark:text-gray-400">
+                Haiku reicht für die Zuordnung meistens aus.
+              </span>
             </span>
-            <span className="block text-gray-500 text-xs dark:text-gray-400">
-              Haiku reicht für die Zuordnung meistens aus.
-            </span>
-          </span>
-          <select
-            className="input max-w-xs"
-            disabled={!settings.aiEnabled}
-            onChange={(e) => updateSetting({ aiModel: e.target.value })}
-            value={settings.aiModel}
-          >
-            {settings.aiModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <select
+              className="input max-w-xs"
+              disabled={!settings.aiEnabled}
+              onChange={(e) => updateSetting({ aiModel: e.target.value })}
+              value={settings.aiModel}
+            >
+              {settings.aiModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <ToggleRow
           checked={settings.aiDescriptions}
           description="Kurzer Oberbegriff wie „Lebensmitteleinkauf“ statt des rohen Verwendungszwecks. Der Verwendungszweck bleibt in der Notiz erhalten."

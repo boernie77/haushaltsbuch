@@ -176,6 +176,8 @@ export const accountAPI = {
     api.get(`/accounts/${id}/net-after`, { params: date ? { date } : {} }),
 };
 
+const BANK_SYNC_PREVIEW_TIMEOUT_MS = 30 * 60 * 1000;
+
 export const bankSyncAPI = {
   bootstrapMappings: (householdId: string) =>
     api.post("/bank-sync/bootstrap-mappings", { householdId }),
@@ -196,6 +198,9 @@ export const bankSyncAPI = {
     }
     return api.post("/bank-sync/preview", fd, {
       headers: { "Content-Type": "multipart/form-data" },
+      // KI-Vorschläge (v.a. über einen eigenen, langsamen KI-Server) können
+      // mehrere Minuten dauern. Muss zu nginx.conf proxy_read_timeout passen.
+      timeout: BANK_SYNC_PREVIEW_TIMEOUT_MS,
     });
   },
   import: (
@@ -216,6 +221,10 @@ export const bankSyncAPI = {
     api.get("/bank-sync/settings", { params: { householdId } }),
   updateSettings: (householdId: string, d: Record<string, unknown>) =>
     api.put("/bank-sync/settings", { householdId, ...d }),
+  testLocalAi: (
+    householdId: string,
+    d: { localUrl?: string; localApiKey?: string }
+  ) => api.post("/bank-sync/settings/test-local", { householdId, ...d }),
   getRules: (householdId: string) =>
     api.get("/bank-sync/rules", { params: { householdId } }),
   createRule: (householdId: string, d: Record<string, unknown>) =>

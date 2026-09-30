@@ -18,8 +18,11 @@ const { auth } = require("../middleware/auth");
 const { resolveApiKey } = require("../utils/anthropicKey");
 const {
   AI_MODELS,
+  AI_PROVIDERS,
   DEFAULT_AI_MODEL,
   findMatchingRule,
+  listLocalModels,
+  normalizeLocalUrl,
   loadPendingQuickEntries,
   matchQuickEntries,
   suggestWithAi,
@@ -49,6 +52,48 @@ async function checkAccess(userId, householdId) {
 async function checkWriteAccess(userId, householdId) {
   const member = await checkAccess(userId, householdId);
   return member && member.role !== "viewer" ? member : null;
+}
+
+// Admin des Haushaltsbuchs: nötig für die Adresse eines eigenen KI-Servers,
+// weil der Haushaltsbuch-Server diese Adresse selbst aufruft.
+async function checkAdminAccess(userId, householdId) {
+  const member = await checkAccess(userId, householdId);
+  return member?.role === "admin" ? member : null;
+}
+
+// Ermittelt die KI-Konfiguration für den Import. Gibt {config} oder {error}.
+async function resolveAiConfig(household, userId) {
+  if (household.bankSyncAiProvider === AI_PROVIDERS.openaiCompatible) {
+    const baseUrl = normalizeLocalUrl(household.bankSyncLocalUrl);
+    if (!(baseUrl && household.bankSyncLocalModel)) {
+      return {
+        error:
+          "Eigener KI-Server ist nicht vollständig eingerichtet (Adresse und Modell unter Zuordnung & KI eintragen).",
+      };
+    }
+    return {
+      config: {
+        provider: AI_PROVIDERS.openaiCompatible,
+        baseUrl,
+        apiKey: household.bankSyncLocalApiKey || null,
+        model: household.bankSyncLocalModel,
+      },
+    };
+  }
+  const apiKey = await resolveApiKey(household.id, userId);
+  if (!apiKey) {
+    return {
+      error:
+        "Kein Anthropic-API-Key verfügbar. Bitte unter Haushalt → KI-Einstellungen hinterlegen.",
+    };
+  }
+  return {
+    config: {
+      provider: AI_PROVIDERS.anthropic,
+      apiKey,
+      model: household.bankSyncAiModel,
+    },
+  };
 }
 
 // System-Kategorien + eigene Kategorien des Haushaltsbuchs.
@@ -155,17 +200,15 @@ async function applyAiSuggestions({
   if (!household.bankSyncAiEnabled || pendingIndexes.length === 0) {
     return aiStatus;
   }
-  const apiKey = await resolveApiKey(household.id, userId);
-  if (!apiKey) {
-    aiStatus.error =
-      "Kein Anthropic-API-Key verfügbar. Bitte unter Haushalt → KI-Einstellungen hinterlegen.";
+  const { config, error } = await resolveAiConfig(household, userId);
+  if (error) {
+    aiStatus.error = error;
     return aiStatus;
   }
   aiStatus.requested = pendingIndexes.length;
   try {
     const aiResult = await suggestWithAi({
-      apiKey,
-      model: household.bankSyncAiModel,
+      config,
       categories,
       rows,
       indexes: pendingIndexes,
@@ -683,16 +726,27 @@ router.post("/import", auth, async (req, res) => {
 
 // ── Einstellungen: automatische Zuordnung ────────────────────────────────────
 
-function settingsJson(household, aiKeyAvailable) {
+function settingsJson(household, aiKeyAvailable, canEditLocalServer) {
   return {
     matchQuickEntries: household.bankSyncMatchQuickEntries,
     rulesEnabled: household.bankSyncRulesEnabled,
     aiEnabled: household.bankSyncAiEnabled,
+    aiProvider: household.bankSyncAiProvider || AI_PROVIDERS.anthropic,
     aiModel: household.bankSyncAiModel || DEFAULT_AI_MODEL,
     aiDescriptions: household.bankSyncAiDescriptions,
     aiKeyAvailable,
     aiModels: AI_MODELS,
+    localUrl: household.bankSyncLocalUrl || "",
+    localModel: household.bankSyncLocalModel || "",
+    // Key selbst nie ausliefern, nur ob einer gesetzt ist.
+    localHasApiKey: !!household.bankSyncLocalApiKey,
+    canEditLocalServer,
   };
+}
+
+async function sendSettings(res, household, member, userId) {
+  const apiKey = await resolveApiKey(household.id, userId);
+  res.json(settingsJson(household, !!apiKey, member?.role === "admin"));
 }
 
 // GET /api/bank-sync/settings?householdId=
@@ -702,20 +756,45 @@ router.get("/settings", auth, async (req, res) => {
     if (!(await checkAccess(req.user.id, householdId))) {
       return res.status(403).json({ error: "Forbidden" });
     }
+    const member = await checkAccess(req.user.id, householdId);
     const household = await Household.findByPk(householdId);
-    const apiKey = await resolveApiKey(householdId, req.user.id);
-    res.json(settingsJson(household, !!apiKey));
+    await sendSettings(res, household, member, req.user.id);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
   }
 });
 
+// Übernimmt die Felder des eigenen KI-Servers aus dem Request (nur Admins).
+// Gibt {error} bei ungültiger Adresse zurück.
+function applyLocalServerUpdates(body, updates) {
+  if (body.localUrl !== undefined) {
+    const trimmed = String(body.localUrl || "").trim();
+    if (trimmed && !normalizeLocalUrl(trimmed)) {
+      return {
+        error: "Ungültige Adresse. Beispiel: http://192.168.1.10:11434/v1",
+      };
+    }
+    updates.bankSyncLocalUrl = trimmed || null;
+  }
+  if (body.localModel !== undefined) {
+    updates.bankSyncLocalModel = String(body.localModel || "").trim() || null;
+  }
+  // Leerer String = Key löschen, undefined = unverändert lassen.
+  if (body.localApiKey !== undefined) {
+    updates.bankSyncLocalApiKey = String(body.localApiKey || "").trim() || null;
+  }
+  return {};
+}
+
+const LOCAL_SERVER_FIELDS = ["localUrl", "localModel", "localApiKey"];
+
 // PUT /api/bank-sync/settings — { householdId, matchQuickEntries?, ... }
 router.put("/settings", auth, async (req, res) => {
   try {
     const { householdId } = req.body;
-    if (!(await checkWriteAccess(req.user.id, householdId))) {
+    const member = await checkWriteAccess(req.user.id, householdId);
+    if (!member) {
       return res.status(403).json({ error: "Forbidden" });
     }
     const household = await Household.findByPk(householdId);
@@ -734,9 +813,60 @@ router.put("/settings", auth, async (req, res) => {
     if (AI_MODELS.some((m) => m.id === req.body.aiModel)) {
       updates.bankSyncAiModel = req.body.aiModel;
     }
+    if (Object.values(AI_PROVIDERS).includes(req.body.aiProvider)) {
+      updates.bankSyncAiProvider = req.body.aiProvider;
+    }
+    const touchesLocalServer = LOCAL_SERVER_FIELDS.some(
+      (f) => req.body[f] !== undefined
+    );
+    if (touchesLocalServer) {
+      if (member.role !== "admin") {
+        return res.status(403).json({
+          error: "Nur Admins des Haushaltsbuchs können den KI-Server ändern.",
+        });
+      }
+      const { error } = applyLocalServerUpdates(req.body, updates);
+      if (error) {
+        return res.status(400).json({ error });
+      }
+    }
     await household.update(updates);
-    const apiKey = await resolveApiKey(householdId, req.user.id);
-    res.json(settingsJson(household, !!apiKey));
+    await sendSettings(res, household, member, req.user.id);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
+// POST /api/bank-sync/settings/test-local — { householdId, localUrl?,
+// localApiKey? } prüft die Verbindung zum eigenen KI-Server und liefert die
+// dort verfügbaren Modelle. Ohne localUrl/localApiKey werden die
+// gespeicherten Werte verwendet (Key wird nie zurückgegeben).
+router.post("/settings/test-local", auth, async (req, res) => {
+  try {
+    const { householdId } = req.body;
+    if (!(await checkAdminAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const household = await Household.findByPk(householdId);
+    const baseUrl = normalizeLocalUrl(
+      req.body.localUrl || household.bankSyncLocalUrl
+    );
+    if (!baseUrl) {
+      return res.status(400).json({
+        error: "Ungültige Adresse. Beispiel: http://192.168.1.10:11434/v1",
+      });
+    }
+    const apiKey =
+      req.body.localApiKey === undefined
+        ? household.bankSyncLocalApiKey
+        : String(req.body.localApiKey || "").trim() || null;
+    try {
+      const models = await listLocalModels({ baseUrl, apiKey });
+      res.json({ ok: true, baseUrl, models });
+    } catch (err) {
+      res.json({ ok: false, baseUrl, error: err.message, models: [] });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
