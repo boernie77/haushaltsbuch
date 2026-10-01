@@ -3,9 +3,9 @@
 // Mail-Regeln von Paperless ohnehin dort — das Haushaltsbuch sucht nur.
 //
 // Treffer = Betrag steht im OCR-Text oder in einem Betrags-Custom-Field des
-// Dokuments UND das Dokumentdatum liegt im Fenster [Umsatz − 45 Tage,
-// Umsatz + 5 Tage] (Rechnungen werden oft erst später bezahlt). Passt
-// zusätzlich der Korrespondent zum Empfänger, gilt der Treffer als sicher.
+// Dokuments, der Korrespondent passt zum Empfänger/Verwendungszweck UND das
+// Dokumentdatum liegt im Fenster [Umsatz − 45 Tage, Umsatz + 5 Tage]
+// (Rechnungen werden oft erst später bezahlt).
 //
 // Zweiter, stärkerer Weg: Referenznummern. Steht eine Nummer aus dem
 // Verwendungszweck (z.B. Amazon-Bestellnummer 302-1234567-1234567) auch im
@@ -37,18 +37,49 @@ const DIGIT = /\d/g;
 const REFERENCE_SCORE = 10;
 // Häufige Firmenzusätze, die als Namens-Token nichts aussagen.
 const NAME_STOPWORDS = new Set([
+  // Rechtsformen
   "gmbh",
+  "mbh",
+  "co",
+  "kg",
+  "ag",
+  "se",
+  "ug",
+  "ohg",
+  "gbr",
+  "sarl",
+  "sprl",
+  "bvba",
+  "sca",
+  "cie",
+  "ltd",
+  "inc",
+  "llc",
+  "plc",
+  // Allgemeine Wörter, die in vielen Firmennamen vorkommen und sonst
+  // Fehltreffer erzeugen ("PayPal Europe" ≠ "Vattenfall Europe Sales")
   "und",
   "der",
   "die",
   "das",
-  "co",
-  "kg",
-  "ag",
-  "mbh",
-  "sarl",
-  "ltd",
-  "inc",
+  "the",
+  "europe",
+  "europa",
+  "deutschland",
+  "deutsche",
+  "germany",
+  "sales",
+  "service",
+  "services",
+  "payment",
+  "payments",
+  "online",
+  "international",
+  "holding",
+  "group",
+  "gruppe",
+  "company",
+  "gesellschaft",
   "bank",
   "sagt",
   "danke",
@@ -120,14 +151,16 @@ function nameTokens(name) {
     .filter((t) => t.length >= MIN_TOKEN_LENGTH && !NAME_STOPWORDS.has(t));
 }
 
-// "Amazon" ↔ "AMAZON EU S.A R.L." → true
+// "Amazon" ↔ "AMAZON EU S.A R.L." → true. Verglichen wird nur das erste
+// aussagekräftige Wort des Korrespondenten (meist der Markenname): "Deutsche
+// Telekom GmbH" → "telekom", "Vattenfall Europe Sales" → "vattenfall".
 function correspondentMatches(correspondentName, row) {
-  const tokens = nameTokens(correspondentName);
-  if (tokens.length === 0) {
+  const [brand] = nameTokens(correspondentName);
+  if (!brand) {
     return false;
   }
   const haystack = ` ${(row.counterpartyName || "").toLowerCase().replace(NON_ALNUM, " ")} ${(row.purpose || "").toLowerCase().replace(NON_ALNUM, " ")} `;
-  return tokens.some((t) => haystack.includes(` ${t}`));
+  return haystack.includes(` ${brand}`);
 }
 
 function referenceTokens(purpose) {
@@ -281,6 +314,12 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       }
       const corrName = correspondentName.get(doc.correspondent) || null;
       const corrMatch = corrName ? correspondentMatches(corrName, row) : false;
+      // Ein Betrag allein ist zu schwach: Übersichten und Sammelrechnungen
+      // enthalten viele Beträge (Fehltreffer im Praxistest 2026-10-01).
+      // Ohne Referenznummer muss deshalb auch der Absender passen.
+      if (!(byReference || corrMatch)) {
+        continue;
+      }
       // Referenznummer zählt am meisten, dann Korrespondent, dann
       // strukturierter Betrag, dann zeitliche Nähe.
       const score =
