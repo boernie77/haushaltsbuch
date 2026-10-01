@@ -48,6 +48,8 @@ const SECTIONS: { id: string; title: string }[] = [
   { id: "suche", title: "12. Suchen, Filtern, Sortieren" },
   { id: "backup", title: "13. Berichte & Datensicherung" },
   { id: "mobile", title: "14. Mobile-App: Offline" },
+  { id: "bankimport", title: "15. Bank-Import (CSV / MT940) 🏦" },
+  { id: "schnell", title: "16. Schnellerfassung (iPhone) ⚡" },
 ];
 
 export default function HelpPage() {
@@ -175,6 +177,11 @@ export default function HelpPage() {
           <strong>neutral</strong> (z. B. Kreditkarten-Tilgung vom Girokonto).
           Echte Kosten wie Darlehens-Zinsen erfasst du dagegen als normale{" "}
           <strong>Ausgabe</strong>.
+        </p>
+        <p>
+          Optional kannst du bei einem Konto seine <strong>IBAN</strong>{" "}
+          eintragen. Der Bank-Import erkennt Überweisungen auf oder von dieser
+          IBAN dann automatisch als Umbuchung.
         </p>
       </Section>
 
@@ -338,6 +345,123 @@ export default function HelpPage() {
           sich offline anlegen (Uhr-Symbol „ausstehend") und werden bei nächster
           Verbindung automatisch synchronisiert.
         </p>
+      </Section>
+
+      <Section id="bankimport" title="15. Bank-Import (CSV / MT940) 🏦">
+        <p>
+          Unter <strong>„Bank-Sync"</strong> liest du die Umsätze aus deinem
+          Online-Banking als Datei ein (getestet: Sparda-Bank Nürnberg
+          CSV/MT940, ING CSV): Ziel-Konto und Datei wählen →{" "}
+          <strong>„Vorschau"</strong> → Vorschläge prüfen →{" "}
+          <strong>importieren</strong>. Bei CSV wird die Spaltenzuordnung pro
+          Konto gemerkt.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Mehrfach einlesen schadet nicht:</strong> schon importierte
+            Umsätze werden erkannt und abgewählt.
+          </li>
+          <li>
+            <strong>Die Vorschau bleibt erhalten</strong>, wenn du zwischendurch
+            die Seite wechselst (z. B. um eine Kategorie anzulegen). Sie
+            verschwindet erst nach dem Import, mit „Verwerfen" oder beim
+            Schließen des Tabs.
+          </li>
+          <li>
+            <strong>„unsichere abwählen"</strong> nimmt Umsätze ohne Kategorie
+            oder mit unsicherem KI-Vorschlag aus dem Import.
+          </li>
+        </ul>
+        <p>
+          <strong>Woher die Vorschläge kommen</strong> (das Etikett in der
+          Vorschau zeigt es):
+        </p>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>
+            <strong>Vorhandene Buchung</strong> (Schnellerfassung, Dauerauftrag,
+            Umbuchung oder von Hand erfasst; gleicher Betrag, ±5 Tage, bei
+            Daueraufträgen ±7): wird{" "}
+            <strong>ergänzt statt doppelt angelegt</strong> und bekommt das
+            Bankdatum. Kategorie und Beschreibung bleiben deine. Falsch
+            zugeordnet? „Verknüpfung lösen".
+          </li>
+          <li>
+            <strong>Eigenes Konto</strong>: Überweisung auf/von der IBAN eines
+            deiner Konten → Umbuchung.
+          </li>
+          <li>
+            <strong>Regel</strong> aus dem Tab „Zuordnung &amp; KI".
+          </li>
+          <li>
+            <strong>Gelernt</strong>: für diesen Empfänger schon einmal
+            bestätigt.
+          </li>
+          <li>
+            <strong>KI</strong> (optional).
+          </li>
+        </ol>
+        <Callout>
+          <strong>Die App lernt mit:</strong> Bestätigte KI-Vorschläge, deine
+          Änderungen und zugeordnete Schnellerfassungen merkt sie sich pro
+          Empfänger. Beim nächsten Import kommt der Vorschlag ohne KI.
+        </Callout>
+        <p>
+          <strong>Umbuchungen:</strong> Statt einer Kategorie „↔ Konto …"
+          wählen, z. B. für die Kreditkartenabrechnung. Sie zählt dann nicht als
+          Ausgabe. Liest du später die Kreditkarten-Datei ein, wird der
+          Ausgleich als Gegenseite erkannt und nicht doppelt angelegt.
+        </p>
+        <p>
+          <strong>Tab „Zuordnung &amp; KI":</strong> Schalter für die Quellen,{" "}
+          <strong>Regeln</strong> („Empfänger / Verwendungszweck / IBAN enthält
+          …", optional Betragsbereich → Kategorie oder Umbuchung) und{" "}
+          <strong>KI-Vorschläge</strong> (standardmäßig aus): entweder Claude
+          (API-Key aus Haushalt → KI-Einstellungen, mit Haiku ca. 1 Cent pro 100
+          Buchungen) oder ein <strong>eigener KI-Server</strong> mit
+          OpenAI-kompatibler Schnittstelle (Ollama, LM Studio, vLLM …; nur
+          Admins, muss vom Haushaltsbuch-Server erreichbar sein). An die KI
+          gehen nur Betrag, Empfänger, Verwendungszweck und Kategorienamen,
+          keine IBAN und kein Kontostand. Unter <strong>„Wartung"</strong>{" "}
+          findest du „Aus bestehenden Buchungen lernen" und „Importierte
+          Buchungen löschen".
+        </p>
+        <p>
+          <strong>Abgleich mit Paperless:</strong> Der Import sucht zu jedem
+          Umsatz eine Rechnung oder einen Beleg. Das Dokumentdatum muss passen
+          (45 Tage vor bis 5 Tage nach der Zahlung), dazu entweder eine{" "}
+          <strong>Bestellnummer</strong> aus dem Verwendungszweck (z. B. Amazon,
+          auch bei Teillieferungen) oder Betrag/Kundennummer{" "}
+          <strong>und</strong> passender Absender. Kontoauszüge werden deshalb
+          nicht zugeordnet. Der Dokumenttitel wird zur Beschreibung; „📄 …" in
+          der Vorschau bzw. das grüne Dokument-Symbol in der Buchungsliste
+          öffnet das Dokument.
+        </p>
+      </Section>
+
+      <Section id="schnell" title="16. Schnellerfassung (iPhone) ⚡">
+        <p>
+          Direkt beim Bezahlen: Übersicht → <strong>„⚡ Schnell"</strong> →
+          Betrag tippen, Kategorie-Kachel wählen, optional ein Stichwort →
+          Speichern. Datum ist automatisch „heute", funktioniert auch offline.
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong>Kacheln:</strong> automatisch deine meistgenutzten
+            Kategorien, oder über <strong>„Eigene Kacheln festlegen"</strong>{" "}
+            selbst auswählen und sortieren (getrennt für Ausgaben/Einnahmen, bis
+            zu 11, pro Person und Haushaltsbuch). „Mehr" zeigt alle Kategorien.
+          </li>
+          <li>
+            Die Kacheln gehören zum{" "}
+            <strong>in der Übersicht gewählten Haushaltsbuch</strong>.
+          </li>
+          <li>
+            Beim nächsten <strong>Bank-Import</strong> wird die Buchung mit dem
+            Kontoumsatz zusammengeführt. Schnellerfassungen ohne Umsatz (z. B.
+            Barzahlung) zeigt die Vorschau als Hinweis, mit „Bar bezahlt, nicht
+            mehr abgleichen".
+          </li>
+        </ul>
       </Section>
 
       <p className="pt-2 text-center text-gray-400 text-xs">

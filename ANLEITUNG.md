@@ -54,6 +54,8 @@ Eine Buchung ist eine **Ausgabe** oder **Einnahme**. So legst du sie an:
 - **Verschieben:** Über das **Pfeil-Symbol (↔)** verschiebst du eine Buchung in ein
   anderes deiner Haushaltsbücher. Kategorien, die es im Ziel nicht gibt, werden dabei
   entfernt.
+- **Unterwegs schneller:** In der iPhone-App gibt es die **Schnellerfassung** (siehe
+  Kapitel 16), Betrag, Kategorie, fertig. Den Rest ergänzt später der Bank-Import.
 
 ---
 
@@ -79,6 +81,10 @@ Sparkonto, Kreditkarte, Darlehen usw.
 
 Die Übersicht oben zeigt **Aktiva**, **Passiva** und dein **Reinvermögen** (alles
 zusammengerechnet).
+
+Optional kannst du bei einem Konto seine **IBAN** eintragen. Der Bank-Import
+(Kapitel 15) erkennt Überweisungen auf oder von dieser IBAN dann automatisch als
+Umbuchung zwischen deinen Konten.
 
 ### Kontostand mit Stichtag
 Beim Anlegen/Bearbeiten eines Kontos gibst du den **Kontostand** und einen
@@ -258,9 +264,134 @@ beim Erfassen direkt **nach Paperless hochladen** – mit Dokumenttyp, Absender,
 Berechtigungen. Die Auswahllisten werden regelmäßig automatisch synchronisiert; deine
 Favoriten erscheinen bevorzugt im Upload-Dialog.
 
+Umgekehrt nutzt der **Bank-Import** dein Paperless: Er sucht zu jedem Kontoumsatz die
+passende Rechnung und übernimmt deren Titel als Beschreibung (siehe Kapitel 15,
+„Abgleich mit Paperless").
+
 ---
 
-## 15. Mobile-App: Offline-Modus
+## 15. Bank-Import (CSV / MT940) 🏦
+
+Unter **„Bank-Sync"** liest du die Umsätze aus deinem Online-Banking als Datei ein,
+statt sie abzutippen. Getestet ist der Import mit der **Sparda-Bank Nürnberg** (CSV
+und MT940) und der **ING** (CSV).
+
+### Ablauf
+1. **Ziel-Konto** wählen, die exportierte **Datei** auswählen und auf **„Vorschau"**
+   klicken.
+2. Bei CSV-Dateien die **Spaltenzuordnung** prüfen (Datum, Betrag, Verwendungszweck,
+   Empfänger, optional IBAN). Sie wird pro Konto gemerkt.
+3. In der Vorschau siehst du jeden Umsatz mit einem **Vorschlag** für Kategorie und
+   Beschreibung. Ein Etikett zeigt, woher der Vorschlag stammt. Alles lässt sich
+   ändern, und über den Haken entscheidest du, was importiert wird.
+4. Auf **„… importieren"** klicken.
+
+**Besonderheiten:**
+- **Mehrfach einlesen schadet nicht:** Schon importierte Umsätze erkennt die App und
+  wählt sie ab („bereits importiert").
+- **Die Vorschau bleibt erhalten**, wenn du zwischendurch z. B. zu „Buchungen"
+  wechselst, um etwas nachzuschauen oder eine Kategorie anzulegen. Neue Kategorien
+  stehen sofort zur Auswahl. Die Vorschau verschwindet erst nach dem Import, mit
+  **„Verwerfen"**, beim Wechsel des Haushaltsbuchs oder wenn du den Browser-Tab
+  schließt.
+- Mit **„unsichere abwählen"** nimmst du Umsätze ohne Kategorie oder mit unsicherem
+  KI-Vorschlag aus dem Import.
+
+### Woher die Vorschläge kommen
+Die App prüft der Reihe nach:
+
+1. **Vorhandene Buchung** (Etikett „✓ Schnellerfassung", „✓ Dauerauftrag",
+   „✓ Umbuchung" oder „✓ Vorhandene Buchung"): Gibt es schon eine Buchung mit
+   gleichem Betrag und ähnlichem Datum (±5 Tage, bei Daueraufträgen ±7 Tage), wird
+   sie **ergänzt statt doppelt angelegt**. Sie bekommt das **Bankdatum**, das Konto,
+   den Empfänger und den Verwendungszweck. **Kategorie und Beschreibung bleiben
+   deine.** Stimmt die Zuordnung nicht, klickst du auf **„Verknüpfung lösen"**, dann
+   wird der Umsatz als neue Buchung importiert.
+2. **Eigenes Konto** („↔ Eigenes Konto (IBAN)"): Überweisung auf oder von der IBAN
+   eines deiner Konten → Umbuchung.
+3. **Regel** (siehe unten).
+4. **Gelernt:** Für diesen Empfänger hast du schon einmal eine Kategorie oder
+   Umbuchung bestätigt.
+5. **KI** („✨ KI", optional, siehe unten).
+
+Zusätzlich kann ein **Paperless-Dokument** die Beschreibung liefern („📄 …", siehe
+unten). „? bitte zuordnen" heißt: kein Vorschlag gefunden.
+
+> **Die App lernt mit:** Bestätigst du einen KI-Vorschlag, änderst du eine Kategorie
+> oder wird eine Schnellerfassung zugeordnet, merkt sich die App den Empfänger. Beim
+> nächsten Import kommt der Vorschlag dann ohne KI.
+
+### Umbuchungen zwischen eigenen Konten
+Statt einer Kategorie kannst du in der Vorschau **„↔ Konto …"** wählen, z. B. für die
+Kreditkartenabrechnung vom Girokonto. Daraus wird eine **Umbuchung**: Sie zählt nicht
+als Ausgabe, beide Kontostände stimmen trotzdem. Liest du später die
+Kreditkarten-Datei ein, erkennt die App den Ausgleich als Gegenseite derselben
+Umbuchung und legt nichts doppelt an. Vorhandene Umbuchungen (auch aus
+Daueraufträgen) werden genauso abgeglichen.
+
+### Tab „Zuordnung & KI"
+- **Schalter:** vorhandene Buchungen abgleichen, mit Paperless abgleichen, Regeln
+  anwenden.
+- **Regeln:** „Wenn *Empfänger / Verwendungszweck / IBAN* enthält *…*" (optional mit
+  Betragsbereich) „→ Kategorie *oder* Umbuchung", optional mit fester Beschreibung.
+  Die erste passende Regel gewinnt, Groß- und Kleinschreibung spielt keine Rolle.
+- **KI-Vorschläge** sind standardmäßig **aus**. Zur Wahl stehen:
+  - **Claude** (Anthropic, Cloud) mit dem API-Key aus *Haushalt → KI-Einstellungen*.
+    Mit dem Modell Haiku kostet ein Import mit ~100 Buchungen etwa 1 Cent.
+  - **Eigener KI-Server** mit OpenAI-kompatibler Schnittstelle (z. B. Ollama,
+    LM Studio, vLLM): Adresse, Modell und optional API-Key eintragen, mit
+    **„Verbindung testen"** prüfen. Der Server muss vom Haushaltsbuch-Server aus
+    erreichbar sein. Empfohlen sind Modelle ab ca. 7–8 Milliarden Parametern. Ändern
+    dürfen das nur Admins des Haushaltsbuchs.
+
+  An die KI gehen nur **Betrag, Empfänger, Verwendungszweck und deine
+  Kategorienamen**, keine IBAN und kein Kontostand. Optional schreibt die KI auch eine
+  kurze Beschreibung („KI schreibt Beschreibung").
+- **Wartung:** „Aus bestehenden Buchungen lernen" übernimmt einmalig die häufigste
+  Kategorie je Empfänger. „Importierte Buchungen löschen" entfernt alle per Import
+  angelegten Buchungen eines Kontos, von Hand erfasste bleiben.
+
+### Abgleich mit Paperless
+Ist Paperless eingerichtet, sucht der Import zu jedem Umsatz eine passende Rechnung
+oder einen Beleg. Ein Treffer braucht immer ein **passendes Datum** (Dokument bis 45
+Tage vor bis 5 Tage nach der Zahlung) und zusätzlich:
+- eine **Bestellnummer** aus dem Verwendungszweck, die auch im Dokument steht (z. B.
+  bei Amazon, dann landen auch Teillieferungen bei derselben Bestellung), **oder**
+- **Betrag bzw. Kunden-/Mandatsnummer** im Dokument **und** einen passenden Absender.
+
+Kontoauszüge werden deshalb nicht zugeordnet. Der Dokumenttitel wird zur
+Beschreibung, und die Buchung wird mit dem Dokument verknüpft: In der Vorschau führt
+der Link „📄 …" ins Dokument, in der Buchungsliste das grüne Dokument-Symbol.
+
+> **Tipp für Amazon und PayPal:** Bestellbestätigungen und Zahlungsbelege kommen nur
+> als Mail. Damit sie in Paperless landen, braucht Paperless eine Mail-Regel mit
+> „Mail als .eml verarbeiten" (setzt die Paperless-Zusatzdienste Tika und Gotenberg
+> voraus).
+
+---
+
+## 16. Schnellerfassung (iPhone) ⚡
+
+Für unterwegs, direkt beim Bezahlen: In der Übersicht oben rechts auf **„⚡ Schnell"**
+tippen, Betrag über den Ziffernblock eingeben, eine Kategorie-Kachel antippen,
+optional ein Stichwort (z. B. „Pizza mit Team"), **Speichern**. Das Datum ist
+automatisch „heute", und das funktioniert auch offline.
+
+- **Kacheln:** Automatisch zeigt die App deine meistgenutzten Kategorien der letzten
+  90 Tage (nur von Hand erfasste Buchungen). Über **„Eigene Kacheln festlegen"**
+  wählst und sortierst du sie selbst, getrennt für Ausgaben und Einnahmen, bis zu 11
+  Kacheln. Die Auswahl gilt pro Person und Haushaltsbuch. **„Mehr"** zeigt alle
+  Kategorien.
+- Die Kacheln gehören zum **in der Übersicht gewählten Haushaltsbuch**. Fehlt eine
+  Kategorie, bist du vielleicht im falschen Buch.
+- Die Buchung zählt sofort in Budgets und Statistik. Beim nächsten **Bank-Import**
+  wird sie mit dem Kontoumsatz zusammengeführt (Kapitel 15). Schnellerfassungen ohne
+  passenden Umsatz zeigt die Vorschau als Hinweis, z. B. bei Barzahlung. Dort kannst
+  du sie mit **„Bar bezahlt, nicht mehr abgleichen"** aus dem Abgleich nehmen.
+
+---
+
+## 17. Mobile-App: Offline-Modus
 
 Die iPhone-App funktioniert auch **ohne Internet**:
 - Übersicht, Budgets und Buchungsliste werden zwischengespeichert.
@@ -271,14 +402,14 @@ Die iPhone-App funktioniert auch **ohne Internet**:
 
 ---
 
-## 16. Darstellung (Themes)
+## 18. Darstellung (Themes)
 
 In den Einstellungen kannst du das Erscheinungsbild wählen, u. a. ein helles
 (rosa) und ein dunkles (dunkelblaues) Design sowie professionelle Varianten.
 
 ---
 
-## 17. Verwaltung (für Haushalts-Admins / Superadmin)
+## 19. Verwaltung (für Haushalts-Admins / Superadmin)
 
 - **Mitglieder einladen:** Als Haushalts-Admin erzeugst du Einladungscodes, mit denen
   weitere Personen deinem Haushaltsbuch beitreten.
@@ -301,8 +432,13 @@ In den Einstellungen kannst du das Erscheinungsbild wählen, u. a. ein helles
 | Budget-Monat ab dem 27. | Haushalt → Monatsanfang = 27 |
 | Künftige Kontostände sehen | „Kalender" → Zukunft (Daueraufträge werden projiziert) |
 | Nach einem Betrag suchen | Suchfeld in der Buchungsliste, z. B. „12,50" |
+| Kontoauszug einlesen | „Bank-Sync" → Konto + Datei → „Vorschau" → importieren |
+| Unterwegs schnell erfassen | iPhone: Übersicht → „⚡ Schnell" |
+| Kreditkartenabrechnung als Umbuchung | Bank-Import-Vorschau → „↔ Kreditkarte" statt Kategorie |
+| Empfänger immer gleich zuordnen | „Bank-Sync" → „Zuordnung & KI" → Regel anlegen |
+| KI-Vorschläge beim Import | „Bank-Sync" → „Zuordnung & KI" → KI-Vorschläge aktivieren |
 
 ---
 
-*Stand: v1.0.10 (Juni 2026). Die App wird laufend weiterentwickelt – die Versionsnummer
+*Stand: v1.0.31 (Oktober 2026). Die App wird laufend weiterentwickelt – die Versionsnummer
 siehst du unten in der Seitenleiste der Web-App.*
