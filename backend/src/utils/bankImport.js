@@ -10,21 +10,56 @@ function isMt940(text) {
   return /^\s*:20:/.test(text);
 }
 
-// Deutsches Zahlenformat ("1.234,56") vs. Standard ("1234.56") erkennen.
+// Beträge aus Bank-/Kreditkarten-CSVs robust lesen. Vorkommende Formate:
+// "-12,50", "1.234,56", "1234.56", "1,234.56", "-7,99 €", "€ -7,99",
+// "-7,99 EUR", "7,99-" (nachgestelltes Minus), "(7,99)" (Klammern = negativ).
+// ⚠️ Vorher wurde "-7,99 €" als -799 gelesen (Währungszeichen verhinderte die
+// Komma-Erkennung) → Kreditkarten-Beträge um Faktor 100 falsch.
+const CURRENCY = /€|\$|£|\b(?:EUR|USD|GBP|CHF)\b/gi;
+const WHITESPACE = /[\s\u00a0\u202f]/g;
+const GERMAN_DECIMAL = /,\d{1,2}$/;
+const PLAIN_DECIMAL = /\.\d{1,2}$/;
+const GERMAN_THOUSANDS_ONLY = /^\d{1,3}(?:\.\d{3})+$/;
+
 function parseGermanOrPlainNumber(raw) {
   if (raw === null || raw === undefined) {
     return null;
   }
-  const trimmed = String(raw).trim();
-  if (!trimmed) {
+  let text = String(raw).replace(CURRENCY, "").replace(WHITESPACE, "");
+  if (!text) {
     return null;
   }
-  // Enthält Komma als vermutliches Dezimaltrennzeichen (z.B. "1.234,56" oder "-12,50")
-  if (/,\d{1,2}$/.test(trimmed)) {
-    const normalized = trimmed.replace(/\./g, "").replace(",", ".");
-    return Number.parseFloat(normalized);
+  let negative = false;
+  if (/^\(.*\)$/.test(text)) {
+    negative = true;
+    text = text.slice(1, -1);
   }
-  return Number.parseFloat(trimmed.replace(/,/g, ""));
+  if (text.endsWith("-")) {
+    negative = !negative;
+    text = text.slice(0, -1);
+  }
+  if (text.startsWith("-")) {
+    negative = !negative;
+    text = text.slice(1);
+  } else if (text.startsWith("+")) {
+    text = text.slice(1);
+  }
+
+  let normalized;
+  if (GERMAN_DECIMAL.test(text)) {
+    normalized = text.replace(/\./g, "").replace(",", ".");
+  } else if (PLAIN_DECIMAL.test(text)) {
+    normalized = text.replace(/,/g, "");
+  } else if (GERMAN_THOUSANDS_ONLY.test(text)) {
+    normalized = text.replace(/\./g, "");
+  } else {
+    normalized = text.replace(/,/g, "");
+  }
+  const value = Number.parseFloat(normalized);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  return negative ? -value : value;
 }
 
 // Deutsche Banken strukturieren Feld 86 in Unterfelder (?20-?29 = Verwendungs-
@@ -171,21 +206,25 @@ function applyCsvMapping(rawRows, columnMapping) {
   }));
 }
 
-// Deutsches Datumsformat (DD.MM.YYYY) und ISO (YYYY-MM-DD) unterstützen.
+// Datumsformate aus Bank-/Kreditkarten-Exporten: DD.MM.YYYY, DD.MM.YY,
+// DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD — jeweils auch mit angehängter Uhrzeit.
+const DAY_FIRST_DATE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})(?:$|[\sT])/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
+
 function normalizeDate(raw) {
   if (!raw) {
     return null;
   }
   const trimmed = String(raw).trim();
-  const germanMatch = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/);
-  if (germanMatch) {
-    const [, day, month, year] = germanMatch;
+  const iso = trimmed.match(ISO_DATE);
+  if (iso) {
+    return iso[0];
+  }
+  const dayFirst = trimmed.match(DAY_FIRST_DATE);
+  if (dayFirst) {
+    const [, day, month, year] = dayFirst;
     const fullYear = year.length === 2 ? `20${year}` : year;
     return `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  }
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    return isoMatch[0].slice(0, 10);
   }
   return trimmed;
 }
