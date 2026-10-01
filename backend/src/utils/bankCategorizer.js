@@ -59,12 +59,18 @@ function daysBetween(a, b) {
 // Datumsfenster je Art der vorhandenen Buchung. Daueraufträge werden bei
 // Wochenende/Feiertag oft mehrere Tage verschoben abgebucht.
 function matchWindowDays(entry) {
-  return entry.recurringSourceId ? RECURRING_MATCH_DAYS : QUICK_ENTRY_MATCH_DAYS;
+  return entry.recurringSourceId
+    ? RECURRING_MATCH_DAYS
+    : QUICK_ENTRY_MATCH_DAYS;
 }
 
-// Lädt alle Buchungen, die zu einem Bankumsatz der Datei gehören könnten:
-// noch nicht mit der Bank verknüpft (externalRef NULL), keine Dauerauftrags-
-// Vorlage, gleiches Konto oder ohne Konto (App-Buchungen haben keins).
+// Lädt alle Buchungen, die zu einem Bankumsatz der Datei gehören könnten
+// (keine Dauerauftrags-Vorlagen):
+// - Ausgabe/Einnahme, noch nicht mit der Bank verknüpft (externalRef NULL),
+//   gleiches Konto oder ohne Konto (App-Buchungen haben keins)
+// - Umbuchung VON diesem Konto, Quell-Seite noch nicht verknüpft
+// - Umbuchung AUF dieses Konto, Ziel-Seite noch nicht verknüpft
+//   (transferExternalRef NULL) — die Quell-Seite darf schon importiert sein
 function loadMatchCandidates(householdId, accountId, rows) {
   const dates = rows
     .map((r) => r.date)
@@ -80,11 +86,22 @@ function loadMatchCandidates(householdId, accountId, rows) {
   return Transaction.findAll({
     where: {
       householdId,
-      externalRef: null,
       isRecurring: { [Op.ne]: true },
       isSubAccountSettlement: { [Op.ne]: true },
-      [Op.or]: [{ accountId: null }, { accountId }],
       date: { [Op.between]: [from, to] },
+      [Op.or]: [
+        {
+          type: { [Op.in]: ["expense", "income"] },
+          externalRef: null,
+          [Op.or]: [{ accountId: null }, { accountId }],
+        },
+        { type: "transfer", externalRef: null, accountId },
+        {
+          type: "transfer",
+          transferExternalRef: null,
+          transferTargetAccountId: accountId,
+        },
+      ],
     },
     include: [
       {
@@ -96,9 +113,27 @@ function loadMatchCandidates(householdId, accountId, rows) {
   });
 }
 
+// Aus Sicht des importierten Kontos: geht bei dieser Buchung Geld ab ("out")
+// oder kommt es an ("in")? null = Buchung passt zu keiner Seite.
+function entrySide(entry, accountId) {
+  if (entry.type !== "transfer") {
+    return entry.type === "expense" ? "out" : "in";
+  }
+  if (entry.accountId === accountId && !entry.externalRef) {
+    return "out";
+  }
+  if (
+    entry.transferTargetAccountId === accountId &&
+    !entry.transferExternalRef
+  ) {
+    return "in";
+  }
+  return null;
+}
+
 // Ordnet jeder Bankzeile höchstens eine vorhandene Buchung zu und umgekehrt.
 // Bei mehreren Kandidaten gewinnt der mit dem geringsten Datumsabstand.
-function matchExistingEntries(rows, entries, skipIndexes) {
+function matchExistingEntries(rows, entries, skipIndexes, accountId) {
   const candidates = [];
   rows.forEach((row, index) => {
     if (skipIndexes.has(index) || !row.date || typeof row.amount !== "number") {
@@ -106,7 +141,8 @@ function matchExistingEntries(rows, entries, skipIndexes) {
     }
     const amount = Math.abs(row.amount);
     for (const entry of entries) {
-      const sameType = entry.type === txType(row.amount);
+      const rowSide = row.amount < 0 ? "out" : "in";
+      const sameType = entrySide(entry, accountId) === rowSide;
       const sameAmount =
         Math.abs(Number(entry.amount) - amount) <= AMOUNT_TOLERANCE;
       const distance = daysBetween(entry.date, row.date);
@@ -466,6 +502,7 @@ module.exports = {
   normalizeLocalUrl,
   QUICK_ENTRY_MATCH_DAYS,
   findMatchingRule,
+  entrySide,
   loadMatchCandidates,
   matchExistingEntries,
   suggestWithAi,

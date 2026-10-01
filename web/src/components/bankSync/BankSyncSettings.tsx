@@ -3,7 +3,13 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import { bankSyncAPI } from "../../services/api";
-import { type Category, categoryLabel } from "./types";
+import TargetSelect from "./TargetSelect";
+import {
+  type Account,
+  accountLabel,
+  type Category,
+  categoryLabel,
+} from "./types";
 
 type AiProvider = "anthropic" | "openai_compatible";
 
@@ -28,13 +34,15 @@ type RuleField = "any" | "counterparty" | "purpose" | "iban";
 
 interface Rule {
   Category?: Category;
-  categoryId: string;
+  categoryId: string | null;
   description: string | null;
   field: RuleField;
   id: string;
   maxAmount: string | null;
   minAmount: string | null;
   pattern: string;
+  targetAccount?: Account | null;
+  targetAccountId: string | null;
 }
 
 interface RuleDraft {
@@ -44,10 +52,12 @@ interface RuleDraft {
   maxAmount: string;
   minAmount: string;
   pattern: string;
+  targetAccountId: string;
 }
 
 const EMPTY_DRAFT: RuleDraft = {
   categoryId: "",
+  targetAccountId: "",
   description: "",
   field: "counterparty",
   maxAmount: "",
@@ -99,6 +109,7 @@ function ToggleRow({
 }
 
 interface RuleFormProps {
+  accounts: Account[];
   categories: Category[];
   draft: RuleDraft;
   editing: boolean;
@@ -109,6 +120,7 @@ interface RuleFormProps {
 }
 
 function RuleForm({
+  accounts,
   categories,
   draft,
   editing,
@@ -180,21 +192,20 @@ function RuleForm({
       </label>
       <label className="block text-xs md:col-span-3">
         <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-          dann Kategorie
+          dann Kategorie oder Umbuchung
         </span>
-        <select
-          className="input"
-          onChange={(e) => set({ categoryId: e.target.value })}
+        <TargetSelect
+          accounts={accounts}
+          ariaLabel="Kategorie oder Umbuchung"
+          categories={categories}
+          categoryId={draft.categoryId}
+          onChange={({ categoryId, transferAccountId }) =>
+            set({ categoryId, targetAccountId: transferAccountId })
+          }
+          placeholder="— wählen —"
           required
-          value={draft.categoryId}
-        >
-          <option value="">— wählen —</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {categoryLabel(c)}
-            </option>
-          ))}
-        </select>
+          transferAccountId={draft.targetAccountId}
+        />
       </label>
       <label className="block text-xs md:col-span-3">
         <span className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
@@ -401,6 +412,13 @@ function LocalAiServerForm({
   );
 }
 
+function ruleTargetLabel(rule: Rule) {
+  if (rule.targetAccount) {
+    return `↔ Umbuchung ${accountLabel(rule.targetAccount)}`;
+  }
+  return rule.Category ? categoryLabel(rule.Category) : "?";
+}
+
 function describeRule(rule: Rule) {
   const amountParts: string[] = [];
   if (rule.minAmount !== null) {
@@ -414,11 +432,16 @@ function describeRule(rule: Rule) {
 }
 
 interface Props {
+  accounts: Account[];
   categories: Category[];
   householdId: string;
 }
 
-export default function BankSyncSettings({ categories, householdId }: Props) {
+export default function BankSyncSettings({
+  accounts,
+  categories,
+  householdId,
+}: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [draft, setDraft] = useState<RuleDraft | null>(null);
@@ -459,7 +482,8 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
   const startEdit = (rule: Rule) => {
     setEditingId(rule.id);
     setDraft({
-      categoryId: rule.categoryId,
+      categoryId: rule.categoryId || "",
+      targetAccountId: rule.targetAccountId || "",
       description: rule.description || "",
       field: rule.field,
       maxAmount: rule.maxAmount ?? "",
@@ -672,6 +696,7 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
 
         {draft && !editingId && (
           <RuleForm
+            accounts={accounts}
             categories={categories}
             draft={draft}
             editing={false}
@@ -691,6 +716,7 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
             editingId === rule.id && draft ? (
               <li key={rule.id}>
                 <RuleForm
+                  accounts={accounts}
                   categories={categories}
                   draft={draft}
                   editing
@@ -708,7 +734,7 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
                 <span className="text-gray-700 dark:text-gray-300">
                   {describeRule(rule)} →{" "}
                   <strong className="text-gray-900 dark:text-white">
-                    {rule.Category ? categoryLabel(rule.Category) : "?"}
+                    {ruleTargetLabel(rule)}
                   </strong>
                   {rule.description && (
                     <span className="text-gray-500">

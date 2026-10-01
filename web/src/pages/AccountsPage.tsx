@@ -7,6 +7,7 @@ import { useAuthStore } from "../store/authStore";
 interface Account {
   balance: number;
   color: string;
+  iban: string | null;
   icon: string;
   id: string;
   isActive: boolean;
@@ -24,6 +25,7 @@ const DEFAULT_FORM = {
   color: "#3B82F6",
   startingBalance: "0",
   startingBalanceDate: "",
+  iban: "",
   isActive: true,
 };
 
@@ -152,6 +154,7 @@ export default function AccountsPage() {
         a.type === "liability" ? -a.startingBalance : a.startingBalance
       ),
       startingBalanceDate: a.startingBalanceDate || "",
+      iban: a.iban || "",
       isActive: a.isActive,
     });
     setModalOpen(true);
@@ -180,6 +183,7 @@ export default function AccountsPage() {
         color: form.color,
         startingBalance,
         startingBalanceDate: form.startingBalanceDate || null,
+        iban: form.iban.trim() || null,
         isActive: form.isActive,
       };
       if (editingId) {
@@ -435,6 +439,28 @@ export default function AccountsPage() {
                   type="text"
                   value={form.name}
                 />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300">
+                  IBAN
+                  <span className="ml-1 text-gray-400 text-xs">(optional)</span>
+                </label>
+                <input
+                  autoComplete="off"
+                  className="input"
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, iban: e.target.value }))
+                  }
+                  placeholder="DE12 3456 7890 1234 5678 90"
+                  type="text"
+                  value={form.iban}
+                />
+                <p className="mt-1 text-gray-400 text-xs">
+                  Beim Bank-Import werden Überweisungen auf oder von dieser IBAN
+                  automatisch als Umbuchung erkannt statt als Ausgabe oder
+                  Einnahme.
+                </p>
               </div>
 
               <div>

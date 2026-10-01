@@ -6,6 +6,7 @@ const router = require("express").Router();
 const multer = require("multer");
 const { Op } = require("sequelize");
 const {
+  Account,
   BankCategorizationRule,
   BankImportProfile,
   Category,
@@ -24,6 +25,7 @@ const {
   findMatchingRule,
   listLocalModels,
   normalizeLocalUrl,
+  entrySide,
   loadMatchCandidates,
   matchExistingEntries,
   suggestWithAi,
@@ -121,12 +123,50 @@ function loadRules(householdId) {
   });
 }
 
+function loadAccounts(householdId) {
+  return Account.findAll({
+    where: { householdId },
+    attributes: ["id", "name", "icon", "iban"],
+  });
+}
+
+// Gelernte Zuordnung pro Empfänger: Kategorie ODER Umbuchung auf ein Konto.
+function mappingMap(mappings) {
+  return new Map(
+    mappings.map((m) => [
+      m.merchantPattern,
+      { categoryId: m.categoryId, targetAccountId: m.targetAccountId },
+    ])
+  );
+}
+
+const normalizeIban = (iban) => (iban || "").replace(/\s/g, "").toUpperCase();
+
+// Umbuchungs-Felder aus Sicht des importierten Kontos. Abgehend (Betrag < 0):
+// dieses Konto ist Quelle, der Bankumsatz die Quell-Seite (externalRef).
+// Eingehend: das andere Konto ist Quelle, der Bankumsatz die Ziel-Seite
+// (transferExternalRef); die Quell-Seite verknüpft der Import des anderen
+// Kontos später.
+function transferFields(amount, accountId, otherAccountId, ref) {
+  const outgoing = amount < 0;
+  return {
+    type: "transfer",
+    categoryId: null,
+    accountId: outgoing ? accountId : otherAccountId,
+    transferTargetAccountId: outgoing ? otherAccountId : accountId,
+    externalRef: outgoing ? ref : null,
+    transferExternalRef: outgoing ? null : ref,
+  };
+}
+
 function entryJson(entry) {
   return {
     id: entry.id,
     date: entry.date,
     amount: Number(entry.amount),
     type: entry.type,
+    accountId: entry.accountId,
+    transferTargetAccountId: entry.transferTargetAccountId,
     description: entry.description,
     note: entry.note,
     isQuickEntry: entry.pendingBankMatch,
@@ -150,10 +190,20 @@ async function isExactDuplicate(accountId, tx) {
   if (tx.amount === null || tx.amount === undefined) {
     return false;
   }
-  const exists = await Transaction.findOne({
-    where: { accountId, externalRef: computeExternalRef(tx) },
+  return !!(await findImported(accountId, computeExternalRef(tx)));
+}
+
+// Bankumsatz dieses Kontos schon verknüpft? Entweder als normale Buchung /
+// Quell-Seite einer Umbuchung oder als Ziel-Seite einer Umbuchung.
+function findImported(accountId, ref) {
+  return Transaction.findOne({
+    where: {
+      [Op.or]: [
+        { accountId, externalRef: ref },
+        { transferTargetAccountId: accountId, transferExternalRef: ref },
+      ],
+    },
   });
-  return !!exists;
 }
 
 // Vorschlag aus KI holen. Fehler (kein Key, API down) brechen die Vorschau
@@ -207,6 +257,13 @@ async function applyAiSuggestions({
   return aiStatus;
 }
 
+// Bei einer vorhandenen Umbuchung: das jeweils andere Konto.
+function otherTransferAccount(entry, accountId) {
+  return entry.accountId === accountId
+    ? entry.transferTargetAccountId
+    : entry.accountId;
+}
+
 // Ermittelt pro Zeile einen Vorschlag {source, categoryId, description, ...}
 // in der Reihenfolge Schnellerfassung → Regel → Mapping → KI.
 async function buildSuggestions({ household, userId, accountId, rows }) {
@@ -228,19 +285,44 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     const { matches, usedEntryIds } = matchExistingEntries(
       rows,
       candidates,
-      skip
+      skip,
+      accountId
     );
     matchedEntryIds = usedEntryIds;
     for (const [index, entry] of matches) {
+      const isTransfer = entry.type === "transfer";
       suggestions[index] = {
         source: entry.pendingBankMatch ? "quick" : "existing",
-        categoryId: entry.categoryId,
+        categoryId: isTransfer ? null : entry.categoryId,
+        transferAccountId: isTransfer
+          ? otherTransferAccount(entry, accountId)
+          : null,
         description: entry.description || null,
         matchTransactionId: entry.id,
         matchedEntry: entryJson(entry),
       };
     }
   }
+
+  // Überweisung auf/von einer eigenen IBAN → Umbuchung.
+  const accounts = await loadAccounts(householdId);
+  const accountByIban = new Map(
+    accounts
+      .filter((a) => a.iban && a.id !== accountId)
+      .map((a) => [normalizeIban(a.iban), a.id])
+  );
+  rows.forEach((row, i) => {
+    const ownAccountId = accountByIban.get(normalizeIban(row.counterpartyIban));
+    if (skip.has(i) || suggestions[i] || !ownAccountId) {
+      return;
+    }
+    suggestions[i] = {
+      source: "account",
+      categoryId: null,
+      transferAccountId: ownAccountId,
+      description: null,
+    };
+  });
 
   // Paperless-Dokumente liefern Beschreibung + Verknüpfung, aber keine
   // Kategorie → die kommt weiter aus Regel/Mapping/KI (siehe unten).
@@ -257,20 +339,23 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   const mappings = await MerchantCategoryMapping.findAll({
     where: { householdId },
   });
-  const mappingByMerchant = new Map(
-    mappings.map((m) => [m.merchantPattern, m.categoryId])
-  );
+  const mappingByMerchant = mappingMap(mappings);
+  const isOtherAccount = (id) => id && id !== accountId;
 
   const aiPending = [];
   rows.forEach((row, i) => {
     if (skip.has(i) || suggestions[i]) {
       return;
     }
-    const rule = findMatchingRule(rules, row);
+    const rule = findMatchingRule(
+      rules.filter((r) => r.categoryId || isOtherAccount(r.targetAccountId)),
+      row
+    );
     if (rule) {
       suggestions[i] = {
         source: "rule",
-        categoryId: rule.categoryId,
+        categoryId: rule.targetAccountId ? null : rule.categoryId,
+        transferAccountId: rule.targetAccountId || null,
         description: rule.description || null,
         ruleId: rule.id,
         rulePattern: rule.pattern,
@@ -278,13 +363,12 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
       return;
     }
     const merchantKey = (row.counterpartyName || "").trim().toLowerCase();
-    const mappedCategoryId = merchantKey
-      ? mappingByMerchant.get(merchantKey)
-      : null;
-    if (mappedCategoryId) {
+    const mapped = merchantKey ? mappingByMerchant.get(merchantKey) : null;
+    if (mapped?.categoryId || isOtherAccount(mapped?.targetAccountId)) {
       suggestions[i] = {
         source: "mapping",
-        categoryId: mappedCategoryId,
+        categoryId: mapped.targetAccountId ? null : mapped.categoryId,
+        transferAccountId: mapped.targetAccountId || null,
         description: null,
       };
       return;
@@ -306,6 +390,10 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   // generische KI-Beschreibung, eine Regel-Beschreibung bleibt aber stehen.
   for (const [index, doc] of paperlessMatches) {
     const suggestion = suggestions[index];
+    // Umbuchungen zwischen eigenen Konten haben keine Rechnung.
+    if (suggestion?.transferAccountId) {
+      continue;
+    }
     if (!suggestion) {
       suggestions[index] = {
         source: "paperless",
@@ -326,7 +414,7 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   }
   const paperlessStatus = {
     enabled: household.bankSyncMatchPaperless,
-    matched: paperlessMatches.size,
+    matched: suggestions.filter((s) => s?.paperlessDoc).length,
     error: paperlessError,
   };
 
@@ -367,10 +455,33 @@ router.delete("/imported", auth, async (req, res) => {
     if (!(await checkAccess(req.user.id, householdId))) {
       return res.status(403).json({ error: "Forbidden" });
     }
-    const deleted = await Transaction.destroy({
+    // 1. Normale Importe + Umbuchungen, deren Quell-Seite dieses Konto ist.
+    // 2. Umbuchungen, die NUR über die Ziel-Seite dieses Kontos angelegt
+    //    wurden (Quell-Seite nie importiert) → ebenfalls löschen.
+    // 3. Umbuchungen mit beiden Seiten → nur die Ziel-Verknüpfung lösen,
+    //    die Buchung gehört weiter zum Import des anderen Kontos.
+    const deletedOwn = await Transaction.destroy({
       where: { householdId, accountId, externalRef: { [Op.ne]: null } },
     });
-    res.json({ deleted });
+    const deletedIncoming = await Transaction.destroy({
+      where: {
+        householdId,
+        transferTargetAccountId: accountId,
+        transferExternalRef: { [Op.ne]: null },
+        externalRef: null,
+      },
+    });
+    await Transaction.update(
+      { transferExternalRef: null },
+      {
+        where: {
+          householdId,
+          transferTargetAccountId: accountId,
+          transferExternalRef: { [Op.ne]: null },
+        },
+      }
+    );
+    res.json({ deleted: deletedOwn + deletedIncoming });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
@@ -430,6 +541,7 @@ router.post("/bootstrap-mappings", auth, async (req, res) => {
           householdId,
           merchantPattern,
           categoryId: bestCategoryId,
+          targetAccountId: null,
         });
         merchantsLearned++;
       }
@@ -520,43 +632,76 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
   }
 });
 
-// Verschmilzt eine vorhandene Buchung (Schnellerfassung, von Hand erfasst,
-// Dauerauftrag) mit dem Bankumsatz: Kategorie + Beschreibung des Users
-// bleiben (sofern in der Vorschau nicht geändert), die Bank liefert Datum,
-// Konto, Händler, Dedup-Schlüssel und Verwendungszweck. Das Bankdatum gilt
-// immer, damit Salden zum Kontoauszug passen (User-Entscheidung 2026-10-01).
-async function mergeIntoExistingEntry({
-  entry,
-  tx,
-  categoryId,
-  accountId,
-  externalRef,
-}) {
-  const merchant = (tx.counterpartyName || "").trim();
-  const purpose = tx.purpose || "";
-  const description = (tx.description || "").trim();
-  let note = entry.note || null;
-  if (purpose) {
-    note = note ? `${note}\n\nBank: ${purpose}` : purpose;
+function appendBankPurpose(note, purpose) {
+  if (!purpose) {
+    return note || null;
   }
-  await entry.update({
-    date: tx.date,
-    accountId,
-    externalRef,
-    pendingBankMatch: false,
-    paperlessDocId: entry.paperlessDocId || parsePaperlessDocId(tx),
-    merchant: entry.merchant || merchant.slice(0, TEXT_MAX_LENGTH) || null,
-    categoryId: tx.categoryId === undefined ? entry.categoryId : categoryId,
-    description: description
-      ? description.slice(0, TEXT_MAX_LENGTH)
-      : entry.description,
-    note,
-  });
+  return note ? `${note}\n\nBank: ${purpose}` : purpose;
 }
 
 function parsePaperlessDocId(tx) {
   const id = Number.parseInt(tx.paperlessDocId, 10);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// Verschmilzt eine vorhandene Buchung (Schnellerfassung, von Hand erfasst,
+// Dauerauftrag, Umbuchung) mit dem Bankumsatz: Kategorie + Beschreibung des
+// Users bleiben (sofern in der Vorschau nicht geändert), die Bank liefert
+// Datum, Konto, Händler, Dedup-Schlüssel und Verwendungszweck. Das Bankdatum
+// gilt immer, damit Salden zum Kontoauszug passen (User-Entscheidung
+// 2026-10-01). Ausnahme: Ziel-Seite einer Umbuchung, deren Quell-Seite schon
+// importiert ist — dann bleibt das Datum der Quell-Bank.
+async function mergeIntoExistingEntry({
+  entry,
+  tx,
+  categoryId,
+  transferAccountId,
+  accountId,
+  externalRef,
+}) {
+  const merchant = (tx.counterpartyName || "").trim();
+  const description = (tx.description || "").trim();
+  const common = {
+    pendingBankMatch: false,
+    merchant: entry.merchant || merchant.slice(0, TEXT_MAX_LENGTH) || null,
+    description: description
+      ? description.slice(0, TEXT_MAX_LENGTH)
+      : entry.description,
+    note: appendBankPurpose(entry.note, tx.purpose),
+  };
+
+  if (entry.type === "transfer") {
+    const outgoing = entrySide(entry, accountId) === "out";
+    await entry.update({
+      ...common,
+      ...(outgoing
+        ? { externalRef, date: tx.date }
+        : {
+            transferExternalRef: externalRef,
+            date: entry.externalRef ? entry.date : tx.date,
+          }),
+    });
+    return;
+  }
+
+  // Ausgabe/Einnahme, die der User in der Vorschau zur Umbuchung gemacht hat.
+  if (transferAccountId) {
+    await entry.update({
+      ...common,
+      date: tx.date,
+      ...transferFields(tx.amount, accountId, transferAccountId, externalRef),
+    });
+    return;
+  }
+
+  await entry.update({
+    ...common,
+    date: tx.date,
+    accountId,
+    externalRef,
+    paperlessDocId: entry.paperlessDocId || parsePaperlessDocId(tx),
+    categoryId: tx.categoryId === undefined ? entry.categoryId : categoryId,
+  });
 }
 
 // Sub-Konto-Kategorien (z.B. Spesen) wie beim manuellen Anlegen behandeln:
@@ -573,20 +718,131 @@ function subAccountFields(category, date, monthStartDay) {
   };
 }
 
-// Kategorie für eine Zeile bestimmen. Neuere Frontends schicken immer
-// categoryId (auch null = bewusst leer); ältere gar keins → Mapping-Fallback.
-function resolveCategoryId(tx, categoriesById, mappingByMerchant) {
-  if (tx.categoryId !== undefined) {
-    return categoriesById.has(tx.categoryId) ? tx.categoryId : null;
+// Kategorie bzw. Umbuchungs-Zielkonto für eine Zeile bestimmen. Neuere
+// Frontends schicken immer categoryId/transferAccountId (null = bewusst
+// leer); ältere gar nichts → Fallback auf gelernte Zuordnung.
+function resolveTarget(tx, { categoriesById, accountIds, mappingByMerchant }) {
+  const validAccount = (id) =>
+    id && id !== tx.accountId && accountIds.has(id) ? id : null;
+  if (tx.categoryId !== undefined || tx.transferAccountId !== undefined) {
+    const transferAccountId = validAccount(tx.transferAccountId);
+    return {
+      transferAccountId,
+      categoryId:
+        !transferAccountId && categoriesById.has(tx.categoryId)
+          ? tx.categoryId
+          : null,
+    };
   }
   const merchant = (tx.counterpartyName || "").trim().toLowerCase();
-  return mappingByMerchant.get(merchant) || null;
+  const mapped = mappingByMerchant.get(merchant);
+  const transferAccountId = validAccount(mapped?.targetAccountId);
+  return {
+    transferAccountId,
+    categoryId: transferAccountId ? null : mapped?.categoryId || null,
+  };
+}
+
+// Neue Buchung aus einem Bankumsatz anlegen (Ausgabe/Einnahme/Umbuchung).
+function createFromBankRow({
+  tx,
+  categoryId,
+  transferAccountId,
+  accountId,
+  externalRef,
+  context,
+}) {
+  // description/merchant sind VARCHAR(255) - der rohe MT940-Verwendungs-
+  // zweck (Feld 86) kann länger sein. Kürzen für description, voller Text
+  // bleibt im unbegrenzten note-Feld erhalten. Hat der User (oder Regel/KI)
+  // eine eigene Beschreibung gesetzt, wandert der Verwendungszweck komplett
+  // in note.
+  const merchant = (tx.counterpartyName || "").trim();
+  const purpose = tx.purpose || "";
+  const customDescription = (tx.description || "").trim();
+  const description = customDescription || purpose;
+  const keepPurposeInNote =
+    purpose.length > TEXT_MAX_LENGTH || (customDescription && purpose);
+  const typeFields = transferAccountId
+    ? transferFields(tx.amount, accountId, transferAccountId, externalRef)
+    : {
+        type: txType(tx.amount),
+        categoryId,
+        accountId,
+        externalRef,
+        paperlessDocId: parsePaperlessDocId(tx),
+        ...subAccountFields(
+          context.categoriesById.get(categoryId),
+          tx.date,
+          context.monthStartDay
+        ),
+      };
+  return Transaction.create({
+    amount: Math.abs(tx.amount),
+    date: tx.date,
+    description: description ? description.slice(0, TEXT_MAX_LENGTH) : null,
+    note: keepPurposeInNote ? purpose : null,
+    merchant: merchant ? merchant.slice(0, TEXT_MAX_LENGTH) : null,
+    householdId: context.householdId,
+    userId: context.userId,
+    ...typeFields,
+  });
+}
+
+// Vorhandene Buchung zur Zeile laden, sofern sie (noch) zur Seite des
+// Bankumsatzes passt.
+async function findMergeTarget(tx, householdId, accountId) {
+  if (!tx.matchTransactionId) {
+    return null;
+  }
+  const entry = await Transaction.findOne({
+    where: {
+      id: tx.matchTransactionId,
+      householdId,
+      isRecurring: { [Op.ne]: true },
+    },
+  });
+  const rowSide = tx.amount < 0 ? "out" : "in";
+  const unlinked =
+    entry?.type === "transfer" || (entry && entry.externalRef === null);
+  return unlinked && entrySide(entry, accountId) === rowSide ? entry : null;
+}
+
+// Bestätigte Zuordnungen pro Empfänger lernen → nächster Import ohne KI.
+async function learnMapping({ tx, target, householdId, mappingByMerchant }) {
+  const merchantKey = (tx.counterpartyName || "").trim().toLowerCase();
+  const { categoryId, transferAccountId } = target;
+  if (
+    !(merchantKey && (categoryId || transferAccountId)) ||
+    !LEARNING_SOURCES.has(tx.suggestionSource)
+  ) {
+    return false;
+  }
+  const current = mappingByMerchant.get(merchantKey);
+  const unchanged =
+    current &&
+    current.categoryId === (transferAccountId ? null : categoryId) &&
+    (current.targetAccountId || null) === (transferAccountId || null);
+  if (unchanged) {
+    return false;
+  }
+  const value = {
+    categoryId: transferAccountId ? null : categoryId,
+    targetAccountId: transferAccountId || null,
+  };
+  await MerchantCategoryMapping.upsert({
+    householdId,
+    merchantPattern: merchantKey,
+    ...value,
+  });
+  mappingByMerchant.set(merchantKey, value);
+  return true;
 }
 
 // POST /api/bank-sync/import — importiert eine vom Frontend bestätigte Liste
 // von Buchungen (aus /preview, ggf. vom User gekürzt und mit geänderter
-// Kategorie/Beschreibung). Kein erneuter Datei-Upload nötig, da /preview
-// bereits alle Felder liefert. Dedup via externalRef bleibt als
+// Kategorie/Beschreibung/Umbuchung). Kein erneuter Datei-Upload nötig, da
+// /preview bereits alle Felder liefert. Dedup via externalRef bleibt als
 // Sicherheitsnetz aktiv, auch wenn das Frontend schon gefiltert hat.
 router.post("/import", auth, async (req, res) => {
   try {
@@ -605,19 +861,27 @@ router.post("/import", auth, async (req, res) => {
       attributes: ["id", "monthStartDay"],
     });
     const categories = await loadCategories(householdId);
-    const categoriesById = new Map(categories.map((c) => [c.id, c]));
+    const accounts = await loadAccounts(householdId);
     const mappings = await MerchantCategoryMapping.findAll({
       where: { householdId },
     });
-    const mappingByMerchant = new Map(
-      mappings.map((m) => [m.merchantPattern, m.categoryId])
-    );
+    const context = {
+      householdId,
+      userId: req.user.id,
+      monthStartDay: household?.monthStartDay,
+      categoriesById: new Map(categories.map((c) => [c.id, c])),
+      accountIds: new Set(accounts.map((a) => a.id)),
+      mappingByMerchant: mappingMap(mappings),
+    };
 
-    let imported = 0;
-    let merged = 0;
-    let skipped = 0;
-    let uncategorized = 0;
-    let learned = 0;
+    const counts = {
+      imported: 0,
+      merged: 0,
+      transfers: 0,
+      skipped: 0,
+      uncategorized: 0,
+      learned: 0,
+    };
 
     for (const tx of transactions) {
       if (!(tx.date && typeof tx.amount === "number")) {
@@ -627,102 +891,54 @@ router.post("/import", auth, async (req, res) => {
       // Sicherheitsnetz: exakte Dopplung immer verhindern, unabhängig davon,
       // was das Frontend geschickt hat.
       // eslint-disable-next-line no-await-in-loop
-      const exists = await Transaction.findOne({
-        where: { accountId, externalRef },
-      });
-      if (exists) {
-        skipped++;
+      if (await findImported(accountId, externalRef)) {
+        counts.skipped++;
         continue;
       }
 
-      const merchant = (tx.counterpartyName || "").trim();
-      const categoryId = resolveCategoryId(
-        tx,
-        categoriesById,
-        mappingByMerchant
-      );
-
+      const target = resolveTarget({ ...tx, accountId }, context);
       // eslint-disable-next-line no-await-in-loop
-      const existingEntry = tx.matchTransactionId
-        ? await Transaction.findOne({
-            where: {
-              id: tx.matchTransactionId,
-              householdId,
-              externalRef: null,
-              isRecurring: { [Op.ne]: true },
-              type: txType(tx.amount),
-            },
-          })
-        : null;
+      const existingEntry = await findMergeTarget(tx, householdId, accountId);
 
       if (existingEntry) {
         // eslint-disable-next-line no-await-in-loop
         await mergeIntoExistingEntry({
           entry: existingEntry,
           tx,
-          categoryId,
+          ...target,
           accountId,
           externalRef,
         });
-        merged++;
+        counts.merged++;
       } else {
-        // description/merchant sind VARCHAR(255) - der rohe MT940-Verwendungs-
-        // zweck (Feld 86) kann länger sein. Kürzen für description, voller
-        // Text bleibt im unbegrenzten note-Feld erhalten. Hat der User (oder
-        // Regel/KI) eine eigene Beschreibung gesetzt, wandert der
-        // Verwendungszweck komplett in note.
-        const purpose = tx.purpose || "";
-        const customDescription = (tx.description || "").trim();
-        const description = customDescription || purpose;
-        const keepPurposeInNote =
-          purpose.length > TEXT_MAX_LENGTH || (customDescription && purpose);
-
         // eslint-disable-next-line no-await-in-loop
-        await Transaction.create({
-          amount: Math.abs(tx.amount),
-          type: txType(tx.amount),
-          date: tx.date,
-          description: description
-            ? description.slice(0, TEXT_MAX_LENGTH)
-            : null,
-          note: keepPurposeInNote ? purpose : null,
-          merchant: merchant ? merchant.slice(0, TEXT_MAX_LENGTH) : null,
-          categoryId,
-          householdId,
-          userId: req.user.id,
+        await createFromBankRow({
+          tx,
+          ...target,
           accountId,
           externalRef,
-          paperlessDocId: parsePaperlessDocId(tx),
-          ...subAccountFields(
-            categoriesById.get(categoryId),
-            tx.date,
-            household?.monthStartDay
-          ),
+          context,
         });
-        imported++;
+        counts.imported++;
       }
 
-      if (!categoryId) {
-        uncategorized++;
+      const isTransfer =
+        target.transferAccountId || existingEntry?.type === "transfer";
+      if (isTransfer) {
+        counts.transfers++;
+      } else if (!target.categoryId) {
+        counts.uncategorized++;
       }
 
-      // Bestätigte KI-Vorschläge, manuelle Korrekturen und Schnellerfassungen
-      // als Merchant→Kategorie lernen → nächstes Mal ohne KI zugeordnet.
-      const merchantKey = merchant.toLowerCase();
-      const shouldLearn =
-        categoryId &&
-        merchantKey &&
-        LEARNING_SOURCES.has(tx.suggestionSource) &&
-        mappingByMerchant.get(merchantKey) !== categoryId;
-      if (shouldLearn) {
-        // eslint-disable-next-line no-await-in-loop
-        await MerchantCategoryMapping.upsert({
-          householdId,
-          merchantPattern: merchantKey,
-          categoryId,
-        });
-        mappingByMerchant.set(merchantKey, categoryId);
-        learned++;
+      // eslint-disable-next-line no-await-in-loop
+      const learned = await learnMapping({
+        tx,
+        target,
+        householdId,
+        mappingByMerchant: context.mappingByMerchant,
+      });
+      if (learned) {
+        counts.learned++;
       }
     }
 
@@ -735,7 +951,7 @@ router.post("/import", auth, async (req, res) => {
       });
     }
 
-    res.json({ imported, merged, skipped, uncategorized, learned });
+    res.json(counts);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
@@ -926,16 +1142,21 @@ async function parseRuleInput(body, householdId) {
     return { error: "Suchbegriff fehlt" };
   }
   const field = RULE_FIELDS.has(body.field) ? body.field : "any";
-  const category = body.categoryId
-    ? await Category.findOne({
-        where: {
-          id: body.categoryId,
-          [Op.or]: [{ householdId }, { householdId: null, isSystem: true }],
-        },
-      })
+  // Ziel: Umbuchung auf ein eigenes Konto ODER Kategorie.
+  const targetAccount = body.targetAccountId
+    ? await Account.findOne({ where: { id: body.targetAccountId, householdId } })
     : null;
-  if (!category) {
-    return { error: "Kategorie fehlt oder ist ungültig" };
+  const category =
+    !targetAccount && body.categoryId
+      ? await Category.findOne({
+          where: {
+            id: body.categoryId,
+            [Op.or]: [{ householdId }, { householdId: null, isSystem: true }],
+          },
+        })
+      : null;
+  if (!(category || targetAccount)) {
+    return { error: "Kategorie oder Zielkonto fehlt oder ist ungültig" };
   }
   return {
     data: {
@@ -943,7 +1164,8 @@ async function parseRuleInput(body, householdId) {
       pattern,
       minAmount: parseOptionalAmount(body.minAmount),
       maxAmount: parseOptionalAmount(body.maxAmount),
-      categoryId: category.id,
+      categoryId: category?.id || null,
+      targetAccountId: targetAccount?.id || null,
       description: (body.description || "").trim() || null,
       sortOrder: Number.parseInt(body.sortOrder, 10) || 0,
     },
@@ -961,6 +1183,11 @@ router.get("/rules", auth, async (req, res) => {
       where: { householdId },
       include: [
         { model: Category, attributes: ["id", "name", "nameDE", "icon"] },
+        {
+          model: Account,
+          as: "targetAccount",
+          attributes: ["id", "name", "icon"],
+        },
       ],
       order: [
         ["sortOrder", "ASC"],

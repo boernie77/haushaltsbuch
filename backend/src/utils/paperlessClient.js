@@ -22,7 +22,11 @@ async function getPaperlessClient(householdId) {
 // Holt alle Seiten einer paginierten Paperless-API-Ressource
 // Normalisiert data.next auf den konfigurierten Host (Paperless gibt oft interne URLs zurück)
 // maxResults: optionale Obergrenze (bricht nach der Seite ab, die sie erreicht).
-async function fetchAllPages(baseUrl, headers, maxResults = Number.POSITIVE_INFINITY) {
+async function fetchAllPages(
+  baseUrl,
+  headers,
+  maxResults = Number.POSITIVE_INFINITY
+) {
   const results = [];
   let nextUrl = baseUrl;
   let configuredOrigin;

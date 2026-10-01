@@ -147,6 +147,14 @@ router.get("/:id/net-after", auth, async (req, res) => {
   }
 });
 
+// IBAN ohne Leerzeichen, Großbuchstaben; leer → null.
+function normalizeIban(raw) {
+  const iban = String(raw || "")
+    .replace(/\s/g, "")
+    .toUpperCase();
+  return iban || null;
+}
+
 // POST /api/accounts
 router.post("/", auth, async (req, res) => {
   try {
@@ -159,6 +167,7 @@ router.post("/", auth, async (req, res) => {
       startingBalance,
       startingBalanceDate,
       sortOrder,
+      iban,
     } = req.body;
     if (!(householdId && name)) {
       return res.status(400).json({ error: "householdId & name required" });
@@ -175,6 +184,7 @@ router.post("/", auth, async (req, res) => {
       startingBalance: Number.parseFloat(startingBalance) || 0,
       startingBalanceDate: startingBalanceDate || null,
       sortOrder: Number.parseInt(sortOrder, 10) || 0,
+      iban: normalizeIban(iban),
     });
     res.json({
       account: {
@@ -207,8 +217,10 @@ router.put("/:id", auth, async (req, res) => {
       startingBalanceDate,
       isActive,
       sortOrder,
+      iban,
     } = req.body;
     await account.update({
+      ...(iban !== undefined && { iban: normalizeIban(iban) }),
       ...(name !== undefined && { name: name.trim() }),
       ...(type !== undefined && {
         type: type === "liability" ? "liability" : "asset",

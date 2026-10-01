@@ -10,7 +10,13 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import BankSyncSettings from "../components/bankSync/BankSyncSettings";
-import { type Category, categoryLabel } from "../components/bankSync/types";
+import TargetSelect from "../components/bankSync/TargetSelect";
+import {
+  type Account,
+  accountLabel,
+  type Category,
+  categoryLabel,
+} from "../components/bankSync/types";
 import { accountAPI, bankSyncAPI, categoryAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -18,13 +24,8 @@ import {
   useDraftState,
 } from "../store/bankSyncDraftStore";
 
-interface Account {
-  icon: string;
-  id: string;
-  name: string;
-}
-
 interface ExistingEntry {
+  accountId: string | null;
   amount: number;
   Category: Category | null;
   date: string;
@@ -33,7 +34,8 @@ interface ExistingEntry {
   isQuickEntry: boolean;
   isRecurring: boolean;
   note: string | null;
-  type: "expense" | "income";
+  transferTargetAccountId: string | null;
+  type: "expense" | "income" | "transfer";
 }
 
 type SuggestionSource =
@@ -43,6 +45,7 @@ type SuggestionSource =
   | "mapping"
   | "ai"
   | "paperless"
+  | "account"
   | "manual";
 
 interface PaperlessDoc {
@@ -69,6 +72,8 @@ interface Suggestion {
   paperlessDoc?: PaperlessDoc;
   rulePattern?: string;
   source: SuggestionSource;
+  // Umbuchung auf/von diesem eigenen Konto statt Kategorie.
+  transferAccountId?: string | null;
 }
 
 interface Row {
@@ -86,6 +91,7 @@ interface RowEdit {
   categoryId: string;
   description: string;
   source: SuggestionSource | null;
+  transferAccountId: string;
   // User hat die Verknüpfung mit einer vorhandenen Buchung gelöst → wird als
   // neue Buchung importiert.
   unlinked: boolean;
@@ -131,6 +137,10 @@ const SOURCE_BADGES: Record<SuggestionSource, { label: string; cls: string }> =
       label: "✓ Vorhandene Buchung",
       cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
     },
+    account: {
+      label: "↔ Eigenes Konto (IBAN)",
+      cls: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+    },
     paperless: {
       label: "📄 Paperless",
       cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
@@ -151,13 +161,14 @@ function initialEdit(row: Row): RowEdit {
     categoryId: row.suggestion?.categoryId || "",
     description: row.suggestion?.description || "",
     source: row.suggestion?.source || null,
+    transferAccountId: row.suggestion?.transferAccountId || "",
     unlinked: false,
   };
 }
 
 // "Unsicher" = kein Vorschlag oder KI-Vorschlag mit niedriger Sicherheit.
 function isUncertain(edit: RowEdit | undefined, row: Row) {
-  if (!edit?.categoryId) {
+  if (!(edit?.categoryId || edit?.transferAccountId)) {
     return true;
   }
   return edit.source === "ai" && row.suggestion?.confidence === "low";
@@ -452,6 +463,7 @@ export default function BankSyncPage() {
         purpose: row.purpose,
         counterpartyName: row.counterpartyName,
         categoryId: edit?.categoryId || null,
+        transferAccountId: edit?.transferAccountId || null,
         description: edit?.description || null,
         suggestionSource: edit?.source || null,
         matchTransactionId: isMerge(edit)
@@ -474,7 +486,10 @@ export default function BankSyncPage() {
       );
       const parts = [`${data.imported} neu importiert`];
       if (data.merged) {
-        parts.push(`${data.merged} mit Schnellerfassung verschmolzen`);
+        parts.push(`${data.merged} vorhandene Buchungen ergänzt`);
+      }
+      if (data.transfers) {
+        parts.push(`${data.transfers} Umbuchungen`);
       }
       parts.push(`${data.skipped} Duplikate übersprungen`);
       parts.push(`${data.uncategorized} ohne Kategorie`);
@@ -535,6 +550,7 @@ export default function BankSyncPage() {
       {tab === "settings" && currentHousehold && (
         <>
           <BankSyncSettings
+            accounts={accounts}
             categories={categories}
             householdId={currentHousehold.id}
           />
@@ -884,6 +900,8 @@ export default function BankSyncPage() {
                           <td className="min-w-[16rem] py-2 pr-4">
                             {!r.alreadyImported && edits[i] && (
                               <SuggestionCell
+                                accountId={accountId}
+                                accounts={accounts}
                                 bankDate={r.date}
                                 categories={categories}
                                 edit={edits[i]}
@@ -916,6 +934,8 @@ export default function BankSyncPage() {
 }
 
 interface SuggestionCellProps {
+  accountId: string;
+  accounts: Account[];
   bankDate: string | null;
   categories: Category[];
   edit: RowEdit;
@@ -925,6 +945,9 @@ interface SuggestionCellProps {
 }
 
 function mergeBadgeLabel(entry: ExistingEntry | undefined) {
+  if (entry?.type === "transfer") {
+    return entry.isRecurring ? "✓ Umbuchung (Dauerauftrag)" : "✓ Umbuchung";
+  }
   if (entry?.isQuickEntry) {
     return "✓ Schnellerfassung";
   }
@@ -932,6 +955,8 @@ function mergeBadgeLabel(entry: ExistingEntry | undefined) {
 }
 
 function SuggestionCell({
+  accountId,
+  accounts,
   bankDate,
   categories,
   edit,
@@ -947,6 +972,9 @@ function SuggestionCell({
       ? { ...baseBadge, label: mergeBadgeLabel(entry) }
       : baseBadge;
   const dateChanges = merged && entry && bankDate && entry.date !== bankDate;
+  // Vorhandene Umbuchung wird nur verknüpft, nicht umgewidmet.
+  const lockedTransfer = merged && entry?.type === "transfer";
+  const transferAccount = accounts.find((a) => a.id === edit.transferAccountId);
   const lowConfidence =
     edit.source === "ai" && suggestion?.confidence === "low";
   return (
@@ -1000,19 +1028,25 @@ function SuggestionCell({
           {suggestion.paperlessDoc.confidence === "low" && " (prüfen)"}
         </a>
       )}
-      <select
-        aria-label="Kategorie"
-        className="input py-1 text-xs"
-        onChange={(e) => onChange({ categoryId: e.target.value })}
-        value={edit.categoryId}
-      >
-        <option value="">— ohne Kategorie —</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>
-            {categoryLabel(c)}
-          </option>
-        ))}
-      </select>
+      {lockedTransfer ? (
+        <p className="text-gray-600 text-xs dark:text-gray-300">
+          ↔ Umbuchung{" "}
+          {(entry?.accountId === accountId ? "auf " : "von ") +
+            (transferAccount ? accountLabel(transferAccount) : "anderem Konto")}
+        </p>
+      ) : (
+        <TargetSelect
+          accounts={accounts}
+          ariaLabel="Kategorie oder Umbuchung"
+          categories={categories}
+          categoryId={edit.categoryId}
+          className="input py-1 text-xs"
+          excludeAccountId={accountId}
+          onChange={onChange}
+          placeholder="— ohne Kategorie —"
+          transferAccountId={edit.transferAccountId}
+        />
+      )}
       <input
         aria-label="Beschreibung"
         className="input py-1 text-xs"

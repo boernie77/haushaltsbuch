@@ -747,6 +747,7 @@ router.put("/:id", auth, async (req, res) => {
         householdId: transaction.householdId,
         merchantPattern: transaction.merchant.trim().toLowerCase(),
         categoryId,
+        targetAccountId: null,
       });
     }
 

@@ -258,6 +258,12 @@ const Transaction = sequelize.define(
       allowNull: true,
       comment: "Dedup-Hash für Bank-Sync-Importe (siehe bankSync.js)",
     },
+    transferExternalRef: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment:
+        "Dedup-Hash des Bankumsatzes auf der Ziel-Seite einer Umbuchung",
+    },
     pendingBankMatch: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
@@ -508,6 +514,9 @@ const Account = sequelize.define(
     // Datum, auf das sich startingBalance bezieht (Stand am ...). NULL = alle
     // Buchungen zählen (wie vor dem Kalender-Feature).
     startingBalanceDate: { type: DataTypes.DATEONLY, allowNull: true },
+    // Optional: Überweisungen auf diese IBAN erkennt der Bank-Sync als
+    // Umbuchung auf dieses Konto.
+    iban: { type: DataTypes.TEXT, allowNull: true },
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
     sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   },
@@ -705,7 +714,9 @@ const MerchantCategoryMapping = sequelize.define(
     },
     householdId: { type: DataTypes.UUID, allowNull: false },
     merchantPattern: { type: DataTypes.TEXT, allowNull: false },
-    categoryId: { type: DataTypes.UUID, allowNull: false },
+    // Genau eins von beiden: Kategorie ODER Umbuchung auf eigenes Konto.
+    categoryId: { type: DataTypes.UUID, allowNull: true },
+    targetAccountId: { type: DataTypes.UUID, allowNull: true },
   },
   {
     tableName: "merchant_category_mappings",
@@ -736,7 +747,9 @@ const BankCategorizationRule = sequelize.define(
     pattern: { type: DataTypes.TEXT, allowNull: false },
     minAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
     maxAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
-    categoryId: { type: DataTypes.UUID, allowNull: false },
+    // Genau eins von beiden: Kategorie ODER Umbuchung auf eigenes Konto.
+    categoryId: { type: DataTypes.UUID, allowNull: true },
+    targetAccountId: { type: DataTypes.UUID, allowNull: true },
     description: { type: DataTypes.TEXT, allowNull: true },
     sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   },
@@ -746,6 +759,10 @@ const BankCategorizationRule = sequelize.define(
 Household.hasMany(BankCategorizationRule, { foreignKey: "householdId" });
 BankCategorizationRule.belongsTo(Household, { foreignKey: "householdId" });
 BankCategorizationRule.belongsTo(Category, { foreignKey: "categoryId" });
+BankCategorizationRule.belongsTo(Account, {
+  foreignKey: "targetAccountId",
+  as: "targetAccount",
+});
 
 Household.hasMany(BankImportProfile, { foreignKey: "householdId" });
 BankImportProfile.belongsTo(Household, { foreignKey: "householdId" });

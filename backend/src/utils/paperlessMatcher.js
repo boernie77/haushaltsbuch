@@ -88,7 +88,9 @@ function customFieldAmounts(doc) {
   const amounts = [];
   for (const field of doc.custom_fields || []) {
     const match =
-      typeof field?.value === "string" ? field.value.match(MONETARY_VALUE) : null;
+      typeof field?.value === "string"
+        ? field.value.match(MONETARY_VALUE)
+        : null;
     if (match) {
       amounts.push(Math.abs(Number.parseFloat(match[1])));
     }
@@ -209,9 +211,7 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       // Korrespondent zählt am meisten, dann strukturierter Betrag, dann
       // zeitliche Nähe.
       const score =
-        (corrMatch ? 2 : 0) +
-        (inCustomField ? 1 : 0) -
-        Math.abs(offset) / 100;
+        (corrMatch ? 2 : 0) + (inCustomField ? 1 : 0) - Math.abs(offset) / 100;
       candidates.push({ index: i, doc, corrName, corrMatch, docDate, score });
     }
   }
