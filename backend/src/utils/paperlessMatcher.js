@@ -25,6 +25,14 @@ const PAGE_SIZE = 100;
 const MAX_DOCUMENTS = 3000;
 const MIN_TOKEN_LENGTH = 3;
 const AMOUNT_TOLERANCE = 0.005;
+// Ungefährer Betrag (nur zusammen mit passendem Absender): Kreditkarten mit
+// Cashback buchen z.B. 1,98 € für eine Rechnung über 1,99 € (Praxisfall
+// Easybank/Apple 2026-10-01); dazu Währungs-/Rundungsdifferenzen.
+const NEAR_AMOUNT_MIN = 0.05;
+const NEAR_AMOUNT_RATIO = 0.015;
+// Alle Beträge im Dokumenttext (1,99 / 1.234,56 / 1,234.56 / 5.99).
+const AMOUNT_IN_TEXT =
+  /(?<![\d.,])(\d{1,3}(?:[.,'\s]\d{3})*|\d+)[.,](\d{2})(?!\d|[.,]\d)/g;
 // Monetary Custom Field: "EUR23.80", "23.80" oder "-23.80".
 const MONETARY_VALUE = /^(?:[A-Z]{3})?(-?\d+(?:\.\d{1,2})?)$/;
 const NON_ALNUM = /[^a-z0-9äöüß]+/g;
@@ -171,6 +179,20 @@ function correspondentMatches(correspondentName, row) {
   }
   const haystack = ` ${(row.counterpartyName || "").toLowerCase().replace(NON_ALNUM, " ")} ${(row.purpose || "").toLowerCase().replace(NON_ALNUM, " ")} `;
   return haystack.includes(` ${brand}`);
+}
+
+// Beträge eines Dokuments (einmal pro Dokument berechnet).
+const documentAmountCache = new WeakMap();
+function documentAmounts(doc) {
+  if (!documentAmountCache.has(doc)) {
+    const amounts = [];
+    for (const m of (doc.content || "").matchAll(AMOUNT_IN_TEXT)) {
+      const integer = m[1].replace(/[.,'\s]/g, "");
+      amounts.push(Number.parseFloat(`${integer}.${m[2]}`));
+    }
+    documentAmountCache.set(doc, amounts);
+  }
+  return documentAmountCache.get(doc);
 }
 
 function referenceTokens(purpose) {
@@ -370,8 +392,17 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
         (a) => Math.abs(a - amount) < AMOUNT_TOLERANCE
       );
       const inContent = regex.test(doc.content || "");
+      // Ungefähr nur gegen die Rechnungssumme (größter Betrag im Dokument),
+      // nicht gegen Netto-/Steuerzeilen.
+      const documentTotal = Math.max(0, ...documentAmounts(doc));
+      const nearAmount =
+        !(inContent || inCustomField) &&
+        documentTotal > 0 &&
+        Math.abs(documentTotal - amount) <=
+          Math.max(NEAR_AMOUNT_MIN, amount * NEAR_AMOUNT_RATIO);
       const byOtherReference = containsReference(doc.content, otherReferences);
-      const weakEvidence = inCustomField || inContent || byOtherReference;
+      const weakEvidence =
+        inCustomField || inContent || nearAmount || byOtherReference;
       if (!(byOrderNumber || (weakEvidence && corrMatch))) {
         if (inContent || inCustomField) {
           senderMismatchRows.add(i);
@@ -384,7 +415,9 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       const score =
         (byReference ? REFERENCE_SCORE : 0) +
         (corrMatch ? 2 : 0) +
-        (inCustomField ? 1 : 0) -
+        (inCustomField ? 1 : 0) +
+        // Exakter Betrag schlägt ungefähren.
+        (nearAmount ? 0 : 0.5) -
         Math.abs(offset) / 100;
       candidates.push({
         index: i,
