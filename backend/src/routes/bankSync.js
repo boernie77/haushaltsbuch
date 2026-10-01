@@ -813,8 +813,11 @@ async function learnMapping({ tx, target, householdId, mappingByMerchant }) {
   const merchantKey = (tx.counterpartyName || "").trim().toLowerCase();
   const { categoryId, transferAccountId } = target;
   if (
-    !(merchantKey && (categoryId || transferAccountId)) ||
-    !LEARNING_SOURCES.has(tx.suggestionSource)
+    !(
+      merchantKey &&
+      (categoryId || transferAccountId) &&
+      LEARNING_SOURCES.has(tx.suggestionSource)
+    )
   ) {
     return false;
   }
@@ -1144,7 +1147,9 @@ async function parseRuleInput(body, householdId) {
   const field = RULE_FIELDS.has(body.field) ? body.field : "any";
   // Ziel: Umbuchung auf ein eigenes Konto ODER Kategorie.
   const targetAccount = body.targetAccountId
-    ? await Account.findOne({ where: { id: body.targetAccountId, householdId } })
+    ? await Account.findOne({
+        where: { id: body.targetAccountId, householdId },
+      })
     : null;
   const category =
     !targetAccount && body.categoryId

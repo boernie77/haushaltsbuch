@@ -26,8 +26,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 021-recurring-end-date,
-│       │                           022-oidc-subject
+│       ├── migrations/             001-initial … 033-bank-sync-transfers
+│       │                           (028–033 = Bank-Sync, siehe unten)
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -36,6 +36,11 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │       └── utils/
 │           ├── migrate.js          Migrations-Runner (_migrations-Tabelle)
 │           ├── receiptProcessor.js Sharp-Pipeline (B&W Dokumenten-Scan-Filter)
+│           ├── bankImport.js       Bank-Sync: MT940-/CSV-Parser
+│           ├── bankCategorizer.js  Bank-Sync: Abgleich vorhandener Buchungen, Regeln, KI
+│           ├── paperlessMatcher.js Bank-Sync: Umsatz ↔ Paperless-Dokument
+│           ├── paperlessClient.js  getPaperlessClient + fetchAllPages (geteilt)
+│           ├── anthropicKey.js     resolveApiKey (geteilt von OCR + Bank-Sync)
 │           └── seedCategories.js   18 Systemkategorien (findOrCreate, läuft bei jedem Start)
 ├── web/
 │   └── src/
@@ -302,7 +307,7 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 
 ## Offline-Modus (Mobile)
 - `mobile/src/services/offlineStore.ts`: **expo-file-system**-basierter Cache + Offline-Queue (kein MMKV!)
-- Cache-Keys: `overview_{householdId}`, `budgets_{householdId}`, `transactions_{householdId}`
+- Cache-Keys: `overview_{householdId}_{year}_{month}`, `budgets_{householdId}_{year}_{month}` (seit v1.0.32 pro Monat, Startseite hat Monatsnavigation), `transactions_{householdId}`, `quick_tiles_…`/`quick_all_categories_…` (Schnellerfassung)
 - Queue-Key: `offline_tx_queue` — Buchungen ohne Foto werden offline gespeichert
 - Auto-Sync: beim App-Start + bei Wechsel in den Vordergrund (`AppState` in `_layout.tsx`)
 - `isNetworkError(err)`: `!err.response` → echter Netzwerkfehler (kein `err.response` bei Timeout/Offline)
@@ -402,7 +407,8 @@ Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `d
 ## iOS Mobile App
 - **Expo SDK 52**, expo-router
 - **Bundle ID:** `de.bernauer24.haushaltsbuch`
-- **Apple Development Team:** APPLE-TEAM-ID (Persönliches Team)
+- **Apple Development Team:** APPLE-TEAM-ID (Stand 2026-09-30 im Xcode-Projekt; früher APPLE-TEAM-ID)
+- **Gerät:** „Christians Iphone 15pro“, UDID `GERAETE-UDID-ENTFERNT` — muss für Build/Install **entsperrt** sein
 - **Signing:** Automatic (Xcode verwaltet Provisioning Profile)
 - **Testgerät:** Physisches iPhone, App läuft als **Release-Build** (kein Metro!)
 - **Push Notifications:** NICHT aktiviert — `aps-environment` muss aus `.entitlements` entfernt bleiben, `expo-notifications` Plugin darf nicht in `app.json` stehen
@@ -412,6 +418,16 @@ Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `d
 ### iOS neu bauen (nach JS-Änderungen):
 1. **⇧⌘K** — Clean Build Folder
 2. **⌘R** — Build & Run
+
+Oder per CLI (funktioniert, ~5–10 min):
+```bash
+cd mobile/ios
+xcodebuild -workspace Haushaltsbuch.xcworkspace -scheme Haushaltsbuch -configuration Release \
+  -destination "id=GERAETE-UDID-ENTFERNT" -derivedDataPath build -allowProvisioningUpdates clean build
+xcrun devicectl device install app --device GERAETE-UDID-ENTFERNT build/Build/Products/Release-iphoneos/Haushaltsbuch.app
+xcrun devicectl device process launch --device GERAETE-UDID-ENTFERNT de.bernauer24.haushaltsbuch
+```
+Prüfen, ob neuer Code drin ist: `LC_ALL=C grep -a -c "<neuer Text>" build/Build/Products/Release-iphoneos/Haushaltsbuch.app/main.jsbundle` (Hermes-Bytecode, Strings bleiben lesbar).
 
 ### iOS Rebuild nach nativen Änderungen (app.json, neue native Module):
 ```bash
@@ -545,7 +561,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.13** (Stand 2026-07-28).
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.32** (Stand 2026-10-01). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -598,7 +614,7 @@ Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/me
 - **FormData-Felder:** Niemals dasselbe Feld mehrfach `append`-en — multer macht daraus ein Array, das Sequelize crasht. Backend nutzt `firstValue()` zur Defensive (siehe „Wiederkehrende Buchungen → FormData-Falle").
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
 
-## Bank-Sync-Feature (seit 2026-07-28)
+## Bank-Sync: Hintergrund & Parser (seit 2026-07-28)
 Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg und ING. Rein privat für Christian selbst (kein SaaS-Ziel, siehe Memory `project_commercial_intent.md`). Migration 028 legt `bank_import_profiles` + `merchant_category_mappings` an + `transactions."externalRef"` (Dedup-Hash, partial UNIQUE INDEX auf `(accountId, externalRef)`).
 
 **Architektur-Entscheidung:** Ein direkter FinTS/HBCI-Live-Zugang wurde verworfen — das erfordert eine PSD2-Produktregistrierung bei der Deutschen Kreditwirtschaft (kostenlos, aber ~10–15 Werktage, an Hersteller/Firmen adressiertes Formular), was für ein privates Projekt zu aufwendig ist. Stattdessen: Sparda-Bank Nürnberg bietet im Online-Banking CSV-/MT940-/CAMT.052-Export, ING bietet CSV-Export unter „Umsätze" — beides manuell exportierbar und hochladbar, ohne PIN-Speicherung oder Sidecar-Service.
@@ -607,27 +623,22 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg u
 - **MT940** via npm-Paket `mt940js` (`new mt940js.Parser().parse(text)`), Format-Erkennung: Datei beginnt mit `:20:`.
 - **CSV** via npm-Paket `papaparse` (robustes Delimiter/Quoting-Handling für deutsche Bank-Exporte). Spalten-Mapping (Datum/Betrag/Verwendungszweck/Empfänger) wird per Header-Namen automatisch geraten (`suggestMapping`) und vom User im Frontend bestätigt/korrigiert.
 - Deutsches Zahlenformat (`1.234,56`) und deutsches Datumsformat (`DD.MM.YYYY`) werden normalisiert.
-- Gemeinsame Ausgabe: `{ date, amount, purpose, counterpartyName }[]`.
+- Gemeinsame Ausgabe: `{ date, amount, purpose, counterpartyName, counterpartyIban }[]`.
 
-**Modelle:** `BankImportProfile` (householdId, accountId, format [`csv`|`mt940`], columnMapping JSON, UNIQUE(householdId, accountId)) — merkt sich die zuletzt bestätigte CSV-Spalten-Zuordnung pro Konto, damit sie beim nächsten Import nicht neu eingegeben werden muss. `MerchantCategoryMapping` (householdId, merchantPattern, categoryId, UNIQUE) — lernt Merchant→Kategorie aus manuellen Zuordnungen importierter Buchungen (Hook in `transactions.js` PUT-Handler: sobald eine Buchung mit `externalRef` manuell kategorisiert wird, wird das Mapping upserted) UND rückwirkend aus bestehenden Buchungen via `/bootstrap-mappings` (siehe unten).
-
-**Endpoints:**
-- `POST /api/bank-sync/bootstrap-mappings` — Body `{householdId}`. Lernt einmalig rückwirkend aus allen bestehenden Buchungen mit gesetztem `merchant` + `categoryId` (auch manuell erfasste, nicht nur importierte): pro Merchant wird die häufigste bisher verwendete Kategorie ermittelt und upserted. Idempotent, beliebig oft wiederholbar. UI-Button „Aus bestehenden Buchungen lernen" auf `BankSyncPage`.
-- `POST /api/bank-sync/preview` — multipart (`file`, `householdId`, `accountId`, optional `columnMapping` JSON-String zum erneuten Parsen mit geändertem Mapping), parst die Datei (multer `memoryStorage`, keine Disk-Persistenz). Markiert jede Zeile mit `alreadyImported` (exakter `externalRef`-Treffer) und `possibleDuplicate` (Fuzzy-Abgleich: Datum ±3 Tage + Betrag ±0.01 + gleicher Typ gegen ALLE Buchungen des Kontos, auch manuell erfasste ohne `externalRef`). Importiert noch nichts.
-- `POST /api/bank-sync/import` — JSON-Body `{householdId, accountId, format, transactions, columnMapping?}`. **Kein Datei-Upload mehr nötig** — das Frontend schickt die vom User bestätigte/gekürzte Zeilenliste aus `/preview` direkt mit (JSON, damit einzelne Zeilen per Checkbox ausgeschlossen werden können, z.B. `possibleDuplicate`-Warnungen). `externalRef`-Dedup läuft serverseitig zusätzlich als Sicherheitsnetz. Speichert `BankImportProfile` bei CSV. Gibt `{imported, skipped, uncategorized}` zurück.
-
-**Dedup — zwei Ebenen:**
-1. **Exakt** (`alreadyImported`): `externalRef` = SHA-256-Hash aus Datum+Betrag+Verwendungszweck+Gegenkonto-Name. Erkennt Buchungen, die schon einmal per Datei-Import reinkamen (`Transaction.findOne({accountId, externalRef})`).
-2. **Fuzzy** (`possibleDuplicate`): Datum ±3 Tage + Betrag ±0.01 + gleicher Typ gegen ALLE Buchungen des Kontos — erkennt auch Treffer gegen manuell eingetippte Buchungen (die nie einen `externalRef` haben). Blockt den Import NICHT automatisch (Fuzzy-Logik hat False-Positive-Risiko bei wiederkehrenden ähnlichen Beträgen), sondern startet in der Vorschau abgewählt — User entscheidet pro Zeile per Checkbox.
-
-**Frontend:** `web/src/pages/BankSyncPage.tsx`, Sidebar-Eintrag „Bank-Sync" (Landmark-Icon). Ablauf: Konto wählen → Datei hochladen → „Vorschau" zeigt erkannte Buchungen mit Checkbox pro Zeile (Duplikat-Warnungen gelb hervorgehoben, vorab abgewählt) + bei CSV 4 Mapping-Dropdowns (ändert Mapping → automatischer Re-Preview-Request) → „X importieren" schickt nur die angehakten Zeilen.
-
-**Mobile:** noch nicht angepasst (wie bei Konten-/Sub-Konten-Feature — web-only in Iteration 1).
+**Aktueller Stand** (Vorschlagsquellen, Abgleich vorhandener Buchungen, Umbuchungen, KI, Paperless, Schnellerfassung, Endpoints) → Abschnitt „Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)“ am Ende. Die frühere ±3-Tage-Warnung `possibleDuplicate` gibt es seit v1.0.23 nicht mehr (ersetzt durch Verschmelzen vorhandener Buchungen).
 
 **Bekannte Einschränkung:** CAMT.052 (von Sparda-Bank Nürnberg ebenfalls angeboten) wird nicht geparst — bewusst nicht umgesetzt, MT940 deckt den Anwendungsfall ab.
 
+## Session-Notizen 2026-09-30 / 2026-10-01 (v1.0.17–v1.0.32)
+- Bank-Sync stark ausgebaut (siehe „Bank-Sync-Feature (v1.0.13–v1.0.31 …)“): Schnellerfassung (Mobile), Regeln, KI (Claude oder eigener OpenAI-kompatibler Server), Paperless-Abgleich (inkl. Bestellnummern), Verschmelzen vorhandener Buchungen mit Bankdatum, Umbuchungen beidseitig, IBAN bei Konten, Vorschau-Entwurf übersteht Seitenwechsel.
+- Mobile: Schnellerfassung mit eigenen Kacheln (v1.0.17/19/21), Monatsnavigation auf der Startseite (v1.0.32).
+- Anleitung (ANLEITUNG.md + HelpPage) um Kapitel 15 Bank-Import und 16 Schnellerfassung ergänzt (v1.0.31).
+- Erstes GitHub-Release v1.0.21. Releases künftig nur auf ausdrücklichen Wunsch.
+- Praxistest-Lehren Paperless-Abgleich: reine Betragstreffer → Fehlzuordnungen (Lotterie-Übersichten); Referenzen ohne Datumsfenster → alte Kontoauszüge als Beschreibung. Beides behoben (v1.0.28, v1.0.30).
+- Kreditkarte: Anbieter bietet online CSV → kein PDF-Import nötig.
+
 ## Session-Notizen 2026-07-28
-- Bank-Sync-Feature (siehe Section oben) — **zwei Anläufe in derselben Session:**
+- Bank-Sync (siehe „Bank-Sync: Hintergrund & Parser“) — **zwei Anläufe in derselben Session:**
   1. Erster Entwurf: FinTS/HBCI-Live-Sync über Python-Sidecar (`fints-service/`, FastAPI + `python-fints`, TAN-Flow via `pause_dialog()`/`deconstruct()`). Wurde komplett gebaut, dann verworfen, nachdem klar wurde, dass die PSD2-Produktregistrierung (~10-15 Werktage, Formular an Hersteller/Firmen adressiert) für ein privates Projekt zu aufwendig ist.
   2. Zweiter Entwurf (umgesetzt): manueller CSV/MT940-Datei-Upload, kein Produkt-ID/PIN/Sidecar nötig. `fints-service/` gelöscht, `docker-compose.yml` zurückgesetzt, Migration 028 umgeschrieben (`bank_import_profiles` statt `bank_connections`). `Transaction.externalRef` + `MerchantCategoryMapping` aus dem ersten Entwurf blieben unverändert bestehen.
   - **Lektion:** Bei Bank-Integrationen immer zuerst prüfen, ob die Bank strukturierten Datei-Export (CSV/MT940/CAMT.052) anbietet, bevor ein FinTS/HBCI-Live-Zugang samt PSD2-Registrierung geplant wird — für Privatnutzer meist der pragmatischere Weg.
@@ -685,3 +696,27 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg u
 - **FAMILY_MODE=true** fest im Dockerfile eingebaut — kein Trial, alle User dauerhaft aktiv
 - **OIDC:** optional (nur wenn OIDC_ISSUER_URL/CLIENT_ID/SECRET gesetzt), SSO-Button versteckt sich sonst
 - **theme-Spalte:** VARCHAR (kein PostgreSQL ENUM) → Migration 020 ist No-Op auf Frisch-Install
+
+## Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)
+Kontoumsätze per **CSV/MT940-Datei** importieren (kein FinTS: bräuchte PSD2-Produktregistrierung). Getestet: Sparda-Bank Nürnberg (CSV/MT940), ING (CSV). Web: `BankSyncPage.tsx` (Tabs „Import“ / „Zuordnung & KI“ via `?tab=settings`), Komponenten in `web/src/components/bankSync/`.
+
+**Ablauf:** `POST /api/bank-sync/preview` (Datei → Zeilen mit `alreadyImported` + `suggestion`, `aiStatus`, `paperlessStatus`, `unmatchedQuickEntries`) → User prüft/ändert → `POST /api/bank-sync/import` (JSON, kein erneuter Upload). Der Vorschau-Entwurf liegt in `web/src/store/bankSyncDraftStore.ts` (zustand + sessionStorage, `useDraftState`) und übersteht Seitenwechsel; die `File` lebt nur im Speicher.
+
+**Endpoints (`/api/bank-sync`):** `POST /preview` (multipart), `POST /import`, `GET|PUT /settings`, `POST /settings/test-local` (eigener KI-Server, nur Admins, listet `/models`), `GET|POST /rules`, `PUT|DELETE /rules/:id`, `GET /quick-entries`, `PUT /quick-entries/:id/dismiss` („Bar bezahlt“), `POST /bootstrap-mappings`, `DELETE /imported?householdId&accountId` (löscht auch nur-Ziel-Umbuchungen, löst sonst `transferExternalRef`). Außerdem `GET|PUT /api/transactions/quick-categories` und `GET /api/paperless/data/:hid` liefert `baseUrl` für Dokument-Links.
+
+**Dedup:** `externalRef` = SHA-256(Datum|Betrag|Verwendungszweck|Gegenkonto-Name). Bei Umbuchungen zusätzlich `transferExternalRef` (Ziel-Seite). `findImported(accountId, ref)` prüft beide. Parser-Änderungen ändern den Hash → vorher „Importierte Buchungen löschen“ (Wartung). ⚠️ `description`/`merchant` sind VARCHAR(255) → kürzen, voller Text in `note`. IBAN (`counterpartyIban`, MT940 `?31`) fließt NICHT in den Hash.
+
+**Vorschlagsquellen (Reihenfolge, `bankCategorizer.js` + `routes/bankSync.js#buildSuggestions`):**
+1. **Vorhandene Buchung** (`loadMatchCandidates`/`matchExistingEntries`): externalRef NULL, keine Dauerauftrags-Vorlage, Konto gleich oder NULL (App-Buchungen haben kein Konto); Betrag ±0,01, Datum ±5 Tage (`recurringSourceId` → ±7); 1:1 nach Datumsabstand. Source `quick` (pendingBankMatch) oder `existing`. Beim Import **verschmolzen**, **Bankdatum gilt immer** (User-Entscheidung 2026-10-01), Kategorie/Beschreibung bleiben. Umbuchungen: `entrySide(entry, accountId)` → out/in.
+2. **Eigene IBAN** (`accounts.iban`) → Umbuchung (source `account`).
+3. **Regeln** (`bank_categorization_rules`: field any|counterparty|purpose|iban, contains, min/maxAmount → `categoryId` ODER `targetAccountId`).
+4. **Gelernt** (`merchant_category_mappings`: `categoryId` ODER `targetAccountId`). Gelernt wird beim Import bei source quick/existing/ai/manual und im PUT-Hook in transactions.js (setzt `targetAccountId: null`).
+5. **KI** (opt-in pro Haushaltsbuch, `households.bankSync*`): Claude (Default `claude-haiku-4-5`, structured outputs via `output_config.format` über SDK 0.36.3 — Body-Passthrough funktioniert; Sonnet/Opus 5.5 mit `effort: low` + `fallbacks: "default"`) oder **eigener OpenAI-kompatibler Server** (`bankSyncLocalUrl/Model/ApiKey`, nur Admins, `json_schema` mit Fallback ohne `response_format`, Chunks à 25, 5 min Timeout). Nur Betrag/Empfänger/Verwendungszweck/Kategorienamen gehen raus.
+Zusätzlich **Paperless-Dokument** (`paperlessMatcher.js`): liefert nur Beschreibung (Titel) + `paperlessDocId`. Treffer nur mit Dokumentdatum im Fenster [−45, +5 Tage] UND (Bestellnummer `\w+-\d{3,}-\d{3,}` im Dokument ODER Betrag/Kunden-/Mandatsnummer + Absender-Match). Absender-Match = erstes aussagekräftiges Wort des Korrespondenten (Stopwortliste: europe, deutschland, payments, gmbh …). ⚠️ Lehren aus dem Praxistest: reine Betragstreffer und Referenzen ohne Datumsfenster lieferten Lotterie-Übersichten bzw. alte Kontoauszüge als Beschreibung.
+
+**Timeouts:** Vorschau kann mit KI Minuten dauern → axios-Timeout 30 min für `/bank-sync/preview` + eigener nginx-`location` mit `proxy_read_timeout 1800s` (`web/nginx.conf`).
+
+**Schnellerfassung (Mobile, `mobile/app/quick-add.tsx`):** natives Modal (`presentation: "modal"`) → ⚠️ Paper-`Portal`/`Modal` rendern DAHINTER, nur React-Native-`<Modal>` verwenden. Legt Buchung mit `pendingBankMatch=true` an (auch Offline-Queue). Kacheln: `GET/PUT /api/transactions/quick-categories` (pro Mitglied in `household_members.quickCategories` JSON `{expense:[],income:[]}`, max. 11; ohne eigene Auswahl Top-7 der letzten 90 Tage nur aus Handbuchungen).
+
+**Paperless-Seite (Christians Instanz):** Tika (gepinnt 3.2.2.0, 4.x → 406) + Gotenberg + Mail-Regeln für Amazon-/PayPal-Mails als .eml; Paperless-AI auf Unraid setzte Datum auf 01.01. (Prompt angepasst). Details in `~/Projekte/Paperless_Admin/CLAUDE.md`.
+

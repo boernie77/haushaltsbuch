@@ -261,8 +261,7 @@ const Transaction = sequelize.define(
     transferExternalRef: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment:
-        "Dedup-Hash des Bankumsatzes auf der Ziel-Seite einer Umbuchung",
+      comment: "Dedup-Hash des Bankumsatzes auf der Ziel-Seite einer Umbuchung",
     },
     pendingBankMatch: {
       type: DataTypes.BOOLEAN,
