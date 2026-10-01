@@ -20,18 +20,21 @@ interface Account {
   name: string;
 }
 
-interface QuickEntry {
+interface ExistingEntry {
   amount: number;
   Category: Category | null;
   date: string;
   description: string | null;
   id: string;
+  isQuickEntry: boolean;
+  isRecurring: boolean;
   note: string | null;
   type: "expense" | "income";
 }
 
 type SuggestionSource =
   | "quick"
+  | "existing"
   | "rule"
   | "mapping"
   | "ai"
@@ -57,9 +60,9 @@ interface Suggestion {
   categoryId: string | null;
   confidence?: "high" | "low";
   description: string | null;
+  matchedEntry?: ExistingEntry;
   matchTransactionId?: string;
   paperlessDoc?: PaperlessDoc;
-  quickEntry?: QuickEntry;
   rulePattern?: string;
   source: SuggestionSource;
 }
@@ -70,7 +73,6 @@ interface Row {
   counterpartyIban?: string | null;
   counterpartyName: string | null;
   date: string | null;
-  possibleDuplicate: boolean;
   purpose: string;
   suggestion: Suggestion | null;
 }
@@ -80,7 +82,14 @@ interface RowEdit {
   categoryId: string;
   description: string;
   source: SuggestionSource | null;
+  // User hat die Verknüpfung mit einer vorhandenen Buchung gelöst → wird als
+  // neue Buchung importiert.
+  unlinked: boolean;
 }
+
+// Verschmolzen wird nur, solange die Verknüpfung nicht gelöst wurde.
+const isMerge = (edit: RowEdit | undefined) =>
+  !edit?.unlinked && (edit?.source === "quick" || edit?.source === "existing");
 
 interface AiStatus {
   enabled: boolean;
@@ -114,6 +123,10 @@ const SOURCE_BADGES: Record<SuggestionSource, { label: string; cls: string }> =
       label: "✨ KI",
       cls: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
     },
+    existing: {
+      label: "✓ Vorhandene Buchung",
+      cls: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+    },
     paperless: {
       label: "📄 Paperless",
       cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
@@ -134,6 +147,7 @@ function initialEdit(row: Row): RowEdit {
     categoryId: row.suggestion?.categoryId || "",
     description: row.suggestion?.description || "",
     source: row.suggestion?.source || null,
+    unlinked: false,
   };
 }
 
@@ -167,14 +181,14 @@ export default function BankSyncPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   // Welche Zeilen (per Index) beim Import berücksichtigt werden. Zeilen mit
-  // possibleDuplicate/alreadyImported starten abgewählt.
+  // alreadyImported starten abgewählt.
   const [included, setIncluded] = useState<boolean[]>([]);
   const [edits, setEdits] = useState<RowEdit[]>([]);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [paperlessStatus, setPaperlessStatus] =
     useState<PaperlessStatus | null>(null);
   const [unmatchedQuickEntries, setUnmatchedQuickEntries] = useState<
-    QuickEntry[]
+    ExistingEntry[]
   >([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -282,9 +296,7 @@ export default function BankSyncPage() {
     setHeaders(data.headers || []);
     setRows(newRows);
     setMapping(data.suggestedMapping || {});
-    setIncluded(
-      newRows.map((r) => !(r.alreadyImported || r.possibleDuplicate))
-    );
+    setIncluded(newRows.map((r) => !r.alreadyImported));
     setEdits(newRows.map(initialEdit));
     setAiStatus(data.aiStatus || null);
     setPaperlessStatus(data.paperlessStatus || null);
@@ -298,11 +310,19 @@ export default function BankSyncPage() {
           ? {
               ...e,
               ...patch,
-              // Schnellerfassung bleibt Schnellerfassung (wird verschmolzen),
+              // Verknüpfte Buchungen bleiben verknüpft (werden verschmolzen),
               // alles andere gilt nach einer Änderung als manuell.
-              source: e.source === "quick" ? "quick" : "manual",
+              source: isMerge(e) ? e.source : "manual",
             }
           : e
+      )
+    );
+  };
+
+  const unlinkMatch = (index: number) => {
+    setEdits((prev) =>
+      prev.map((e, i) =>
+        i === index ? { ...e, unlinked: true, source: "manual" } : e
       )
     );
   };
@@ -313,7 +333,7 @@ export default function BankSyncPage() {
     );
   };
 
-  const dismissQuickEntry = async (entry: QuickEntry) => {
+  const dismissQuickEntry = async (entry: ExistingEntry) => {
     try {
       await bankSyncAPI.dismissQuickEntry(entry.id);
       setUnmatchedQuickEntries((prev) => prev.filter((e) => e.id !== entry.id));
@@ -386,7 +406,9 @@ export default function BankSyncPage() {
         categoryId: edit?.categoryId || null,
         description: edit?.description || null,
         suggestionSource: edit?.source || null,
-        matchTransactionId: row.suggestion?.matchTransactionId || null,
+        matchTransactionId: isMerge(edit)
+          ? row.suggestion?.matchTransactionId || null
+          : null,
         paperlessDocId: row.suggestion?.paperlessDoc?.id || null,
       }));
     if (selected.length === 0) {
@@ -433,12 +455,8 @@ export default function BankSyncPage() {
         }).format(n);
 
   const selectedCount = included.filter(Boolean).length;
-  const warnCount = rows.filter(
-    (r) => r.alreadyImported || r.possibleDuplicate
-  ).length;
-  const quickMatchCount = rows.filter(
-    (r) => r.suggestion?.source === "quick"
-  ).length;
+  const warnCount = rows.filter((r) => r.alreadyImported).length;
+  const mergeCount = rows.filter((_, i) => isMerge(edits[i])).length;
   const uncertainSelectedCount = rows.filter(
     (r, i) => included[i] && isUncertain(edits[i], r)
   ).length;
@@ -609,16 +627,16 @@ export default function BankSyncPage() {
                 <div className="font-semibold text-gray-900 dark:text-white">
                   {rows.length} Buchungen erkannt ({format.toUpperCase()}) ·{" "}
                   {selectedCount} zum Import ausgewählt
-                  {quickMatchCount > 0 && (
+                  {mergeCount > 0 && (
                     <span className="ml-2 text-green-700 text-sm dark:text-green-400">
-                      {quickMatchCount} Schnellerfassungen gefunden
+                      {mergeCount} vorhandene Buchungen werden ergänzt
+                      (Bankdatum gilt)
                     </span>
                   )}
                   {warnCount > 0 && (
                     <span className="ml-2 flex items-center gap-1 text-amber-600 text-sm dark:text-amber-400">
                       <AlertTriangle size={14} />
-                      {warnCount} vermutlich schon erfasst (abgewählt, prüfen
-                      vor Import)
+                      {warnCount} bereits importiert (abgewählt)
                     </span>
                   )}
                 </div>
@@ -764,7 +782,7 @@ export default function BankSyncPage() {
                   </thead>
                   <tbody>
                     {rows.map((r, i) => {
-                      const flagged = r.alreadyImported || r.possibleDuplicate;
+                      const flagged = r.alreadyImported;
                       return (
                         <tr
                           className={`border-gray-100 border-b dark:border-slate-800 ${
@@ -793,9 +811,7 @@ export default function BankSyncPage() {
                             {r.purpose}
                             {flagged && (
                               <span className="ml-2 text-amber-600 text-xs dark:text-amber-400">
-                                {r.alreadyImported
-                                  ? "(bereits importiert)"
-                                  : "(evtl. schon manuell erfasst)"}
+                                (bereits importiert)
                               </span>
                             )}
                           </td>
@@ -805,9 +821,11 @@ export default function BankSyncPage() {
                           <td className="min-w-[16rem] py-2 pr-4">
                             {!r.alreadyImported && edits[i] && (
                               <SuggestionCell
+                                bankDate={r.date}
                                 categories={categories}
                                 edit={edits[i]}
                                 onChange={(patch) => updateEdit(i, patch)}
+                                onUnlink={() => unlinkMatch(i)}
                                 suggestion={r.suggestion}
                               />
                             )}
@@ -835,19 +853,37 @@ export default function BankSyncPage() {
 }
 
 interface SuggestionCellProps {
+  bankDate: string | null;
   categories: Category[];
   edit: RowEdit;
   onChange: (patch: Partial<RowEdit>) => void;
+  onUnlink: () => void;
   suggestion: Suggestion | null;
 }
 
+function mergeBadgeLabel(entry: ExistingEntry | undefined) {
+  if (entry?.isQuickEntry) {
+    return "✓ Schnellerfassung";
+  }
+  return entry?.isRecurring ? "✓ Dauerauftrag" : "✓ Vorhandene Buchung";
+}
+
 function SuggestionCell({
+  bankDate,
   categories,
   edit,
   onChange,
+  onUnlink,
   suggestion,
 }: SuggestionCellProps) {
-  const badge = edit.source ? SOURCE_BADGES[edit.source] : null;
+  const merged = isMerge(edit);
+  const entry = suggestion?.matchedEntry;
+  const baseBadge = edit.source ? SOURCE_BADGES[edit.source] : null;
+  const badge =
+    baseBadge && merged
+      ? { ...baseBadge, label: mergeBadgeLabel(entry) }
+      : baseBadge;
+  const dateChanges = merged && entry && bankDate && entry.date !== bankDate;
   const lowConfidence =
     edit.source === "ai" && suggestion?.confidence === "low";
   return (
@@ -871,10 +907,22 @@ function SuggestionCell({
             enthält „{suggestion.rulePattern}“
           </span>
         )}
-        {suggestion?.quickEntry && (
+        {merged && entry && (
           <span className="text-[10px] text-gray-400">
-            vom {fmtDate(suggestion.quickEntry.date)}
+            {dateChanges
+              ? `Datum ${fmtDate(entry.date)} → ${fmtDate(bankDate)}`
+              : `vom ${fmtDate(entry.date)}`}
           </span>
+        )}
+        {merged && (
+          <button
+            className="text-[10px] text-gray-400 underline hover:text-red-600"
+            onClick={onUnlink}
+            title="Falsch zugeordnet? Dann wird der Umsatz als neue Buchung importiert und die vorhandene Buchung bleibt unverändert."
+            type="button"
+          >
+            Verknüpfung lösen
+          </button>
         )}
       </div>
       {suggestion?.paperlessDoc && (

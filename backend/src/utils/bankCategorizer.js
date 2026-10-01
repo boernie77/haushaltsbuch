@@ -1,8 +1,9 @@
 // Automatische Zuordnung von Kategorie + Beschreibung für Bank-Sync-Importe.
 // Reihenfolge der Quellen (erste Quelle mit Treffer gewinnt, siehe
 // routes/bankSync.js /preview):
-//   1. Schnellerfassung (pendingBankMatch-Buchung mit gleichem Betrag, Datum
-//      im Abgleichfenster) → wird beim Import mit dem Bankumsatz verschmolzen
+//   1. Vorhandene Buchung (Schnellerfassung, von Hand erfasst oder aus
+//      Dauerauftrag; gleicher Betrag, Datum im Abgleichfenster) → wird beim
+//      Import mit dem Bankumsatz verschmolzen, Bankdatum gilt
 //   2. Regeln (bank_categorization_rules, vom User gepflegt)
 //   3. Gelerntes Merchant-Mapping (merchant_category_mappings)
 //   4. KI-Vorschlag (pro Haushaltsbuch opt-in): Claude ODER ein eigener
@@ -14,6 +15,8 @@ const { Transaction, Category } = require("../models");
 // Kartenzahlungen werden oft erst 1-3 Tage nach dem Kauf gebucht; ±5 Tage
 // deckt auch Wochenenden/Feiertage ab.
 const QUICK_ENTRY_MATCH_DAYS = 5;
+const RECURRING_MATCH_DAYS = 7;
+const MAX_MATCH_DAYS = Math.max(QUICK_ENTRY_MATCH_DAYS, RECURRING_MATCH_DAYS);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const AMOUNT_TOLERANCE = 0.01;
 // Pro KI-Aufruf maximal so viele Umsätze, damit die Antwort sicher in
@@ -51,12 +54,18 @@ function daysBetween(a, b) {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / MS_PER_DAY;
 }
 
-// ── 1. Schnellerfassungen ────────────────────────────────────────────────────
+// ── 1. Vorhandene Buchungen (Schnellerfassung, von Hand, Dauerauftrag) ─────
 
-// Lädt alle offenen Schnellerfassungen im Zeitraum der Datei (± Fenster).
-// Schnellerfassungen kommen vom Handy und haben i.d.R. kein Konto → auch
-// accountId NULL zulassen.
-function loadPendingQuickEntries(householdId, accountId, rows) {
+// Datumsfenster je Art der vorhandenen Buchung. Daueraufträge werden bei
+// Wochenende/Feiertag oft mehrere Tage verschoben abgebucht.
+function matchWindowDays(entry) {
+  return entry.recurringSourceId ? RECURRING_MATCH_DAYS : QUICK_ENTRY_MATCH_DAYS;
+}
+
+// Lädt alle Buchungen, die zu einem Bankumsatz der Datei gehören könnten:
+// noch nicht mit der Bank verknüpft (externalRef NULL), keine Dauerauftrags-
+// Vorlage, gleiches Konto oder ohne Konto (App-Buchungen haben keins).
+function loadMatchCandidates(householdId, accountId, rows) {
   const dates = rows
     .map((r) => r.date)
     .filter(Boolean)
@@ -65,13 +74,15 @@ function loadPendingQuickEntries(householdId, accountId, rows) {
     return [];
   }
   const from = new Date(dates[0]);
-  from.setDate(from.getDate() - QUICK_ENTRY_MATCH_DAYS);
+  from.setDate(from.getDate() - MAX_MATCH_DAYS);
   const to = new Date(dates.at(-1));
-  to.setDate(to.getDate() + QUICK_ENTRY_MATCH_DAYS);
+  to.setDate(to.getDate() + MAX_MATCH_DAYS);
   return Transaction.findAll({
     where: {
       householdId,
-      pendingBankMatch: true,
+      externalRef: null,
+      isRecurring: { [Op.ne]: true },
+      isSubAccountSettlement: { [Op.ne]: true },
       [Op.or]: [{ accountId: null }, { accountId }],
       date: { [Op.between]: [from, to] },
     },
@@ -85,21 +96,21 @@ function loadPendingQuickEntries(householdId, accountId, rows) {
   });
 }
 
-// Ordnet jeder Bankzeile höchstens eine Schnellerfassung zu und umgekehrt.
+// Ordnet jeder Bankzeile höchstens eine vorhandene Buchung zu und umgekehrt.
 // Bei mehreren Kandidaten gewinnt der mit dem geringsten Datumsabstand.
-function matchQuickEntries(rows, quickEntries, skipIndexes) {
+function matchExistingEntries(rows, entries, skipIndexes) {
   const candidates = [];
   rows.forEach((row, index) => {
     if (skipIndexes.has(index) || !row.date || typeof row.amount !== "number") {
       return;
     }
     const amount = Math.abs(row.amount);
-    for (const entry of quickEntries) {
+    for (const entry of entries) {
       const sameType = entry.type === txType(row.amount);
       const sameAmount =
         Math.abs(Number(entry.amount) - amount) <= AMOUNT_TOLERANCE;
       const distance = daysBetween(entry.date, row.date);
-      if (sameType && sameAmount && distance <= QUICK_ENTRY_MATCH_DAYS) {
+      if (sameType && sameAmount && distance <= matchWindowDays(entry)) {
         candidates.push({ index, entry, distance });
       }
     }
@@ -455,8 +466,8 @@ module.exports = {
   normalizeLocalUrl,
   QUICK_ENTRY_MATCH_DAYS,
   findMatchingRule,
-  loadPendingQuickEntries,
-  matchQuickEntries,
+  loadMatchCandidates,
+  matchExistingEntries,
   suggestWithAi,
   txType,
 };

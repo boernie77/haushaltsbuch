@@ -24,8 +24,8 @@ const {
   findMatchingRule,
   listLocalModels,
   normalizeLocalUrl,
-  loadPendingQuickEntries,
-  matchQuickEntries,
+  loadMatchCandidates,
+  matchExistingEntries,
   suggestWithAi,
   txType,
 } = require("../utils/bankCategorizer");
@@ -41,7 +41,7 @@ const { matchPaperlessDocuments } = require("../utils/paperlessMatcher");
 const TEXT_MAX_LENGTH = 255;
 // Quellen, aus denen beim Import ein Merchant→Kategorie-Mapping gelernt
 // wird. Regeln + bestehende Mappings nicht (wären nur Wiederholung).
-const LEARNING_SOURCES = new Set(["quick", "ai", "manual"]);
+const LEARNING_SOURCES = new Set(["quick", "existing", "ai", "manual"]);
 
 // Kleine Textdateien, nur zum Parsen - keine Disk-Persistenz nötig.
 const upload = multer({ storage: multer.memoryStorage() });
@@ -121,7 +121,7 @@ function loadRules(householdId) {
   });
 }
 
-function quickEntryJson(entry) {
+function entryJson(entry) {
   return {
     id: entry.id,
     date: entry.date,
@@ -129,6 +129,8 @@ function quickEntryJson(entry) {
     type: entry.type,
     description: entry.description,
     note: entry.note,
+    isQuickEntry: entry.pendingBankMatch,
+    isRecurring: !!entry.recurringSourceId,
     Category: entry.Category || null,
   };
 }
@@ -152,36 +154,6 @@ async function isExactDuplicate(accountId, tx) {
     where: { accountId, externalRef: computeExternalRef(tx) },
   });
   return !!exists;
-}
-
-// Fuzzy-Abgleich gegen ALLE Buchungen des Kontos (auch manuell erfasste, die
-// keinen externalRef haben): Datum ±3 Tage + Betrag ±0.01 + gleicher Typ.
-// Erkennt keine exakte Übereinstimmung, sondern nur "vermutlich schon erfasst"
-// — wird im Frontend als Warnung angezeigt, blockt den Import aber nicht.
-async function findPossibleManualDuplicate(householdId, accountId, tx) {
-  if (!(tx.date && typeof tx.amount === "number")) {
-    return false;
-  }
-  const checkDate = new Date(tx.date);
-  const from = new Date(checkDate);
-  from.setDate(from.getDate() - 3);
-  const to = new Date(checkDate);
-  to.setDate(to.getDate() + 3);
-  const amount = Math.abs(tx.amount);
-  const candidate = await Transaction.findOne({
-    where: {
-      householdId,
-      accountId,
-      isRecurring: { [Op.ne]: true },
-      type: tx.amount < 0 ? "expense" : "income",
-      amount: { [Op.between]: [amount - 0.01, amount + 0.01] },
-      date: { [Op.between]: [from, to] },
-      // Offene Schnellerfassungen sind kein Duplikat, sondern werden beim
-      // Import gezielt verschmolzen (siehe suggestion.source === "quick").
-      pendingBankMatch: false,
-    },
-  });
-  return !!candidate;
 }
 
 // Vorschlag aus KI holen. Fehler (kein Key, API down) brechen die Vorschau
@@ -247,23 +219,25 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     }
   });
 
-  let quickEntries = [];
+  // Vorhandene Buchungen (Schnellerfassung, von Hand, Dauerauftrag) werden
+  // beim Import mit dem Bankumsatz verschmolzen statt doppelt angelegt.
+  let candidates = [];
   let matchedEntryIds = new Set();
   if (household.bankSyncMatchQuickEntries) {
-    quickEntries = await loadPendingQuickEntries(householdId, accountId, rows);
-    const { matches, usedEntryIds } = matchQuickEntries(
+    candidates = await loadMatchCandidates(householdId, accountId, rows);
+    const { matches, usedEntryIds } = matchExistingEntries(
       rows,
-      quickEntries,
+      candidates,
       skip
     );
     matchedEntryIds = usedEntryIds;
     for (const [index, entry] of matches) {
       suggestions[index] = {
-        source: "quick",
+        source: entry.pendingBankMatch ? "quick" : "existing",
         categoryId: entry.categoryId,
         description: entry.description || null,
         matchTransactionId: entry.id,
-        quickEntry: quickEntryJson(entry),
+        matchedEntry: entryJson(entry),
       };
     }
   }
@@ -273,18 +247,8 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   let paperlessMatches = new Map();
   let paperlessError = null;
   if (household.bankSyncMatchPaperless) {
-    const quickMatched = new Set(skip);
-    suggestions.forEach((s, i) => {
-      if (s) {
-        quickMatched.add(i);
-      }
-    });
     ({ matches: paperlessMatches, error: paperlessError } =
-      await matchPaperlessDocuments({
-        householdId,
-        rows,
-        skipIndexes: quickMatched,
-      }));
+      await matchPaperlessDocuments({ householdId, rows, skipIndexes: skip }));
   }
 
   const rules = household.bankSyncRulesEnabled
@@ -325,10 +289,7 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
       };
       return;
     }
-    // Vermutliche Duplikate starten abgewählt → keine KI-Kosten dafür.
-    if (!row.possibleDuplicate) {
-      aiPending.push(i);
-    }
+    aiPending.push(i);
   });
 
   const categories = await loadCategories(householdId);
@@ -355,7 +316,11 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
       continue;
     }
     suggestion.paperlessDoc = doc;
-    if (!suggestion.description || suggestion.source === "ai") {
+    // Bei verschmolzenen Buchungen bleibt die eigene Beschreibung stehen.
+    const ownDescription = ["quick", "existing", "rule"].includes(
+      suggestion.source
+    );
+    if (!(suggestion.description && ownDescription)) {
       suggestion.description = doc.title;
     }
   }
@@ -372,14 +337,15 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     .filter(Boolean)
     .sort();
   const unmatchedQuickEntries = dates.length
-    ? quickEntries
+    ? candidates
         .filter(
           (e) =>
+            e.pendingBankMatch &&
             !matchedEntryIds.has(e.id) &&
             e.date >= dates[0] &&
             e.date <= dates.at(-1)
         )
-        .map(quickEntryJson)
+        .map(entryJson)
     : [];
 
   return { suggestions, aiStatus, paperlessStatus, unmatchedQuickEntries };
@@ -524,11 +490,6 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
       rows.map(async (tx) => ({
         ...tx,
         alreadyImported: await isExactDuplicate(accountId, tx),
-        possibleDuplicate: await findPossibleManualDuplicate(
-          householdId,
-          accountId,
-          tx
-        ),
       }))
     );
 
@@ -559,10 +520,12 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
   }
 });
 
-// Verschmilzt eine Schnellerfassung mit dem Bankumsatz: Kategorie +
-// Beschreibung des Users bleiben (sofern in der Vorschau nicht geändert),
-// Bank liefert Konto, Händler, Dedup-Schlüssel und Verwendungszweck.
-async function mergeIntoQuickEntry({
+// Verschmilzt eine vorhandene Buchung (Schnellerfassung, von Hand erfasst,
+// Dauerauftrag) mit dem Bankumsatz: Kategorie + Beschreibung des Users
+// bleiben (sofern in der Vorschau nicht geändert), die Bank liefert Datum,
+// Konto, Händler, Dedup-Schlüssel und Verwendungszweck. Das Bankdatum gilt
+// immer, damit Salden zum Kontoauszug passen (User-Entscheidung 2026-10-01).
+async function mergeIntoExistingEntry({
   entry,
   tx,
   categoryId,
@@ -577,6 +540,7 @@ async function mergeIntoQuickEntry({
     note = note ? `${note}\n\nBank: ${purpose}` : purpose;
   }
   await entry.update({
+    date: tx.date,
     accountId,
     externalRef,
     pendingBankMatch: false,
@@ -679,21 +643,22 @@ router.post("/import", auth, async (req, res) => {
       );
 
       // eslint-disable-next-line no-await-in-loop
-      const quickEntry = tx.matchTransactionId
+      const existingEntry = tx.matchTransactionId
         ? await Transaction.findOne({
             where: {
               id: tx.matchTransactionId,
               householdId,
-              pendingBankMatch: true,
+              externalRef: null,
+              isRecurring: { [Op.ne]: true },
               type: txType(tx.amount),
             },
           })
         : null;
 
-      if (quickEntry) {
+      if (existingEntry) {
         // eslint-disable-next-line no-await-in-loop
-        await mergeIntoQuickEntry({
-          entry: quickEntry,
+        await mergeIntoExistingEntry({
+          entry: existingEntry,
           tx,
           categoryId,
           accountId,
@@ -1088,7 +1053,7 @@ router.get("/quick-entries", auth, async (req, res) => {
       ],
       order: [["date", "DESC"]],
     });
-    res.json({ entries: entries.map(quickEntryJson) });
+    res.json({ entries: entries.map(entryJson) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });

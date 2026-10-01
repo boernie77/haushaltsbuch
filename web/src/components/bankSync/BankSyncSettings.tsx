@@ -524,15 +524,15 @@ export default function BankSyncSettings({ categories, householdId }: Props) {
         </h2>
         <p className="mb-2 text-gray-500 text-xs dark:text-gray-400">
           Beim Import wird für jede Buchung ein Vorschlag für Kategorie und
-          Beschreibung gesucht, in dieser Reihenfolge: Schnellerfassung → Regeln
-          → gelernte Empfänger → KI. Ein passendes Paperless-Dokument liefert
-          zusätzlich die Beschreibung und wird mit der Buchung verknüpft. Du
-          kannst jeden Vorschlag vor dem Import ändern.
+          Beschreibung gesucht, in dieser Reihenfolge: vorhandene Buchung →
+          Regeln → gelernte Empfänger → KI. Ein passendes Paperless-Dokument
+          liefert zusätzlich die Beschreibung und wird mit der Buchung
+          verknüpft. Du kannst jeden Vorschlag vor dem Import ändern.
         </p>
         <ToggleRow
           checked={settings.matchQuickEntries}
-          description="Buchungen, die du in der App per Schnellerfassung angelegt hast, werden mit dem Bankumsatz verschmolzen (gleicher Betrag, Datum ±5 Tage). Deine Kategorie und Notiz bleiben erhalten."
-          label="Schnellerfassungen abgleichen"
+          description="Bereits erfasste Buchungen (Schnellerfassung, von Hand oder aus Dauerauftrag) werden mit dem Bankumsatz verschmolzen statt doppelt angelegt: gleicher Betrag, Datum ±5 Tage, bei Daueraufträgen ±7 Tage. Kategorie und Beschreibung bleiben deine, Datum, Konto und Empfänger kommen von der Bank."
+          label="Vorhandene Buchungen abgleichen"
           onChange={(v) => updateSetting({ matchQuickEntries: v })}
         />
         <ToggleRow
