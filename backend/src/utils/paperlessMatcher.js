@@ -9,7 +9,8 @@
 //
 // Zweiter, stärkerer Weg: Referenznummern. Steht eine Nummer aus dem
 // Verwendungszweck (z.B. Amazon-Bestellnummer 302-1234567-1234567) auch im
-// Dokument, ist das ein sicherer Treffer — unabhängig vom Betrag. Wichtig bei
+// Dokument (und liegt das Dokumentdatum im Fenster), ist das ein sicherer
+// Treffer — unabhängig vom Betrag. Wichtig bei
 // Amazon: abgebucht wird pro Paket, eine Bestellung kann also mehrere
 // Abbuchungen mit Teilbeträgen haben, die alle zur selben Bestellmail gehören.
 const { PaperlessCorrespondent } = require("../models");
@@ -36,9 +37,9 @@ const DIGIT = /\d/g;
 // Referenztreffer schlägt jeden Betrags-/Korrespondententreffer.
 const REFERENCE_SCORE = 10;
 // Bestellnummern im Format "302-6182734-5517929" (mehrere Zifferngruppen mit
-// Bindestrich) sind so eindeutig, dass sie unabhängig vom Dokumentdatum
-// gesucht werden — das Datum in Paperless kann falsch sein (z.B. durch
-// nachträgliche Automatisierung auf 01.01. gesetzt).
+// Bindestrich) sind eindeutig: Sie reichen allein für einen Treffer und
+// werden zusätzlich gezielt gesucht (falls das Dokument im Fenster-Abruf
+// fehlt). Das Datumsfenster gilt trotzdem.
 const ORDER_NUMBER = /^[A-Za-z0-9]{2,}(?:-\d{3,}){2,}$/;
 // Obergrenze für Einzelabfragen pro Vorschau.
 const MAX_ORDER_LOOKUPS = 40;
@@ -340,34 +341,37 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
     const regex = amountRegex(row.amount);
     const amount = Math.abs(row.amount);
     const references = referenceTokens(row.purpose);
+    const orderNumbers = references.filter((t) => ORDER_NUMBER.test(t));
+    const otherReferences = references.filter((t) => !ORDER_NUMBER.test(t));
     for (const doc of docs) {
       const docDate = documentDate(doc);
       if (!docDate) {
         continue;
       }
+      // Das Dokumentdatum muss immer ungefähr passen — auch bei
+      // Referenznummern (Christians Vorgabe 2026-10-01: alte Kontoauszüge
+      // mit gleicher Mandatsnummer wurden aktuellen Zahlungen zugeordnet).
       const offset = daysBetween(docDate, row.date);
-      const byReference = containsReference(doc.content, references);
-      // Referenznummer = eindeutig → Datum egal (s. ORDER_NUMBER).
-      const outsideWindow =
-        offset < -DAYS_BEFORE_PAYMENT || offset > DAYS_AFTER_PAYMENT;
-      if (outsideWindow && !byReference) {
-        continue;
-      }
-      const inCustomField = customFieldAmounts(doc).some(
-        (a) => Math.abs(a - amount) < AMOUNT_TOLERANCE
-      );
-      const inContent = regex.test(doc.content || "");
-      if (!(inCustomField || inContent || byReference)) {
+      if (offset < -DAYS_BEFORE_PAYMENT || offset > DAYS_AFTER_PAYMENT) {
         continue;
       }
       const corrName = correspondentName.get(doc.correspondent) || null;
       const corrMatch = corrName ? correspondentMatches(corrName, row) : false;
-      // Ein Betrag allein ist zu schwach: Übersichten und Sammelrechnungen
-      // enthalten viele Beträge (Fehltreffer im Praxistest 2026-10-01).
-      // Ohne Referenznummer muss deshalb auch der Absender passen.
-      if (!(byReference || corrMatch)) {
+      // Bestellnummern sind eindeutig und reichen allein. Alle anderen
+      // Hinweise (Betrag, Mandats-/Kundennummer) wiederholen sich, z.B. in
+      // Kontoauszügen oder Sammelübersichten → nur zusammen mit passendem
+      // Absender.
+      const byOrderNumber = containsReference(doc.content, orderNumbers);
+      const inCustomField = customFieldAmounts(doc).some(
+        (a) => Math.abs(a - amount) < AMOUNT_TOLERANCE
+      );
+      const inContent = regex.test(doc.content || "");
+      const byOtherReference = containsReference(doc.content, otherReferences);
+      const weakEvidence = inCustomField || inContent || byOtherReference;
+      if (!(byOrderNumber || (weakEvidence && corrMatch))) {
         continue;
       }
+      const byReference = byOrderNumber || (byOtherReference && corrMatch);
       // Referenznummer zählt am meisten, dann Korrespondent, dann
       // strukturierter Betrag, dann zeitliche Nähe.
       const score =
@@ -381,6 +385,7 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
         corrName,
         corrMatch,
         byReference,
+        byOrderNumber,
         docDate,
         score,
       });
@@ -390,9 +395,9 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
   candidates.sort((a, b) => b.score - a.score);
   const usedDocs = new Set();
   for (const c of candidates) {
-    // Über Referenznummer darf ein Dokument mehrere Abbuchungen bekommen
-    // (Teillieferungen), über den Betrag nur eine.
-    if (matches.has(c.index) || (!c.byReference && usedDocs.has(c.doc.id))) {
+    // Über eine Bestellnummer darf ein Dokument mehrere Abbuchungen bekommen
+    // (Teillieferungen), sonst nur eine.
+    if (matches.has(c.index) || (!c.byOrderNumber && usedDocs.has(c.doc.id))) {
       continue;
     }
     usedDocs.add(c.doc.id);
