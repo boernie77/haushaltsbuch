@@ -152,6 +152,40 @@ function containsReference(content, references) {
   );
 }
 
+// Lokal gespiegelte Korrespondenten (routes/paperless.js /sync) können
+// veraltet sein, z.B. direkt nach Anlegen in Paperless. Fehlende Namen
+// werden live nachgeladen; schlägt das fehl, fehlt nur der Namensabgleich.
+async function addMissingCorrespondents(client, docs, correspondentName) {
+  const missing = [
+    ...new Set(
+      docs
+        .map((d) => d.correspondent)
+        .filter((id) => id && !correspondentName.has(id))
+    ),
+  ];
+  if (missing.length === 0) {
+    return;
+  }
+  try {
+    const params = new URLSearchParams({
+      id__in: missing.join(","),
+      page_size: String(PAGE_SIZE),
+    });
+    const found = await fetchAllPages(
+      `${client.baseURL}/api/correspondents/?${params}`,
+      client.headers
+    );
+    for (const c of found) {
+      correspondentName.set(c.id, c.name);
+    }
+  } catch (err) {
+    console.warn(
+      "[bank-sync] Paperless-Korrespondenten nicht ladbar:",
+      err.message
+    );
+  }
+}
+
 async function loadDocuments(client, rows) {
   const dates = rows
     .map((r) => r.date)
@@ -220,6 +254,7 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
   const correspondentName = new Map(
     correspondents.map((c) => [c.paperlessId, c.name])
   );
+  await addMissingCorrespondents(client, docs, correspondentName);
 
   const candidates = [];
   for (const i of candidateIndexes) {
