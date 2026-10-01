@@ -336,6 +336,10 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
   await addMissingCorrespondents(client, docs, correspondentName);
 
   const candidates = [];
+  // Diagnose: Zeilen mit Betrags-Treffer, die nur am Absender scheitern —
+  // typischer Grund: Empfänger/Händler steht in einer nicht zugeordneten
+  // CSV-Spalte.
+  const senderMismatchRows = new Set();
   for (const i of candidateIndexes) {
     const row = rows[i];
     const regex = amountRegex(row.amount);
@@ -369,6 +373,9 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       const byOtherReference = containsReference(doc.content, otherReferences);
       const weakEvidence = inCustomField || inContent || byOtherReference;
       if (!(byOrderNumber || (weakEvidence && corrMatch))) {
+        if (inContent || inCustomField) {
+          senderMismatchRows.add(i);
+        }
         continue;
       }
       const byReference = byOrderNumber || (byOtherReference && corrMatch);
@@ -411,7 +418,25 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       byReference: c.byReference,
     });
   }
-  return { matches, error: null };
+  for (const index of matches.keys()) {
+    senderMismatchRows.delete(index);
+  }
+  const stats = {
+    rowsChecked: candidateIndexes.length,
+    documentsLoaded: docs.length,
+    senderMismatch: senderMismatchRows.size,
+  };
+  const sample = [...senderMismatchRows].slice(0, 3).map((i) => ({
+    date: rows[i].date,
+    amount: rows[i].amount,
+    counterparty: (rows[i].counterpartyName || "").slice(0, 30),
+    purpose: (rows[i].purpose || "").slice(0, 40),
+  }));
+  console.info(
+    `[bank-sync] Paperless-Abgleich: ${stats.rowsChecked} Zeilen, ${stats.documentsLoaded} Dokumente, ${matches.size} Treffer, ${stats.senderMismatch} nur Absender passt nicht`,
+    sample.length ? JSON.stringify(sample) : ""
+  );
+  return { matches, error: null, stats };
 }
 
 module.exports = {

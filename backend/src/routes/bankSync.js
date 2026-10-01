@@ -328,9 +328,17 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   // Kategorie → die kommt weiter aus Regel/Mapping/KI (siehe unten).
   let paperlessMatches = new Map();
   let paperlessError = null;
+  let paperlessStats = null;
   if (household.bankSyncMatchPaperless) {
-    ({ matches: paperlessMatches, error: paperlessError } =
-      await matchPaperlessDocuments({ householdId, rows, skipIndexes: skip }));
+    ({
+      matches: paperlessMatches,
+      error: paperlessError,
+      stats: paperlessStats,
+    } = await matchPaperlessDocuments({
+      householdId,
+      rows,
+      skipIndexes: skip,
+    }));
   }
 
   const rules = household.bankSyncRulesEnabled
@@ -416,6 +424,8 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
     enabled: household.bankSyncMatchPaperless,
     matched: suggestions.filter((s) => s?.paperlessDoc).length,
     error: paperlessError,
+    documentsLoaded: paperlessStats?.documentsLoaded ?? null,
+    senderMismatch: paperlessStats?.senderMismatch ?? 0,
   };
 
   // Schnellerfassungen im Zeitraum der Datei ohne passenden Bankumsatz →
