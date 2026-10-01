@@ -6,6 +6,12 @@
 // Dokuments UND das Dokumentdatum liegt im Fenster [Umsatz − 45 Tage,
 // Umsatz + 5 Tage] (Rechnungen werden oft erst später bezahlt). Passt
 // zusätzlich der Korrespondent zum Empfänger, gilt der Treffer als sicher.
+//
+// Zweiter, stärkerer Weg: Referenznummern. Steht eine Nummer aus dem
+// Verwendungszweck (z.B. Amazon-Bestellnummer 302-1234567-1234567) auch im
+// Dokument, ist das ein sicherer Treffer — unabhängig vom Betrag. Wichtig bei
+// Amazon: abgebucht wird pro Paket, eine Bestellung kann also mehrere
+// Abbuchungen mit Teilbeträgen haben, die alle zur selben Bestellmail gehören.
 const { PaperlessCorrespondent } = require("../models");
 const { fetchAllPages, getPaperlessClient } = require("./paperlessClient");
 
@@ -21,6 +27,14 @@ const AMOUNT_TOLERANCE = 0.005;
 // Monetary Custom Field: "EUR23.80", "23.80" oder "-23.80".
 const MONETARY_VALUE = /^(?:[A-Z]{3})?(-?\d+(?:\.\d{1,2})?)$/;
 const NON_ALNUM = /[^a-z0-9äöüß]+/g;
+// Referenz-Kandidaten im Verwendungszweck: lange Zeichenketten mit vielen
+// Ziffern (Bestell-, Rechnungs-, Kundennummern). Kurze Zahlen wie Beträge
+// oder Datumsangaben fallen durch.
+const REFERENCE_TOKEN = /[A-Za-z0-9][A-Za-z0-9-]{6,}[A-Za-z0-9]/g;
+const MIN_REFERENCE_DIGITS = 6;
+const DIGIT = /\d/g;
+// Referenztreffer schlägt jeden Betrags-/Korrespondententreffer.
+const REFERENCE_SCORE = 10;
 // Häufige Firmenzusätze, die als Namens-Token nichts aussagen.
 const NAME_STOPWORDS = new Set([
   "gmbh",
@@ -116,6 +130,28 @@ function correspondentMatches(correspondentName, row) {
   return tokens.some((t) => haystack.includes(` ${t}`));
 }
 
+function referenceTokens(purpose) {
+  const tokens = (purpose || "").match(REFERENCE_TOKEN) || [];
+  return [
+    ...new Set(
+      tokens.filter(
+        (t) => (t.match(DIGIT) || []).length >= MIN_REFERENCE_DIGITS
+      )
+    ),
+  ];
+}
+
+function containsReference(content, references) {
+  if (!(content && references.length)) {
+    return false;
+  }
+  return references.some((ref) =>
+    new RegExp(`(?<![A-Za-z0-9])${escapeRegex(ref)}(?![A-Za-z0-9])`, "i").test(
+      content
+    )
+  );
+}
+
 async function loadDocuments(client, rows) {
   const dates = rows
     .map((r) => r.date)
@@ -190,6 +226,7 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
     const row = rows[i];
     const regex = amountRegex(row.amount);
     const amount = Math.abs(row.amount);
+    const references = referenceTokens(row.purpose);
     for (const doc of docs) {
       const docDate = documentDate(doc);
       if (!docDate) {
@@ -203,23 +240,37 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
         (a) => Math.abs(a - amount) < AMOUNT_TOLERANCE
       );
       const inContent = regex.test(doc.content || "");
-      if (!(inCustomField || inContent)) {
+      const byReference = containsReference(doc.content, references);
+      if (!(inCustomField || inContent || byReference)) {
         continue;
       }
       const corrName = correspondentName.get(doc.correspondent) || null;
       const corrMatch = corrName ? correspondentMatches(corrName, row) : false;
-      // Korrespondent zählt am meisten, dann strukturierter Betrag, dann
-      // zeitliche Nähe.
+      // Referenznummer zählt am meisten, dann Korrespondent, dann
+      // strukturierter Betrag, dann zeitliche Nähe.
       const score =
-        (corrMatch ? 2 : 0) + (inCustomField ? 1 : 0) - Math.abs(offset) / 100;
-      candidates.push({ index: i, doc, corrName, corrMatch, docDate, score });
+        (byReference ? REFERENCE_SCORE : 0) +
+        (corrMatch ? 2 : 0) +
+        (inCustomField ? 1 : 0) -
+        Math.abs(offset) / 100;
+      candidates.push({
+        index: i,
+        doc,
+        corrName,
+        corrMatch,
+        byReference,
+        docDate,
+        score,
+      });
     }
   }
 
   candidates.sort((a, b) => b.score - a.score);
   const usedDocs = new Set();
   for (const c of candidates) {
-    if (matches.has(c.index) || usedDocs.has(c.doc.id)) {
+    // Über Referenznummer darf ein Dokument mehrere Abbuchungen bekommen
+    // (Teillieferungen), über den Betrag nur eine.
+    if (matches.has(c.index) || (!c.byReference && usedDocs.has(c.doc.id))) {
       continue;
     }
     usedDocs.add(c.doc.id);
@@ -229,10 +280,16 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
       correspondent: c.corrName,
       date: c.docDate,
       url: `${client.baseURL}/documents/${c.doc.id}/details`,
-      confidence: c.corrMatch ? "high" : "low",
+      confidence: c.corrMatch || c.byReference ? "high" : "low",
+      byReference: c.byReference,
     });
   }
   return { matches, error: null };
 }
 
-module.exports = { amountRegex, correspondentMatches, matchPaperlessDocuments };
+module.exports = {
+  amountRegex,
+  correspondentMatches,
+  matchPaperlessDocuments,
+  referenceTokens,
+};
