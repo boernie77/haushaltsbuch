@@ -66,6 +66,49 @@ function categoryJSON(c) {
 // GET /api/calendar?householdId=&year=&month=
 // month = Kalendermonat (1-12), unabhängig von monthStartDay — ein Kalender
 // zeigt echte Tage.
+// Netto-Bewegung echter Buchungen je Konto bis einschließlich Stichtag
+// (Einnahmen + eingehende Umbuchungen − Ausgaben − ausgehende Umbuchungen).
+// Gleiche Filter wie accounts.js#computeBalance.
+async function netRealMovementsUntilStichtag(householdId, accounts) {
+  const net = {};
+  for (const account of accounts) {
+    if (!account.startingBalanceDate) {
+      continue;
+    }
+    const where = {
+      householdId,
+      isRecurring: { [Op.ne]: true },
+      affectsAccountBalance: { [Op.ne]: false },
+      date: { [Op.lte]: account.startingBalanceDate },
+    };
+    // eslint-disable-next-line no-await-in-loop
+    const [income, expense, transferIn, transferOut] = await Promise.all([
+      Transaction.sum("amount", {
+        where: { ...where, type: "income", accountId: account.id },
+      }),
+      Transaction.sum("amount", {
+        where: { ...where, type: "expense", accountId: account.id },
+      }),
+      Transaction.sum("amount", {
+        where: {
+          ...where,
+          type: "transfer",
+          transferTargetAccountId: account.id,
+        },
+      }),
+      Transaction.sum("amount", {
+        where: { ...where, type: "transfer", accountId: account.id },
+      }),
+    ]);
+    net[account.id] =
+      (Number(income) || 0) +
+      (Number(transferIn) || 0) -
+      (Number(expense) || 0) -
+      (Number(transferOut) || 0);
+  }
+  return net;
+}
+
 router.get("/", auth, async (req, res) => {
   try {
     const { householdId } = req.query;
@@ -194,9 +237,20 @@ router.get("/", auth, async (req, res) => {
       .filter((t) => t.affectsBalance)
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
+    // Stichtag-Saldo gilt auch RÜCKWÄRTS: Der Startwert wird so gewählt, dass
+    // nach Anwenden aller echten Buchungen bis einschließlich Stichtag genau
+    // der eingegebene Stand herauskommt. Damit stimmen Tage vor dem Stichtag
+    // (Stand = Stichtag-Saldo − Bewegungen danach bis zum Stichtag) ebenso wie
+    // Tage danach. Beispiel: heute Ist-Stand eingeben → Anfang September wird
+    // aus den Buchungen zurückgerechnet.
+    const netUntilStichtag = await netRealMovementsUntilStichtag(
+      householdId,
+      accounts
+    );
     const balances = {};
     for (const a of accounts) {
-      balances[a.id] = Number(a.startingBalance) || 0;
+      balances[a.id] =
+        (Number(a.startingBalance) || 0) - (netUntilStichtag[a.id] || 0);
     }
     const applyEvent = (ev) => {
       const amt = Number(ev.amount) || 0;
@@ -205,9 +259,13 @@ router.get("/", auth, async (req, res) => {
           return;
         }
         const acc = accountsById[accId];
-        // Stichtag = Tagesabschluss: Buchungen am Stichtag und davor sind
-        // bereits im Anfangsbestand enthalten (konsistent zu accounts.js > ).
-        if (acc.startingBalanceDate && ev.date <= acc.startingBalanceDate) {
+        // Projizierte Daueraufträge vor/am Stichtag sind nicht real und
+        // stecken nicht im eingegebenen Saldo.
+        if (
+          ev.projected &&
+          acc.startingBalanceDate &&
+          ev.date <= acc.startingBalanceDate
+        ) {
           return;
         }
         balances[accId] += delta;

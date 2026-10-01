@@ -746,19 +746,8 @@ export default function BankSyncPage() {
               </div>
 
               {!paperlessStatus?.error &&
-                (paperlessStatus?.senderMismatch ?? 0) > 0 && (
-                  <p className="rounded-lg bg-amber-50 p-2 text-amber-800 text-xs dark:bg-amber-950/30 dark:text-amber-300">
-                    📄 Bei {paperlessStatus?.senderMismatch} Umsätzen gibt es in
-                    Paperless eine Rechnung mit gleichem Betrag, aber der
-                    Absender ist im Umsatz nicht erkennbar. Steht der Händler in
-                    einer eigenen Spalte? Dann ordne sie oben als
-                    „Empfänger/Auftraggeber" zu.
-                  </p>
-                )}
-              {!paperlessStatus?.error &&
                 paperlessStatus?.enabled &&
                 paperlessStatus.matched === 0 &&
-                !paperlessStatus.senderMismatch &&
                 paperlessStatus.documentsLoaded !== null &&
                 paperlessStatus.documentsLoaded !== undefined && (
                   <p className="text-gray-400 text-xs">
