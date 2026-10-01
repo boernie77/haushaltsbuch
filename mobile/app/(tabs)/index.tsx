@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   RefreshControl,
   ScrollView,
@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Card,
   Chip,
+  IconButton,
   ProgressBar,
   Text,
   useTheme,
@@ -22,6 +23,48 @@ import {
 import { budgetAPI, statsAPI } from "../../src/services/api";
 import { cache, isNetworkError } from "../../src/services/offlineStore";
 import { useAuthStore } from "../../src/store/authStore";
+
+interface Period {
+  month: number;
+  year: number;
+}
+
+const MONTH_NAMES = [
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember",
+];
+
+// Aktueller Abrechnungszeitraum, benannt nach dem End-Monat (wie
+// backend/src/utils/monthBounds.js#getPeriodForDate): Bei Monatsanfang 27
+// gehört der 27.03.–26.04. zu „April".
+function currentPeriod(startDay: number): Period {
+  const now = new Date();
+  let month = now.getMonth() + 1;
+  let year = now.getFullYear();
+  if (startDay > 1 && now.getDate() >= startDay) {
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return { month, year };
+}
+
+function shiftPeriod({ month, year }: Period, delta: number): Period {
+  const index = year * 12 + (month - 1) + delta;
+  return { month: (index % 12) + 1, year: Math.floor(index / 12) };
+}
 
 export default function HomeScreen() {
   const theme = useTheme() as any;
@@ -32,28 +75,38 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [offline, setOffline] = useState(false);
+  // null = aktueller Abrechnungszeitraum; sonst per Pfeil gewählter Monat.
+  const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
+
+  const startDay = currentHousehold?.monthStartDay || 1;
+  const todayPeriod = currentPeriod(startDay);
+  const period = selectedPeriod ?? todayPeriod;
+  const isToday =
+    period.month === todayPeriod.month && period.year === todayPeriod.year;
+
+  // Beim Wechsel des Haushaltsbuchs zurück zum aktuellen Monat.
+  useEffect(() => {
+    setSelectedPeriod(null);
+  }, [currentHousehold?.id]);
+
+  const changeMonth = (delta: number) => {
+    const next = shiftPeriod(period, delta);
+    const backToToday =
+      next.month === todayPeriod.month && next.year === todayPeriod.year;
+    setSelectedPeriod(backToToday ? null : next);
+    setLoading(true);
+  };
 
   const load = async () => {
     if (!currentHousehold) {
       return;
     }
-    const cacheKey = `overview_${currentHousehold.id}`;
-    const budgetCacheKey = `budgets_${currentHousehold.id}`;
+    const { month: pm, year: py } = period;
+    const cacheKey = `overview_${currentHousehold.id}_${py}_${pm}`;
+    const budgetCacheKey = `budgets_${currentHousehold.id}_${py}_${pm}`;
     try {
-      const now = new Date();
-      const sd = currentHousehold.monthStartDay || 1;
-      let pm = now.getMonth() + 1;
-      let py = now.getFullYear();
-      if (sd > 1 && now.getDate() >= sd) {
-        if (pm === 12) {
-          pm = 1;
-          py += 1;
-        } else {
-          pm += 1;
-        }
-      }
       const [overviewRes, budgetRes] = await Promise.all([
-        statsAPI.overview(currentHousehold.id),
+        statsAPI.overview(currentHousehold.id, pm, py),
         budgetAPI.getAll({
           householdId: currentHousehold.id,
           month: pm,
@@ -89,7 +142,7 @@ export default function HomeScreen() {
     // biome-ignore lint/correctness/useExhaustiveDependencies: intentional focus reload
     useCallback(() => {
       load();
-    }, [currentHousehold])
+    }, [currentHousehold, period.month, period.year])
   );
 
   const onRefresh = () => {
@@ -214,9 +267,60 @@ export default function HomeScreen() {
           ]}
         >
           <Card.Content>
-            <Text style={[styles.cardLabel, { color: theme.colors.onSurface }]}>
-              Diesen Monat
-            </Text>
+            <View style={styles.monthNav}>
+              <IconButton
+                accessibilityLabel="Vorheriger Monat"
+                icon="chevron-left"
+                onPress={() => changeMonth(-1)}
+                size={22}
+                style={styles.monthNavButton}
+              />
+              <View style={styles.monthNavCenter}>
+                <Text
+                  style={[
+                    styles.monthNavLabel,
+                    { color: theme.colors.onSurface },
+                  ]}
+                >
+                  {MONTH_NAMES[period.month - 1]} {period.year}
+                </Text>
+                {isToday ? (
+                  <Text
+                    style={[
+                      styles.cardLabel,
+                      { color: theme.colors.onSurface, marginBottom: 0 },
+                    ]}
+                  >
+                    Aktueller Monat
+                  </Text>
+                ) : (
+                  <TouchableOpacity
+                    accessibilityLabel="Zum aktuellen Monat"
+                    onPress={() => {
+                      setSelectedPeriod(null);
+                      setLoading(true);
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.primary,
+                        fontSize: 13,
+                        fontWeight: "600",
+                      }}
+                    >
+                      Heute
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <IconButton
+                accessibilityLabel="Nächster Monat"
+                icon="chevron-right"
+                onPress={() => changeMonth(1)}
+                size={22}
+                style={styles.monthNavButton}
+              />
+            </View>
             <View style={styles.amountRow}>
               <View>
                 <Text
@@ -400,8 +504,8 @@ export default function HomeScreen() {
           </Card>
         )}
 
-        {/* Monatsprognose */}
-        {overview?.projectedExpenses > 0 && (
+        {/* Monatsprognose — nur für den laufenden Monat sinnvoll */}
+        {isToday && overview?.projectedExpenses > 0 && (
           <Card
             style={[
               styles.card,
@@ -610,6 +714,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: { padding: 24, paddingTop: 56, paddingBottom: 32 },
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  monthNavButton: { margin: 0 },
+  monthNavCenter: { alignItems: "center", flex: 1 },
+  monthNavLabel: { fontSize: 17, fontWeight: "700" },
   quickAddButton: {
     position: "absolute",
     top: 52,
