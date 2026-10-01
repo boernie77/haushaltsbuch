@@ -13,6 +13,10 @@ import BankSyncSettings from "../components/bankSync/BankSyncSettings";
 import { type Category, categoryLabel } from "../components/bankSync/types";
 import { accountAPI, bankSyncAPI, categoryAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
+import {
+  useBankSyncDraftStore,
+  useDraftState,
+} from "../store/bankSyncDraftStore";
 
 interface Account {
   icon: string;
@@ -168,28 +172,57 @@ export default function BankSyncPage() {
     searchParams.get("tab") === "settings" ? "settings" : "import";
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [accountId, setAccountId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  // Vorschau-Entwurf übersteht Seitenwechsel (siehe bankSyncDraftStore).
+  const [accountId, setAccountId] = useDraftState("accountId", "");
+  const file = useBankSyncDraftStore((s) => s.file);
+  const setFile = useBankSyncDraftStore((s) => s.setFile);
+  const resetDraft = useBankSyncDraftStore((s) => s.reset);
+  const [fileName, setFileName] = useDraftState<string | null>(
+    "fileName",
+    null
+  );
+  const [draftHouseholdId, setDraftHouseholdId] = useDraftState<string | null>(
+    "householdId",
+    null
+  );
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [deletingImported, setDeletingImported] = useState(false);
 
-  const [format, setFormat] = useState<"csv" | "mt940" | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [mapping, setMapping] = useState<Record<string, string | null>>({});
+  const [format, setFormat] = useDraftState<"csv" | "mt940" | null>(
+    "format",
+    null
+  );
+  const [headers, setHeaders] = useDraftState<string[]>("headers", []);
+  const [rows, setRows] = useDraftState<Row[]>("rows", []);
+  const [mapping, setMapping] = useDraftState<Record<string, string | null>>(
+    "mapping",
+    {}
+  );
   // Welche Zeilen (per Index) beim Import berücksichtigt werden. Zeilen mit
   // alreadyImported starten abgewählt.
-  const [included, setIncluded] = useState<boolean[]>([]);
-  const [edits, setEdits] = useState<RowEdit[]>([]);
-  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [included, setIncluded] = useDraftState<boolean[]>("included", []);
+  const [edits, setEdits] = useDraftState<RowEdit[]>("edits", []);
+  const [aiStatus, setAiStatus] = useDraftState<AiStatus | null>(
+    "aiStatus",
+    null
+  );
   const [paperlessStatus, setPaperlessStatus] =
-    useState<PaperlessStatus | null>(null);
-  const [unmatchedQuickEntries, setUnmatchedQuickEntries] = useState<
+    useDraftState<PaperlessStatus | null>("paperlessStatus", null);
+  const [unmatchedQuickEntries, setUnmatchedQuickEntries] = useDraftState<
     ExistingEntry[]
-  >([]);
+  >("unmatchedQuickEntries", []);
+
+  // Entwurf gehört zu einem Haushaltsbuch: beim Wechsel verwerfen.
+  useEffect(() => {
+    if (!currentHousehold || draftHouseholdId === currentHousehold.id) {
+      return;
+    }
+    resetDraft();
+    setDraftHouseholdId(currentHousehold.id);
+  }, [currentHousehold, draftHouseholdId, resetDraft, setDraftHouseholdId]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -286,7 +319,18 @@ export default function BankSyncPage() {
   };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFile(e.target.files?.[0] || null);
+    const selectedFile = e.target.files?.[0] || null;
+    setFile(selectedFile);
+    setFileName(selectedFile?.name || null);
+    resetPreview();
+  };
+
+  const discardPreview = () => {
+    setFile(null);
+    setFileName(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     resetPreview();
   };
 
@@ -366,7 +410,11 @@ export default function BankSyncPage() {
   // Bei geänderter Spalten-Zuordnung erneut mit dem Server abgleichen (Datum/
   // Betrag müssen neu geparst + Duplikate neu geprüft werden).
   const updateMapping = async (field: string, header: string) => {
-    if (!(currentHousehold && accountId && file)) {
+    if (!(currentHousehold && accountId)) {
+      return;
+    }
+    if (!file) {
+      toast.error("Bitte die Datei erneut auswählen, um die Spalten zu ändern");
       return;
     }
     const newMapping = { ...mapping, [field]: header || null };
@@ -434,11 +482,7 @@ export default function BankSyncPage() {
         parts.push(`${data.learned} Empfänger gelernt`);
       }
       toast.success(parts.join(", "));
-      setFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      resetPreview();
+      discardPreview();
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Import fehlgeschlagen");
     } finally {
@@ -601,6 +645,17 @@ export default function BankSyncPage() {
                   ref={fileInputRef}
                   type="file"
                 />
+                {fileName && !file && (
+                  <p className="mt-1 text-gray-500 text-xs dark:text-gray-400">
+                    Vorschau von „{fileName}“ ist noch da. Für eine neue
+                    Vorschau die Datei erneut auswählen.
+                  </p>
+                )}
+                {fileName && file && (
+                  <p className="mt-1 text-gray-500 text-xs dark:text-gray-400">
+                    Ausgewählt: {fileName}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -651,6 +706,14 @@ export default function BankSyncPage() {
                       {uncertainSelectedCount} unsichere abwählen
                     </button>
                   )}
+                  <button
+                    className="btn-secondary text-sm"
+                    disabled={importing}
+                    onClick={discardPreview}
+                    type="button"
+                  >
+                    Verwerfen
+                  </button>
                   <button
                     className="btn-primary disabled:opacity-50"
                     disabled={importing || selectedCount === 0}
