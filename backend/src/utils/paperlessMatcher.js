@@ -35,6 +35,15 @@ const MIN_REFERENCE_DIGITS = 6;
 const DIGIT = /\d/g;
 // Referenztreffer schlägt jeden Betrags-/Korrespondententreffer.
 const REFERENCE_SCORE = 10;
+// Bestellnummern im Format "302-6182734-5517929" (mehrere Zifferngruppen mit
+// Bindestrich) sind so eindeutig, dass sie unabhängig vom Dokumentdatum
+// gesucht werden — das Datum in Paperless kann falsch sein (z.B. durch
+// nachträgliche Automatisierung auf 01.01. gesetzt).
+const ORDER_NUMBER = /^[A-Za-z0-9]{2,}(?:-\d{3,}){2,}$/;
+// Obergrenze für Einzelabfragen pro Vorschau.
+const MAX_ORDER_LOOKUPS = 40;
+const DOCUMENT_FIELDS =
+  "id,title,content,created,created_date,correspondent,custom_fields";
 // Häufige Firmenzusätze, die als Namens-Token nichts aussagen.
 const NAME_STOPWORDS = new Set([
   // Rechtsformen
@@ -219,6 +228,41 @@ async function addMissingCorrespondents(client, docs, correspondentName) {
   }
 }
 
+// Bestellnummern, die in den geladenen Dokumenten (Datumsfenster) nicht
+// vorkommen, gezielt per Volltextfilter suchen.
+async function loadDocumentsByOrderNumber(client, rows, docs) {
+  const loadedIds = new Set(docs.map((d) => d.id));
+  const orderNumbers = [
+    ...new Set(
+      rows.flatMap((r) =>
+        referenceTokens(r.purpose).filter((t) => ORDER_NUMBER.test(t))
+      )
+    ),
+  ].filter((ref) => !docs.some((d) => containsReference(d.content, [ref])));
+
+  const extra = [];
+  for (const ref of orderNumbers.slice(0, MAX_ORDER_LOOKUPS)) {
+    const params = new URLSearchParams({
+      content__icontains: ref,
+      page_size: String(PAGE_SIZE),
+      fields: DOCUMENT_FIELDS,
+    });
+    // eslint-disable-next-line no-await-in-loop
+    const found = await fetchAllPages(
+      `${client.baseURL}/api/documents/?${params}`,
+      client.headers,
+      PAGE_SIZE
+    );
+    for (const doc of found) {
+      if (!loadedIds.has(doc.id)) {
+        loadedIds.add(doc.id);
+        extra.push(doc);
+      }
+    }
+  }
+  return extra;
+}
+
 async function loadDocuments(client, rows) {
   const dates = rows
     .map((r) => r.date)
@@ -232,7 +276,7 @@ async function loadDocuments(client, rows) {
     page_size: String(PAGE_SIZE),
     ordering: "-created",
     // Ältere Paperless-Versionen ignorieren "fields" und liefern alles.
-    fields: "id,title,content,created,created_date,correspondent,custom_fields",
+    fields: DOCUMENT_FIELDS,
   });
   const docs = await fetchAllPages(
     `${client.baseURL}/api/documents/?${params}`,
@@ -267,9 +311,10 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
 
   let docs;
   try {
-    docs = await loadDocuments(
-      client,
-      candidateIndexes.map((i) => rows[i])
+    const candidateRows = candidateIndexes.map((i) => rows[i]);
+    docs = await loadDocuments(client, candidateRows);
+    docs.push(
+      ...(await loadDocumentsByOrderNumber(client, candidateRows, docs))
     );
   } catch (err) {
     console.error("[bank-sync] Paperless-Abfrage fehlgeschlagen:", err.message);
@@ -301,14 +346,17 @@ async function matchPaperlessDocuments({ householdId, rows, skipIndexes }) {
         continue;
       }
       const offset = daysBetween(docDate, row.date);
-      if (offset < -DAYS_BEFORE_PAYMENT || offset > DAYS_AFTER_PAYMENT) {
+      const byReference = containsReference(doc.content, references);
+      // Referenznummer = eindeutig → Datum egal (s. ORDER_NUMBER).
+      const outsideWindow =
+        offset < -DAYS_BEFORE_PAYMENT || offset > DAYS_AFTER_PAYMENT;
+      if (outsideWindow && !byReference) {
         continue;
       }
       const inCustomField = customFieldAmounts(doc).some(
         (a) => Math.abs(a - amount) < AMOUNT_TOLERANCE
       );
       const inContent = regex.test(doc.content || "");
-      const byReference = containsReference(doc.content, references);
       if (!(inCustomField || inContent || byReference)) {
         continue;
       }
