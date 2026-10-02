@@ -30,13 +30,21 @@ async function encryptExistingSecrets(models) {
       if (plain.length === 0) {
         continue;
       }
-      const instance = await Model.findByPk(row.id);
-      for (const field of plain) {
-        instance.setDataValue(field, encrypt(row[field]));
-        instance.changed(field, true);
+      try {
+        const instance = await Model.findByPk(row.id);
+        for (const field of plain) {
+          instance.setDataValue(field, encrypt(row[field]));
+          instance.changed(field, true);
+        }
+        await instance.save({ fields: plain, hooks: false, validate: false });
+        count += plain.length;
+      } catch (err) {
+        // Einzelne Zeile überspringen, Klartext bleibt lesbar (decrypt
+        // liefert Nicht-verschlüsseltes unverändert zurück).
+        console.error(
+          `[encrypt] ${modelName} ${row.id} (${plain.join(", ")}) nicht verschlüsselt: ${err.message}`
+        );
       }
-      await instance.save({ fields: plain, hooks: false, validate: false });
-      count += plain.length;
     }
   }
   if (count > 0) {
