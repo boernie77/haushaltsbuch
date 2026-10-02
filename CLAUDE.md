@@ -395,7 +395,7 @@ cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
 - `index.html`-Last-Modified prüfen: `curl -s -I https://haushalt.bernauer24.com/ | grep last-modified`
 - Bundle-Hash prüfen: `curl -s https://haushalt.bernauer24.com/ | grep -oE "index-[A-Za-z0-9]+\.js"` (ändert sich bei jedem Vite-Build)
 - Neue Code-Strings im Bundle suchen: `curl -s https://haushalt.bernauer24.com/assets/index-XXXX.js | grep -oE "neuerString"`
-- ⚠️ Vor Klage „der Fix ist nicht da": Browser-Hard-Reload (`Strg+Shift+R` / `Cmd+Shift+R`) ist Pflicht — das Production-`index.html` hat zwar dynamische Bundle-Hashes, aber die HTML selbst kann gecacht werden.
+- Seit v1.0.39 liefert `web/nginx.conf` `index.html` mit `Cache-Control: no-cache` (Bundles unter `/assets/` mit `immutable`) → neue Versionen erscheinen beim normalen Neuladen. Wer noch eine vor v1.0.39 gecachte `index.html` hat, braucht einmalig einen Hard-Reload (`Strg+Shift+R` / `Cmd+Shift+R`).
 
 ### ⚠️ OIDC-Schutz beim Deploy
 Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `docker-compose.yml` (OIDC_*-Env-Vars) und `.github/workflows/deploy.yml` (set_env OIDC_*) nicht versehentlich angefasst wurden. SSO via Authentik bricht sonst.
@@ -562,7 +562,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.38** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.39** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
