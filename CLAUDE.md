@@ -261,6 +261,9 @@ Niemals dasselbe FormData-Feld zweimal `append`-en (z.B. einmal generisch im Obj
 - **AdminPage:** Spalten Registriert / Rolle / Status / KI-Zugriff. Status-Badge anklickbar zum Umschalten. Admin-Bereich ist für admin/superadmin immer sichtbar (früher in FAMILY_MODE versteckt).
 - **Schutz:** Superadmin kann sich nicht selbst deaktivieren (Frontend + Backend)
 
+## Verschlüsselung sensibler Felder (seit v1.0.42)
+`utils/encrypt.js` (AES-256-GCM, Format `iv:authTag:data`) über Model-Getter/-Setter für: `Household.anthropicApiKey`, `Household.bankSyncLocalApiKey`, `PaperlessConfig.apiToken`, `BackupConfig.sftpPassword`, `GlobalSettings.anthropicApiKey`, `GlobalSettings.sshPrivateKey`. Schlüssel: `ENCRYPTION_KEY` (64 Hex). **Bis v1.0.41 reichte `docker-compose.yml` den Schlüssel nicht durch → alles lag im Klartext.** Seit v1.0.42: Compose übergibt ihn, `utils/encryptExisting.js` verschlüsselt beim Start vorhandene Klartextwerte (idempotent, `isEncrypted`), ohne Schlüssel Warnung im Log. Neues verschlüsseltes Feld → in `ENCRYPTED_FIELDS` eintragen. ⚠️ Das globale SFTP-Backup (`backupService.js`, `toJSON()`) exportiert diese Felder ENTSCHLÜSSELT — offen.
+
 ## Impressum & Datenschutz (seit v1.0.41)
 Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetrennt, `LEGAL_EMAIL`, optional `LEGAL_HOSTING`, `LEGAL_AUTHORITY`) und werden über `GET /api/config` → `legal` (null wenn `LEGAL_NAME` leer) ausgeliefert, plus `sourceUrl` (AGPL-Quellcode-Link, `SOURCE_URL` oder GitHub-Repo). Web: `hooks/useAppConfig.ts`, `components/LegalOperator.tsx`, Impressum-/DatenschutzPage zeigen ohne Angaben einen Hinweis für Betreiber. **Nie wieder persönliche Daten in den Code schreiben.** Maintainer-Instanz: siehe `CLAUDE.local.md`.
 
@@ -488,7 +491,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.41** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.42** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 

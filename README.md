@@ -78,6 +78,7 @@ docker compose up -d --build
 |---|---|---|
 | `DB_PASSWORD` | ja | Passwort der PostgreSQL-Datenbank |
 | `JWT_SECRET` | ja | Langer Zufallswert, z. B. `openssl rand -hex 32` |
+| `ENCRYPTION_KEY` | ja | Verschlüsselt API-Keys, Tokens und Passwörter in der Datenbank. `openssl rand -hex 32` (64 Hex-Zeichen). **Getrennt von den Backups sichern** – ohne ihn sind diese Felder nach einer Wiederherstellung unlesbar. Fehlt er, speichert die App im Klartext und warnt beim Start |
 | `APP_URL` | ja | Öffentliche Adresse, z. B. `https://haushalt.example.com` |
 | `API_URL` | ja | `APP_URL` + `/api` |
 | `ALLOWED_ORIGINS` | ja | Erlaubte Ursprünge, kommagetrennt (mindestens `APP_URL`) |

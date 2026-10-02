@@ -34,6 +34,11 @@ jobs:
             }
             set_env DB_PASSWORD "${{ secrets.DB_PASSWORD }}"
             set_env JWT_SECRET "${{ secrets.JWT_SECRET }}"
+            # Nur setzen, wenn das Secret existiert — ein leerer Wert würde den
+            # Schlüssel löschen und alle verschlüsselten Felder unlesbar machen.
+            if [ -n "${{ secrets.ENCRYPTION_KEY }}" ]; then
+              set_env ENCRYPTION_KEY "${{ secrets.ENCRYPTION_KEY }}"
+            fi
             set_env ANTHROPIC_API_KEY "${{ secrets.ANTHROPIC_API_KEY }}"
             set_env ALLOWED_ORIGINS "https://haushalt.bernauer24.com"
             set_env APP_URL "https://haushalt.bernauer24.com"

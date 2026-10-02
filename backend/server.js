@@ -143,6 +143,10 @@ async function checkConfig() {
 // Start: run migrations, then listen, then start cron
 migrate(sequelize)
   .then(async () => {
+    const { encryptExistingSecrets } = require("./src/utils/encryptExisting");
+    await encryptExistingSecrets(require("./src/models")).catch((e) =>
+      console.error("[encrypt] Fehler beim Nachverschlüsseln:", e.message)
+    );
     await checkConfig();
     app.listen(PORT, () => {
       console.log(`Haushaltsbuch API running on port ${PORT}`);

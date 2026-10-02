@@ -71,4 +71,15 @@ function decrypt(ciphertext) {
   }
 }
 
-module.exports = { encrypt, decrypt };
+// true = Wert liegt bereits im Format "iv:authTag:data" vor.
+function isEncrypted(value) {
+  if (!value) {
+    return false;
+  }
+  const parts = String(value).split(":");
+  return parts.length === 3 && parts[0].length === IV_BYTES * 2;
+}
+
+const hasKey = () => getKey() !== null;
+
+module.exports = { encrypt, decrypt, hasKey, isEncrypted };
