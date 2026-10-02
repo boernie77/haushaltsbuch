@@ -1037,7 +1037,7 @@ export default function AdminPage() {
                           sftpHost: e.target.value,
                         }))
                       }
-                      placeholder="192.168.2.204"
+                      placeholder="backup.example.com"
                       type="text"
                       value={backupForm.sftpHost}
                     />

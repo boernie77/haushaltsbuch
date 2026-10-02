@@ -16,7 +16,7 @@ import {
   useTheme,
 } from "react-native-paper";
 import Toast from "react-native-toast-message";
-import { householdAPI } from "../../src/services/api";
+import { api, householdAPI } from "../../src/services/api";
 import { useAuthStore } from "../../src/store/authStore";
 
 type BaseTheme = "feminine" | "masculine" | "professional";
@@ -47,9 +47,7 @@ export default function RegisterScreen() {
     try {
       await register(name, email, password, inviteCode || undefined);
       // Update theme preference
-      await import("../../src/services/api").then(({ api }) =>
-        api.put("/auth/profile", { theme: finalTheme })
-      );
+      await api.put("/auth/profile", { theme: finalTheme });
       updateTheme(finalTheme);
       const { data } = await householdAPI.getAll();
       setHouseholds(data.households);

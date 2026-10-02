@@ -44,7 +44,7 @@ export default function AddTransactionScreen() {
   const insets = useSafeAreaInsets();
   const { currentHousehold } = useAuthStore();
 
-  const [type, setType] = useState("expense");
+  const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [merchant, setMerchant] = useState("");
@@ -312,7 +312,9 @@ export default function AddTransactionScreen() {
               { value: "expense", label: "💸 Ausgabe", icon: "minus-circle" },
               { value: "income", label: "💰 Einnahme", icon: "plus-circle" },
             ]}
-            onValueChange={setType}
+            onValueChange={(value) =>
+              setType(value === "income" ? "income" : "expense")
+            }
             style={styles.segmented}
             value={type}
           />
@@ -384,7 +386,6 @@ export default function AddTransactionScreen() {
             />
             <Text
               style={[
-                styles.label,
                 {
                   color: theme.colors.onSurface,
                   marginTop: 0,
