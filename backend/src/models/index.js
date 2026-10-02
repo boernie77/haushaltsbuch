@@ -701,8 +701,8 @@ const BankImportProfile = sequelize.define(
 );
 
 // ── MerchantCategoryMapping ───────────────────────────────────────────────────
-// Lernt "Verwendungszweck/Merchant → Kategorie" aus manuellen Zuordnungen
-// importierter Bank-Sync-Buchungen (siehe transactions.js PUT-Handler).
+// Lernt "Händler → Kategorie" bzw. "Händler|Betrag → Kategorie + Beschreibung"
+// aus bestätigten Bank-Sync-Zuordnungen (siehe utils/merchantLearning.js).
 const MerchantCategoryMapping = sequelize.define(
   "MerchantCategoryMapping",
   {
@@ -716,6 +716,8 @@ const MerchantCategoryMapping = sequelize.define(
     // Genau eins von beiden: Kategorie ODER Umbuchung auf eigenes Konto.
     categoryId: { type: DataTypes.UUID, allowNull: true },
     targetAccountId: { type: DataTypes.UUID, allowNull: true },
+    // Nur bei Schlüssel "Händler|Betrag" (wiederkehrende Zahlung).
+    description: { type: DataTypes.TEXT, allowNull: true },
   },
   {
     tableName: "merchant_category_mappings",

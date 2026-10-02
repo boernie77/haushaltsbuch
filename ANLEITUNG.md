@@ -311,15 +311,19 @@ Die App prüft der Reihe nach:
    eines deiner Konten → Umbuchung.
 3. **Regel** (siehe unten).
 4. **Gelernt:** Für diesen Empfänger hast du schon einmal eine Kategorie oder
-   Umbuchung bestätigt.
+   Umbuchung bestätigt. **„Gelernt · wiederkehrend"** heißt: gleicher Empfänger und
+   gleicher Betrag wie früher, dann kommt auch die Beschreibung mit.
 5. **KI** („✨ KI", optional, siehe unten).
 
 Zusätzlich kann ein **Paperless-Dokument** die Beschreibung liefern („📄 …", siehe
 unten). „? bitte zuordnen" heißt: kein Vorschlag gefunden.
 
 > **Die App lernt mit:** Bestätigst du einen KI-Vorschlag, änderst du eine Kategorie
-> oder wird eine Schnellerfassung zugeordnet, merkt sich die App den Empfänger. Beim
-> nächsten Import kommt der Vorschlag dann ohne KI.
+> oder wird eine Schnellerfassung zugeordnet, merkt sich die App den Empfänger und
+> zusätzlich Empfänger + Betrag samt Beschreibung. Beim nächsten Import kommt der
+> Vorschlag dann ohne KI. Bei **PayPal, Klarna & Co.** lernt sie den Händler aus dem
+> Verwendungszweck („Ihr Einkauf bei …"), nie den Zahlungsdienst selbst. So landet
+> nicht jede PayPal-Zahlung in derselben Kategorie.
 
 ### Umbuchungen zwischen eigenen Konten
 Statt einer Kategorie kannst du in der Vorschau **„↔ Konto …"** wählen, z. B. für die
@@ -348,7 +352,9 @@ Daueraufträgen) werden genauso abgeglichen.
   Kategorienamen**, keine IBAN und kein Kontostand. Optional schreibt die KI auch eine
   kurze Beschreibung („KI schreibt Beschreibung").
 - **Wartung:** „Aus bestehenden Buchungen lernen" übernimmt einmalig die häufigste
-  Kategorie je Empfänger. „Importierte Buchungen löschen" entfernt alle per Import
+  Kategorie je Empfänger und lernt wiederkehrende Zahlungen (gleicher Empfänger und
+  Betrag, ab zwei Buchungen) mit Beschreibung. Alte Zuordnungen auf „PayPal" selbst
+  werden dabei entfernt. „Importierte Buchungen löschen" entfernt alle per Import
   angelegten Buchungen eines Kontos, von Hand erfasste bleiben.
 
 ### Abgleich mit Paperless

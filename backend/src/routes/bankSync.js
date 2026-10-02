@@ -37,6 +37,15 @@ const {
   parseCsvPreview,
   applyCsvMapping,
 } = require("../utils/bankImport");
+const {
+  customDescription,
+  findMapping,
+  isAmountKey,
+  isPaymentProvider,
+  merchantKeys,
+  signedAmount,
+  storedPurpose,
+} = require("../utils/merchantLearning");
 const { getPeriodForDate } = require("../utils/monthBounds");
 const { matchPaperlessDocuments } = require("../utils/paperlessMatcher");
 
@@ -135,7 +144,11 @@ function mappingMap(mappings) {
   return new Map(
     mappings.map((m) => [
       m.merchantPattern,
-      { categoryId: m.categoryId, targetAccountId: m.targetAccountId },
+      {
+        categoryId: m.categoryId,
+        targetAccountId: m.targetAccountId,
+        description: m.description || null,
+      },
     ])
   );
 }
@@ -370,14 +383,18 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
       };
       return;
     }
-    const merchantKey = (row.counterpartyName || "").trim().toLowerCase();
-    const mapped = merchantKey ? mappingByMerchant.get(merchantKey) : null;
-    if (mapped?.categoryId || isOtherAccount(mapped?.targetAccountId)) {
+    const mapped = findMapping(
+      mappingByMerchant,
+      row,
+      (m) => m.categoryId || isOtherAccount(m.targetAccountId)
+    );
+    if (mapped) {
       suggestions[i] = {
         source: "mapping",
         categoryId: mapped.targetAccountId ? null : mapped.categoryId,
         transferAccountId: mapped.targetAccountId || null,
-        description: null,
+        description: mapped.description,
+        mappingKind: mapped.kind,
       };
       return;
     }
@@ -498,18 +515,51 @@ router.delete("/imported", auth, async (req, res) => {
   }
 });
 
-// POST /api/bank-sync/bootstrap-mappings — lernt Merchant→Kategorie einmalig
-// rückwirkend aus bereits bestehenden (auch manuell erfassten) Buchungen mit
-// gesetztem merchant + categoryId, statt nur vorwärts ab dem ersten Import zu
-// lernen (siehe Lern-Hook in transactions.js PUT). Pro Merchant wird die
-// häufigste bisher verwendete Kategorie übernommen. Idempotent (upsert).
+// Häufigster Wert einer Liste (bei Gleichstand der zuletzt gesehene, die
+// Liste ist nach Datum aufsteigend sortiert). null-Werte zählen nicht.
+function mostFrequent(values) {
+  const counts = new Map();
+  let best = null;
+  let bestCount = 0;
+  for (const value of values) {
+    if (value === null || value === undefined) {
+      continue;
+    }
+    const count = (counts.get(value) || 0) + 1;
+    counts.set(value, count);
+    if (count >= bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function pushGrouped(map, key, item) {
+  if (!map.has(key)) {
+    map.set(key, []);
+  }
+  map.get(key).push(item);
+}
+
+// Ab so vielen Buchungen mit gleichem Händler + Betrag gilt eine Zahlung als
+// wiederkehrend und wird mit Beschreibung gelernt.
+const MIN_RECURRING_COUNT = 2;
+
+// POST /api/bank-sync/bootstrap-mappings — lernt einmalig rückwirkend aus
+// bestehenden Buchungen (Ausgaben/Einnahmen mit Kategorie):
+// - pro Händler die häufigste Kategorie (bei Zahlungsdienstleistern wie
+//   PayPal der echte Händler aus dem Verwendungszweck),
+// - pro Händler + Betrag (ab 2 Buchungen) häufigste Kategorie + Beschreibung.
+// Alte Händler-Zuordnungen auf Zahlungsdienstleister selbst werden entfernt.
+// Idempotent (upsert).
 router.post("/bootstrap-mappings", auth, async (req, res) => {
   try {
     const { householdId } = req.body;
     if (!householdId) {
       return res.status(400).json({ error: "householdId required" });
     }
-    if (!(await checkAccess(req.user.id, householdId))) {
+    if (!(await checkWriteAccess(req.user.id, householdId))) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -518,46 +568,90 @@ router.post("/bootstrap-mappings", auth, async (req, res) => {
         householdId,
         merchant: { [Op.ne]: null },
         categoryId: { [Op.ne]: null },
+        type: { [Op.in]: ["expense", "income"] },
+        isRecurring: { [Op.ne]: true },
+        isSubAccountSettlement: { [Op.ne]: true },
       },
-      attributes: ["merchant", "categoryId"],
+      attributes: [
+        "merchant",
+        "categoryId",
+        "amount",
+        "type",
+        "description",
+        "note",
+        "externalRef",
+        "date",
+      ],
+      order: [["date", "ASC"]],
     });
 
-    const countsByMerchant = new Map();
+    const byMerchant = new Map();
+    const byAmount = new Map();
     for (const t of transactions) {
-      const key = (t.merchant || "").trim().toLowerCase();
-      if (!key) {
-        continue;
+      const { merchantKey, amountKey } = merchantKeys({
+        counterpartyName: t.merchant,
+        purpose: storedPurpose(t),
+        amount: signedAmount(t),
+      });
+      if (merchantKey) {
+        pushGrouped(byMerchant, merchantKey, t);
       }
-      if (!countsByMerchant.has(key)) {
-        countsByMerchant.set(key, new Map());
+      if (amountKey) {
+        pushGrouped(byAmount, amountKey, t);
       }
-      const catCounts = countsByMerchant.get(key);
-      catCounts.set(t.categoryId, (catCounts.get(t.categoryId) || 0) + 1);
     }
 
     let merchantsLearned = 0;
-    for (const [merchantPattern, catCounts] of countsByMerchant) {
-      let bestCategoryId = null;
-      let bestCount = 0;
-      for (const [categoryId, count] of catCounts) {
-        if (count > bestCount) {
-          bestCount = count;
-          bestCategoryId = categoryId;
-        }
-      }
-      if (bestCategoryId) {
-        // eslint-disable-next-line no-await-in-loop
-        await MerchantCategoryMapping.upsert({
-          householdId,
-          merchantPattern,
-          categoryId: bestCategoryId,
-          targetAccountId: null,
-        });
-        merchantsLearned++;
-      }
+    for (const [key, list] of byMerchant) {
+      // eslint-disable-next-line no-await-in-loop
+      await MerchantCategoryMapping.upsert({
+        householdId,
+        merchantPattern: key,
+        categoryId: mostFrequent(list.map((t) => t.categoryId)),
+        targetAccountId: null,
+        description: null,
+      });
+      merchantsLearned++;
     }
 
-    res.json({ merchantsLearned });
+    let recurringLearned = 0;
+    for (const [key, list] of byAmount) {
+      if (list.length < MIN_RECURRING_COUNT) {
+        continue;
+      }
+      const description = mostFrequent(list.map(customDescription));
+      // eslint-disable-next-line no-await-in-loop
+      await MerchantCategoryMapping.upsert({
+        householdId,
+        merchantPattern: key,
+        categoryId: mostFrequent(list.map((t) => t.categoryId)),
+        targetAccountId: null,
+        description: description
+          ? description.slice(0, TEXT_MAX_LENGTH)
+          : null,
+      });
+      recurringLearned++;
+    }
+
+    const stale = (
+      await MerchantCategoryMapping.findAll({
+        where: { householdId },
+        attributes: ["id", "merchantPattern"],
+      })
+    ).filter(
+      (m) => !isAmountKey(m.merchantPattern) && isPaymentProvider(m.merchantPattern)
+    );
+    if (stale.length) {
+      await MerchantCategoryMapping.destroy({
+        where: { id: stale.map((m) => m.id) },
+      });
+    }
+
+    res.json({
+      merchantsLearned,
+      recurringLearned,
+      providerMappingsRemoved: stale.length,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
@@ -744,8 +838,7 @@ function resolveTarget(tx, { categoriesById, accountIds, mappingByMerchant }) {
           : null,
     };
   }
-  const merchant = (tx.counterpartyName || "").trim().toLowerCase();
-  const mapped = mappingByMerchant.get(merchant);
+  const mapped = findMapping(mappingByMerchant, tx);
   const transferAccountId = validAccount(mapped?.targetAccountId);
   return {
     transferAccountId,
@@ -818,38 +911,68 @@ async function findMergeTarget(tx, householdId, accountId) {
   return unlinked && entrySide(entry, accountId) === rowSide ? entry : null;
 }
 
-// Bestätigte Zuordnungen pro Empfänger lernen → nächster Import ohne KI.
+// Gelernte Zuordnung schreiben, sofern sie sich ändert. true = geändert.
+async function upsertMapping({ householdId, key, value, mappingByMerchant }) {
+  const current = mappingByMerchant.get(key);
+  const unchanged =
+    current &&
+    current.categoryId === value.categoryId &&
+    (current.targetAccountId || null) === value.targetAccountId &&
+    (current.description || null) === (value.description || null);
+  if (unchanged) {
+    return false;
+  }
+  await MerchantCategoryMapping.upsert({
+    householdId,
+    merchantPattern: key,
+    ...value,
+  });
+  mappingByMerchant.set(key, { description: null, ...value });
+  return true;
+}
+
+// Bestätigte Zuordnungen lernen → nächster Import ohne KI. Zwei Schlüssel
+// (siehe utils/merchantLearning.js): Händler (nur Kategorie/Umbuchung) und
+// Händler|Betrag (zusätzlich Beschreibung, für wiederkehrende Zahlungen).
 async function learnMapping({ tx, target, householdId, mappingByMerchant }) {
-  const merchantKey = (tx.counterpartyName || "").trim().toLowerCase();
   const { categoryId, transferAccountId } = target;
   if (
     !(
-      merchantKey &&
       (categoryId || transferAccountId) &&
       LEARNING_SOURCES.has(tx.suggestionSource)
     )
   ) {
     return false;
   }
-  const current = mappingByMerchant.get(merchantKey);
-  const unchanged =
-    current &&
-    current.categoryId === (transferAccountId ? null : categoryId) &&
-    (current.targetAccountId || null) === (transferAccountId || null);
-  if (unchanged) {
-    return false;
-  }
+  const { merchantKey, amountKey } = merchantKeys(tx);
   const value = {
     categoryId: transferAccountId ? null : categoryId,
     targetAccountId: transferAccountId || null,
   };
-  await MerchantCategoryMapping.upsert({
-    householdId,
-    merchantPattern: merchantKey,
-    ...value,
-  });
-  mappingByMerchant.set(merchantKey, value);
-  return true;
+  let learned = false;
+  if (merchantKey) {
+    learned = await upsertMapping({
+      householdId,
+      key: merchantKey,
+      value,
+      mappingByMerchant,
+    });
+  }
+  if (amountKey) {
+    // Paperless-Titel gehören zu genau einem Beleg → nicht als Beschreibung
+    // für künftige Zahlungen lernen, vorhandene Beschreibung behalten.
+    const description = parsePaperlessDocId(tx)
+      ? (mappingByMerchant.get(amountKey)?.description ?? null)
+      : (tx.description || "").trim().slice(0, TEXT_MAX_LENGTH) || null;
+    const amountLearned = await upsertMapping({
+      householdId,
+      key: amountKey,
+      value: { ...value, description },
+      mappingByMerchant,
+    });
+    learned = learned || amountLearned;
+  }
+  return learned;
 }
 
 // POST /api/bank-sync/import — importiert eine vom Frontend bestätigte Liste

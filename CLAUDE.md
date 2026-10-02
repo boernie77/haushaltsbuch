@@ -26,8 +26,8 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 033-bank-sync-transfers
-│       │                           (028–033 = Bank-Sync, siehe unten)
+│       ├── migrations/             001-initial … 034-merchant-mapping-description
+│       │                           (028–034 = Bank-Sync, siehe unten)
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
 │       │   ├── backupService.js    Export/Import/SFTP-Upload/runGlobalBackup
@@ -38,6 +38,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │           ├── receiptProcessor.js Sharp-Pipeline (B&W Dokumenten-Scan-Filter)
 │           ├── bankImport.js       Bank-Sync: MT940-/CSV-Parser
 │           ├── bankCategorizer.js  Bank-Sync: Abgleich vorhandener Buchungen, Regeln, KI
+│           ├── merchantLearning.js Bank-Sync: Lern-Schlüssel Händler / Händler|Betrag, PayPal & Co.
 │           ├── paperlessMatcher.js Bank-Sync: Umsatz ↔ Paperless-Dokument
 │           ├── paperlessClient.js  getPaperlessClient + fetchAllPages (geteilt)
 │           ├── anthropicKey.js     resolveApiKey (geteilt von OCR + Bank-Sync)
@@ -561,7 +562,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.37** (Stand 2026-10-01). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.38** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -710,7 +711,7 @@ Kontoumsätze per **CSV/MT940-Datei** importieren (kein FinTS: bräuchte PSD2-Pr
 1. **Vorhandene Buchung** (`loadMatchCandidates`/`matchExistingEntries`): externalRef NULL, keine Dauerauftrags-Vorlage, Konto gleich oder NULL (App-Buchungen haben kein Konto); Betrag ±0,01, Datum ±5 Tage (`recurringSourceId` → ±7); 1:1 nach Datumsabstand. Source `quick` (pendingBankMatch) oder `existing`. Beim Import **verschmolzen**, **Bankdatum gilt immer** (User-Entscheidung 2026-10-01), Kategorie/Beschreibung bleiben. Umbuchungen: `entrySide(entry, accountId)` → out/in.
 2. **Eigene IBAN** (`accounts.iban`) → Umbuchung (source `account`).
 3. **Regeln** (`bank_categorization_rules`: field any|counterparty|purpose|iban, contains, min/maxAmount → `categoryId` ODER `targetAccountId`).
-4. **Gelernt** (`merchant_category_mappings`: `categoryId` ODER `targetAccountId`). Gelernt wird beim Import bei source quick/existing/ai/manual und im PUT-Hook in transactions.js (setzt `targetAccountId: null`).
+4. **Gelernt** (`merchant_category_mappings`: `categoryId` ODER `targetAccountId`, plus `description`). Schlüssel aus `utils/merchantLearning.js` (seit v1.0.38, Migration 034): **Händler|Betrag** (`"spotify ab|-10.99"`, vorzeichenrichtig, mit Beschreibung, hat Vorrang) und **Händler** (nur Kategorie). **Zahlungsdienstleister** (PayPal, Klarna, Amazon Payments, …) werden nie selbst als Händler gelernt: echter Händler aus dem Verwendungszweck („Ihr Einkauf bei …", `PP.1234.PP . X`); ohne Treffer nur Betrags-Schlüssel mit Dienstleister-Name. Gelernt wird beim Import bei source quick/existing/ai/manual (Paperless-Titel nicht als Beschreibung) und im PUT-Hook in transactions.js. `POST /bootstrap-mappings` lernt Händler (häufigste Kategorie) + Händler|Betrag ab 2 Buchungen (häufigste eigene Beschreibung via `customDescription`) und löscht alte reine Dienstleister-Mappings.
 5. **KI** (opt-in pro Haushaltsbuch, `households.bankSync*`): Claude (Default `claude-haiku-4-5`, structured outputs via `output_config.format` über SDK 0.36.3 — Body-Passthrough funktioniert; Sonnet/Opus 5.5 mit `effort: low` + `fallbacks: "default"`) oder **eigener OpenAI-kompatibler Server** (`bankSyncLocalUrl/Model/ApiKey`, nur Admins, `json_schema` mit Fallback ohne `response_format`, Chunks à 25, 5 min Timeout). Nur Betrag/Empfänger/Verwendungszweck/Kategorienamen gehen raus.
 Zusätzlich **Paperless-Dokument** (`paperlessMatcher.js`): liefert nur Beschreibung (Titel) + `paperlessDocId`. Treffer nur mit Dokumentdatum im Fenster [−45, +5 Tage] UND (Bestellnummer `\w+-\d{3,}-\d{3,}` im Dokument ODER Betrag/Kunden-/Mandatsnummer + Absender-Match). Absender-Match = erstes aussagekräftiges Wort des Korrespondenten (Stopwortliste: europe, deutschland, payments, gmbh …). ⚠️ Lehren aus dem Praxistest: reine Betragstreffer und Referenzen ohne Datumsfenster lieferten Lotterie-Übersichten bzw. alte Kontoauszüge als Beschreibung.
 

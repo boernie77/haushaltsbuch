@@ -394,7 +394,8 @@ export default function HelpPage() {
           </li>
           <li>
             <strong>Gelernt</strong>: für diesen Empfänger schon einmal
-            bestätigt.
+            bestätigt. „Gelernt · wiederkehrend" heißt: gleicher Empfänger und
+            gleicher Betrag, dann kommt auch die Beschreibung mit.
           </li>
           <li>
             <strong>KI</strong> (optional).
@@ -403,7 +404,10 @@ export default function HelpPage() {
         <Callout>
           <strong>Die App lernt mit:</strong> Bestätigte KI-Vorschläge, deine
           Änderungen und zugeordnete Schnellerfassungen merkt sie sich pro
-          Empfänger. Beim nächsten Import kommt der Vorschlag ohne KI.
+          Empfänger und zusätzlich pro Empfänger + Betrag (mit Beschreibung).
+          Beim nächsten Import kommt der Vorschlag ohne KI. Bei PayPal, Klarna
+          &amp; Co. lernt sie den Händler aus dem Verwendungszweck („Ihr Einkauf
+          bei …"), nie den Zahlungsdienst selbst.
         </Callout>
         <p>
           <strong>Umbuchungen:</strong> Statt einer Kategorie „↔ Konto …"

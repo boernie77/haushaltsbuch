@@ -15,6 +15,12 @@ const {
 const { auth } = require("../middleware/auth");
 const { checkBudgetWarning } = require("../services/budgetService");
 const { getMonthBounds } = require("../utils/monthBounds");
+const {
+  customDescription,
+  merchantKeys,
+  signedAmount,
+  storedPurpose,
+} = require("../utils/merchantLearning");
 
 // FormData fields can arrive as arrays if appended twice — normalize to scalar.
 function firstValue(v) {
@@ -739,16 +745,35 @@ router.put("/:id", auth, async (req, res) => {
     await transaction.update(updates);
 
     // Bank-Sync-Lernmechanismus: Wenn eine importierte Buchung (externalRef
-    // gesetzt) manuell kategorisiert wird, merken wir uns Merchant→Kategorie
-    // für künftige Importe (siehe routes/bankSync.js).
+    // gesetzt) manuell kategorisiert wird, merken wir uns Händler→Kategorie
+    // und Händler|Betrag→Kategorie+Beschreibung für künftige Importe (siehe
+    // utils/merchantLearning.js). PayPal & Co. nur über den echten Händler.
     if (categoryId && transaction.externalRef && transaction.merchant) {
       const { MerchantCategoryMapping } = require("../models");
-      await MerchantCategoryMapping.upsert({
+      const { merchantKey, amountKey } = merchantKeys({
+        counterpartyName: transaction.merchant,
+        purpose: storedPurpose(transaction),
+        amount: signedAmount(transaction),
+      });
+      const value = {
         householdId: transaction.householdId,
-        merchantPattern: transaction.merchant.trim().toLowerCase(),
         categoryId,
         targetAccountId: null,
-      });
+      };
+      if (merchantKey) {
+        await MerchantCategoryMapping.upsert({
+          ...value,
+          merchantPattern: merchantKey,
+        });
+      }
+      if (amountKey) {
+        const description = customDescription(transaction);
+        await MerchantCategoryMapping.upsert({
+          ...value,
+          merchantPattern: amountKey,
+          description: description ? description.slice(0, 255) : null,
+        });
+      }
     }
 
     const full = await Transaction.findByPk(transaction.id, {

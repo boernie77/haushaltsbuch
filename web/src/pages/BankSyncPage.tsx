@@ -71,6 +71,8 @@ interface Suggestion {
   description: string | null;
   matchedEntry?: ExistingEntry;
   matchTransactionId?: string;
+  // Gelernt über Händler + Betrag (wiederkehrend) oder nur den Händler.
+  mappingKind?: "amount" | "merchant";
   paperlessDoc?: PaperlessDoc;
   rulePattern?: string;
   source: SuggestionSource;
@@ -297,7 +299,7 @@ export default function BankSyncPage() {
     try {
       const { data } = await bankSyncAPI.bootstrapMappings(currentHousehold.id);
       toast.success(
-        `${data.merchantsLearned} Empfänger/Auftraggeber aus bestehenden Buchungen gelernt`
+        `Gelernt: ${data.merchantsLearned} Empfänger, ${data.recurringLearned ?? 0} wiederkehrende Zahlungen`
       );
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Lernen fehlgeschlagen");
@@ -571,6 +573,9 @@ export default function BankSyncPage() {
                 Übernimmt einmalig die häufigste Kategorie pro
                 Empfänger/Auftraggeber aus deinen bereits bestehenden Buchungen,
                 damit künftige Importe direkt richtig zugeordnet werden.
+                Wiederkehrende Zahlungen (gleicher Empfänger und Betrag) lernt
+                sie mit Beschreibung. Bei PayPal, Klarna &amp; Co. zählt der
+                Händler aus dem Verwendungszweck.
               </p>
               <button
                 className="btn-secondary flex shrink-0 items-center gap-2 disabled:opacity-50"
@@ -980,10 +985,16 @@ function SuggestionCell({
   const merged = isMerge(edit);
   const entry = suggestion?.matchedEntry;
   const baseBadge = edit.source ? SOURCE_BADGES[edit.source] : null;
-  const badge =
-    baseBadge && merged
-      ? { ...baseBadge, label: mergeBadgeLabel(entry) }
-      : baseBadge;
+  let badge = baseBadge;
+  if (baseBadge && merged) {
+    badge = { ...baseBadge, label: mergeBadgeLabel(entry) };
+  } else if (
+    baseBadge &&
+    edit.source === "mapping" &&
+    suggestion?.mappingKind === "amount"
+  ) {
+    badge = { ...baseBadge, label: "Gelernt · wiederkehrend" };
+  }
   const dateChanges = merged && entry && bankDate && entry.date !== bankDate;
   // Vorhandene Umbuchung wird nur verknüpft, nicht umgewidmet.
   const lockedTransfer = merged && entry?.type === "transfer";
