@@ -562,7 +562,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.39** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.40** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -629,6 +629,14 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg u
 **Aktueller Stand** (Vorschlagsquellen, Abgleich vorhandener Buchungen, Umbuchungen, KI, Paperless, Schnellerfassung, Endpoints) → Abschnitt „Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)“ am Ende. Die frühere ±3-Tage-Warnung `possibleDuplicate` gibt es seit v1.0.23 nicht mehr (ersetzt durch Verschmelzen vorhandener Buchungen).
 
 **Bekannte Einschränkung:** CAMT.052 (von Sparda-Bank Nürnberg ebenfalls angeboten) wird nicht geparst — bewusst nicht umgesetzt, MT940 deckt den Anwendungsfall ab.
+
+## Session-Notizen 2026-10-02 (v1.0.38–v1.0.40)
+- **v1.0.38: Lernen über Händler + Betrag, PayPal & Co. über den echten Händler** (Details: Bank-Sync-Feature → Vorschlagsquelle 4 „Gelernt"). Anlass: Vorher wurde nur über den Empfängernamen gelernt → jede PayPal-Zahlung bekam die zuletzt bestätigte Kategorie. Neu: `utils/merchantLearning.js`, Migration 034 (`merchant_category_mappings.description`), Badge „Gelernt · wiederkehrend" in der Vorschau. „Aus bestehenden Buchungen lernen" wurde danach in Produktion ausgeführt (User-Bestätigung: hat geklappt).
+  - Muster für den echten Händler (`REAL_MERCHANT_PATTERNS`) sind aus typischen PayPal-Texten abgeleitet, nicht aus echten Exporten. Taucht PayPal trotzdem als „? bitte zuordnen" ohne „wiederkehrend" auf → Verwendungszweck-Beispiel holen und Muster anpassen.
+- **v1.0.39: `index.html` mit `Cache-Control: no-cache`** (`web/nginx.conf`), `/assets/` mit `immutable`. Vorher zeigte der Browser nach Deploys die alte Version. Ab jetzt reicht normales Neuladen.
+- Werkzeug-Hinweise: Lokal kein Docker-Zugriff (Socket-Rechte) und keine `node_modules` in `web/` → `tsc`/Biome laufen hier nicht. In diesem Repo ist kein `git user.email` gesetzt → Commits mit `git -c user.name=boernie77 -c user.email=115419572+boernie77@users.noreply.github.com commit …`. Direkte Lese-Abfragen auf die Produktions-DB per SSH wurden vom Auto-Modus blockiert → Daten-Checks über die UI/API machen oder den User fragen.
+- Beim Warten auf den Deploy immer per `gh run list --commit <sha>` auf den eigenen Commit warten — `--limit 1` direkt nach dem Push zeigt oft noch den vorherigen Lauf.
+- **v1.0.40:** nur Doku-Stand (CLAUDE.md-Session-Notizen).
 
 ## Session-Notizen 2026-09-30 / 2026-10-01 (v1.0.17–v1.0.32)
 - Bank-Sync stark ausgebaut (siehe „Bank-Sync-Feature (v1.0.13–v1.0.31 …)“): Schnellerfassung (Mobile), Regeln, KI (Claude oder eigener OpenAI-kompatibler Server), Paperless-Abgleich (inkl. Bestellnummern), Verschmelzen vorhandener Buchungen mit Bankdatum, Umbuchungen beidseitig, IBAN bei Konten, Vorschau-Entwurf übersteht Seitenwechsel.
