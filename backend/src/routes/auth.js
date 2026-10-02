@@ -73,20 +73,11 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hash(password, 12);
-      const isFamilyMode = process.env.FAMILY_MODE === "true";
-      const noTrial = isFirst || isFamilyMode;
-      const trialStartedAt = noTrial ? null : new Date();
-      const trialEndsAt = noTrial
-        ? null
-        : new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
       const user = await User.create({
         name,
         email,
         password: hashedPassword,
         role: isFirst ? "superadmin" : "member",
-        subscriptionType: noTrial ? null : "trial",
-        trialStartedAt,
-        trialEndsAt,
       });
 
       if (isFirst) {
@@ -160,18 +151,6 @@ router.post(
 
       if (!(user && (await bcrypt.compare(password, user.password)))) {
         return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      // Auto-deactivate expired trials (not in family mode)
-      if (
-        process.env.FAMILY_MODE !== "true" &&
-        user.isActive &&
-        !user.subscriptionActive &&
-        user.trialEndsAt &&
-        new Date() > user.trialEndsAt &&
-        user.role !== "superadmin"
-      ) {
-        await user.update({ isActive: false });
       }
 
       if (!user.isActive) {

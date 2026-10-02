@@ -3,7 +3,6 @@ import {
   BarChart2,
   Bot,
   Copy,
-  CreditCard,
   Database,
   Eye,
   EyeOff,
@@ -284,27 +283,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleToggleSubscription = async (u: any) => {
-    const next = !u.subscriptionActive;
-    try {
-      const { data } = await adminAPI.setSubscription(u.id, next);
-      setUsers((prev) =>
-        prev.map((x) =>
-          x.id === u.id
-            ? {
-                ...x,
-                subscriptionActive: data.user.subscriptionActive,
-                isActive: data.user.isActive,
-              }
-            : x
-        )
-      );
-      toast.success(next ? "Abo aktiviert" : "Abo deaktiviert");
-    } catch {
-      toast.error("Fehler");
-    }
-  };
-
   const handleCreateInvite = async () => {
     try {
       const { data } = await adminAPI.createInviteCode({
@@ -481,10 +459,9 @@ export default function AdminPage() {
                       {[
                         "Name",
                         "E-Mail",
-                        "Registriert / Testabo",
+                        "Registriert",
                         "Rolle",
                         "Status",
-                        "Abonnement",
                         "KI-Zugriff",
                         "",
                       ].map((h) => (
@@ -528,30 +505,6 @@ export default function AdminPage() {
                                   ? format(new Date(u.createdAt), "dd.MM.yyyy")
                                   : "—"}
                             </div>
-                            {u.trialEndsAt &&
-                              !u.subscriptionActive &&
-                              (() => {
-                                const daysLeft = Math.ceil(
-                                  (new Date(u.trialEndsAt).getTime() -
-                                    Date.now()) /
-                                    (1000 * 60 * 60 * 24)
-                                );
-                                return (
-                                  <div
-                                    className={`text-xs ${daysLeft <= 2 ? "font-semibold text-red-500" : daysLeft <= 5 ? "font-semibold text-orange-500" : "text-gray-400"}`}
-                                  >
-                                    {daysLeft > 0
-                                      ? `noch ${daysLeft} Tag${daysLeft === 1 ? "" : "e"}`
-                                      : "abgelaufen"}{" "}
-                                    (
-                                    {format(
-                                      new Date(u.trialEndsAt),
-                                      "dd.MM.yy"
-                                    )}
-                                    )
-                                  </div>
-                                );
-                              })()}
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -567,24 +520,6 @@ export default function AdminPage() {
                               title={u.isActive ? "Deaktivieren" : "Aktivieren"}
                             >
                               {u.isActive ? "Aktiv" : "Deaktiviert"}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3">
-                            <button
-                              className={`flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-xs ${u.subscriptionActive ? "bg-green-100 text-green-700 hover:bg-green-200" : u.subscriptionType === "trial" ? "bg-blue-100 text-blue-700 hover:bg-blue-200" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-                              onClick={() => handleToggleSubscription(u)}
-                              title={
-                                u.subscriptionActive
-                                  ? "Abo deaktivieren"
-                                  : "Abo aktivieren (Testabo → Monatsabo)"
-                              }
-                            >
-                              <CreditCard size={11} />
-                              {u.subscriptionActive
-                                ? "Monatsabo"
-                                : u.subscriptionType === "trial"
-                                  ? "Testabo"
-                                  : "Kein Abo"}
                             </button>
                           </td>
                           <td className="px-4 py-3">

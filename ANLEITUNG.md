@@ -2,8 +2,9 @@
 
 Diese Anleitung erklärt alle Funktionen der App und die kleinen Besonderheiten,
 die nicht auf den ersten Blick offensichtlich sind. Die App gibt es als
-**Web-Version** (im Browser, https://haushalt.bernauer24.com) und als
-**iPhone-App**. Beide greifen auf dieselben Daten zu.
+**Web-Version** (im Browser, unter der Adresse deiner Installation) und als
+**Handy-App**. Beide greifen auf dieselben Daten zu. Haushaltsbuch ist freie
+Software zum Selbsthosten (siehe README).
 
 ---
 
@@ -13,8 +14,8 @@ Das ist der wichtigste Begriff, um die App zu verstehen:
 
 | Begriff | Bedeutung |
 |---|---|
-| **Haushalt** | Eine Personengruppe (z. B. „Familie Bernauer"). Die Daten verschiedener Haushalte sind **streng getrennt** – niemand sieht die Buchungen einer fremden Familie. |
-| **Haushaltsbuch** | Ein einzelnes Budget-Buch. Ein Nutzer kann mehrere haben, z. B. „Unser Haushalt" (gemeinsam) und „Christian Privat". |
+| **Haushalt** | Eine Personengruppe (z. B. „Familie Muster"). Die Daten verschiedener Haushalte sind **streng getrennt** – niemand sieht die Buchungen einer fremden Familie. |
+| **Haushaltsbuch** | Ein einzelnes Budget-Buch. Ein Nutzer kann mehrere haben, z. B. „Unser Haushalt" (gemeinsam) und „Privat". |
 
 Oben in der App kannst du jederzeit zwischen deinen Haushaltsbüchern **umschalten**
 (Klick auf den Namen oben links). Buchungen lassen sich zwischen deinen **eigenen**
@@ -25,11 +26,12 @@ Personengruppe.
 
 ## 2. Erste Schritte
 
-- **Registrierung:** Nur mit **Einladungscode** möglich. Der Code legt fest, ob du
-  ein eigenes neues Haushaltsbuch bekommst oder einem bestehenden beitrittst.
-- **Testphase:** Nach der Registrierung läuft automatisch ein **31-tägiges Testabo**.
-  5 Tage und 2 Tage vor Ablauf bekommst du eine Erinnerungs-E-Mail. Danach wird das
-  Konto deaktiviert, bis ein Abo aktiviert wird.
+- **Registrierung:** Die erste Person, die sich auf einer neuen Installation
+  registriert, wird automatisch **Superadmin** und braucht keinen Code. Alle weiteren
+  nur mit **Einladungscode**. Der Code legt fest, ob du ein eigenes neues
+  Haushaltsbuch bekommst oder einem bestehenden beitrittst.
+- **Handy-App:** Beim ersten Anmelden die **Server-Adresse** deiner Installation
+  eintragen (z. B. `https://haushalt.example.com`). Die App merkt sie sich.
 - **Passwort vergessen?** Auf der Login-Seite „Passwort vergessen" wählen – du
   bekommst eine E-Mail mit einem Link (1 Stunde gültig).
 - **Passwort ändern:** Im Benutzer-Menü oben rechts.
@@ -421,8 +423,8 @@ In den Einstellungen kannst du das Erscheinungsbild wählen, u. a. ein helles
   weitere Personen deinem Haushaltsbuch beitreten.
 - **Haushaltsbuch löschen:** Möglich, solange mindestens ein anderes Buch übrig bleibt.
   Dabei werden alle zugehörigen Daten mitgelöscht.
-- **Abo verwalten (nur Superadmin):** Konten aktivieren/deaktivieren und Monatsabos
-  freischalten.
+- **Benutzer verwalten (nur Superadmin):** Konten aktivieren/deaktivieren, KI-Zugriff
+  freigeben, Einladungscodes für neue Haushalte erzeugen.
 
 ---
 

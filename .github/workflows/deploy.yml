@@ -39,6 +39,12 @@ jobs:
             set_env OIDC_ISSUER_URL "https://auth.bernauer24.com/application/o/haushaltsbuch/"
             set_env OIDC_CLIENT_ID "${{ secrets.OIDC_CLIENT_ID }}"
             set_env OIDC_CLIENT_SECRET "${{ secrets.OIDC_CLIENT_SECRET }}"
+            # Impressum/Datenschutz dieser Instanz (GitHub-Repo-Variablen)
+            set_env LEGAL_NAME "${{ vars.LEGAL_NAME }}"
+            set_env LEGAL_ADDRESS "${{ vars.LEGAL_ADDRESS }}"
+            set_env LEGAL_EMAIL "${{ vars.LEGAL_EMAIL }}"
+            set_env LEGAL_HOSTING "${{ vars.LEGAL_HOSTING }}"
+            set_env LEGAL_AUTHORITY "${{ vars.LEGAL_AUTHORITY }}"
 
             docker-compose build --no-cache
             docker-compose up -d

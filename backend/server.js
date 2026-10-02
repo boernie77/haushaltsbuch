@@ -41,11 +41,31 @@ app.use("/api/calendar", require("./src/routes/calendar"));
 app.use("/api/bank-sync", require("./src/routes/bankSync"));
 app.use("/api/reports", require("./src/routes/reports").router);
 
+// Angaben des Betreibers dieser Installation für Impressum/Datenschutz
+// (LEGAL_* in der .env). null = nicht hinterlegt.
+function legalConfig() {
+  const name = (process.env.LEGAL_NAME || "").trim();
+  if (!name) {
+    return null;
+  }
+  return {
+    name,
+    address: (process.env.LEGAL_ADDRESS || "").trim(),
+    email: (process.env.LEGAL_EMAIL || "").trim(),
+    hosting: (process.env.LEGAL_HOSTING || "").trim(),
+    authority: (process.env.LEGAL_AUTHORITY || "").trim(),
+  };
+}
+
+const DEFAULT_SOURCE_URL = "https://github.com/boernie77/haushaltsbuch";
+
 // App config — gibt öffentliche Konfigurationsflags zurück
 app.get("/api/config", (req, res) => {
   res.json({
-    familyMode: process.env.FAMILY_MODE === "true",
     appUrl: process.env.APP_URL || "",
+    legal: legalConfig(),
+    // AGPL-3.0: Nutzer müssen den Quellcode der laufenden Version finden.
+    sourceUrl: process.env.SOURCE_URL || DEFAULT_SOURCE_URL,
   });
 });
 

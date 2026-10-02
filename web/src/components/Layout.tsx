@@ -28,7 +28,7 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { applyThemeClasses } from "../App";
-import { api, configAPI, householdAPI } from "../services/api";
+import { api, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import { APP_VERSION } from "../version";
 
@@ -138,83 +138,6 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SubscriptionModal({
-  user,
-  onClose,
-}: {
-  user: any;
-  onClose: () => void;
-}) {
-  const getStatus = () => {
-    if (user?.subscriptionActive) {
-      return {
-        label: "Monatsabo",
-        color: "bg-green-100 text-green-800",
-        detail: "Dein Abonnement ist aktiv.",
-      };
-    }
-    if (user?.trialEndsAt) {
-      const daysLeft = Math.ceil(
-        (new Date(user.trialEndsAt).getTime() - Date.now()) /
-          (1000 * 60 * 60 * 24)
-      );
-      if (daysLeft > 0) {
-        return {
-          label: "Testabo",
-          color: "bg-blue-100 text-blue-800",
-          detail: `Noch ${daysLeft} Tag${daysLeft === 1 ? "" : "e"} verbleibend (bis ${new Date(user.trialEndsAt).toLocaleDateString("de-DE")}).`,
-        };
-      }
-      return {
-        label: "Abgelaufen",
-        color: "bg-red-100 text-red-800",
-        detail: "Dein Testabo ist abgelaufen.",
-      };
-    }
-    return {
-      label: "Kein Abo",
-      color: "bg-gray-100 text-gray-700",
-      detail: "Du hast kein aktives Abonnement.",
-    };
-  };
-
-  const status = getStatus();
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
-        <h2 className="mb-4 flex items-center gap-2 font-bold text-gray-900 text-lg dark:text-white">
-          <CreditCard className="text-[var(--primary)]" size={20} />
-          Abonnement
-        </h2>
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-4 dark:bg-slate-700">
-            <span
-              className={`rounded-full px-3 py-1 font-semibold text-sm ${status.color}`}
-            >
-              {status.label}
-            </span>
-            <span className="text-gray-600 text-sm dark:text-gray-400">
-              {status.detail}
-            </span>
-          </div>
-          {user?.trialEndsAt && !user?.subscriptionActive && (
-            <p className="text-gray-500 text-xs dark:text-gray-500">
-              Für eine Verlängerung deines Abonnements wende dich bitte an den
-              Administrator.
-            </p>
-          )}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button className="btn" onClick={onClose} type="button">
-            Schließen
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function Layout() {
   const navigate = useNavigate();
   const {
@@ -230,8 +153,6 @@ export default function Layout() {
   const [householdOpen, setHouseholdOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [familyMode, setFamilyMode] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -243,10 +164,6 @@ export default function Layout() {
           setCurrentHousehold(data.households[0]);
         }
       })
-      .catch(() => {});
-    configAPI
-      .get()
-      .then(({ data }) => setFamilyMode(data.familyMode))
       .catch(() => {});
   }, []);
 
@@ -282,12 +199,6 @@ export default function Layout() {
       {/* Modals */}
       {showPasswordModal && (
         <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />
-      )}
-      {showSubscriptionModal && (
-        <SubscriptionModal
-          onClose={() => setShowSubscriptionModal(false)}
-          user={user}
-        />
       )}
 
       {/* Sidebar */}
@@ -373,8 +284,7 @@ export default function Layout() {
             </NavLink>
           ))}
 
-          {!familyMode &&
-            (user?.role === "admin" || user?.role === "superadmin") && (
+          {(user?.role === "admin" || user?.role === "superadmin") && (
               <NavLink
                 className={({ isActive }) =>
                   clsx(
@@ -427,18 +337,6 @@ export default function Layout() {
                     <KeyRound className="text-gray-400" size={15} />
                     Passwort ändern
                   </button>
-                  {!familyMode && (
-                    <button
-                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-gray-700 text-sm hover:bg-pink-50 dark:text-gray-300 dark:hover:bg-slate-700"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setShowSubscriptionModal(true);
-                      }}
-                    >
-                      <CreditCard className="text-gray-400" size={15} />
-                      Abonnement
-                    </button>
-                  )}
                   <div className="border-pink-100 border-t dark:border-slate-600" />
                   <p className="px-4 pt-2 pb-1 font-medium text-gray-400 text-xs uppercase tracking-wide">
                     Design

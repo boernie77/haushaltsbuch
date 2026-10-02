@@ -138,8 +138,6 @@ export const adminAPI = {
   saveAiSettings: (d: { apiKey: string; aiKeyPublic: boolean }) =>
     api.put("/admin/ai-settings", d),
   toggleAiGrant: (id: string) => api.put(`/admin/users/${id}/ai-grant`),
-  setSubscription: (id: string, subscriptionActive: boolean) =>
-    api.put(`/admin/users/${id}/subscription`, { subscriptionActive }),
   getBackupConfig: () => api.get("/admin/backup/config"),
   saveBackupConfig: (d: any) => api.put("/admin/backup/config", d),
   testBackup: (d: any) => api.post("/admin/backup/test", d),
@@ -291,9 +289,21 @@ export const backupAPI = {
   },
 };
 
+export interface LegalConfig {
+  address: string;
+  authority: string;
+  email: string;
+  hosting: string;
+  name: string;
+}
+
+export interface AppConfig {
+  appUrl: string;
+  legal: LegalConfig | null;
+  sourceUrl: string;
+}
+
 export const configAPI = {
-  get: () =>
-    api.get<{ familyMode: boolean; appUrl: string }>("/config", {
-      // Kein Auth-Token nötig — öffentlicher Endpunkt
-    }),
+  // Kein Auth-Token nötig — öffentlicher Endpunkt
+  get: () => api.get<AppConfig>("/config"),
 };

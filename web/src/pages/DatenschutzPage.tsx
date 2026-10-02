@@ -1,4 +1,9 @@
+import { LegalMissingNotice, OperatorAddress } from "../components/LegalOperator";
+import { useAppConfig } from "../hooks/useAppConfig";
+
 export default function DatenschutzPage() {
+  const { config, loading } = useAppConfig();
+  const legal = config?.legal;
   return (
     <div className="mx-auto max-w-2xl p-8">
       <h1 className="mb-6 font-bold text-2xl text-gray-900 dark:text-gray-100">
@@ -9,17 +14,23 @@ export default function DatenschutzPage() {
         <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
           1. Verantwortlicher
         </h2>
-        <p className="text-gray-700 dark:text-gray-300">
-          Christian Bernauer, Dianastr. 2b, 90547 Stein
-          <br />
-          E-Mail:{" "}
-          <a
-            className="text-[var(--primary)] hover:underline"
-            href="mailto:christian@bernauer24.com"
-          >
-            christian@bernauer24.com
-          </a>
-        </p>
+        {legal && (
+          <>
+            <OperatorAddress legal={legal} />
+            {legal.email && (
+              <p className="text-gray-700 dark:text-gray-300">
+                E-Mail:{" "}
+                <a
+                  className="text-[var(--primary)] hover:underline"
+                  href={`mailto:${legal.email}`}
+                >
+                  {legal.email}
+                </a>
+              </p>
+            )}
+          </>
+        )}
+        {!(legal || loading) && <LegalMissingNotice page="Verantwortlicher" />}
       </section>
 
       <section className="mb-6">
@@ -55,11 +66,15 @@ export default function DatenschutzPage() {
 
       <section className="mb-6">
         <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
-          4. KI-Analyse (OCR)
+          4. KI-Funktionen (optional)
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
           Bei Verwendung der Quittungsanalyse werden Bilder an die Anthropic API
           (Claude) übertragen, um Beträge und Händler automatisch zu erkennen.
+          Sind KI-Vorschläge beim Bank-Import eingeschaltet, werden Betrag,
+          Empfänger, Verwendungszweck und Kategorienamen der importierten
+          Umsätze an Anthropic oder an einen vom Betreiber eingerichteten
+          eigenen KI-Server übertragen (keine IBAN, kein Kontostand).
           Die Verarbeitung erfolgt gemäß den{" "}
           <a
             className="text-[var(--primary)] hover:underline"
@@ -69,7 +84,7 @@ export default function DatenschutzPage() {
           >
             Datenschutzbestimmungen von Anthropic
           </a>
-          . Die KI-Analyse ist optional und kann deaktiviert werden.
+          . Alle KI-Funktionen sind optional und können deaktiviert werden.
         </p>
       </section>
 
@@ -78,8 +93,9 @@ export default function DatenschutzPage() {
           5. Speicherung und Serverstandort
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          Alle Daten werden auf einem Server bei Hetzner Online GmbH
-          (Deutschland) gespeichert. Der Serverstandort liegt innerhalb der EU.
+          {legal?.hosting
+            ? `Alle Daten werden gespeichert bei: ${legal.hosting}.`
+            : "Alle Daten werden auf dem Server des Betreibers dieser Installation gespeichert."}{" "}
           Es werden keine Cookies gesetzt. Die Authentifizierung erfolgt über
           JWT-Token, die lokal im Browser bzw. im sicheren App-Speicher des
           Geräts hinterlegt werden.
@@ -111,15 +127,17 @@ export default function DatenschutzPage() {
           <li>Datenübertragbarkeit (Art. 20 DSGVO)</li>
           <li>Widerspruch gegen die Verarbeitung (Art. 21 DSGVO)</li>
         </ul>
-        <p className="mt-2 text-gray-700 dark:text-gray-300">
-          Zur Ausübung dieser Rechte wenden Sie sich an:{" "}
-          <a
-            className="text-[var(--primary)] hover:underline"
-            href="mailto:christian@bernauer24.com"
-          >
-            christian@bernauer24.com
-          </a>
-        </p>
+        {legal?.email && (
+          <p className="mt-2 text-gray-700 dark:text-gray-300">
+            Zur Ausübung dieser Rechte wenden Sie sich an:{" "}
+            <a
+              className="text-[var(--primary)] hover:underline"
+              href={`mailto:${legal.email}`}
+            >
+              {legal.email}
+            </a>
+          </p>
+        )}
       </section>
 
       <section className="mb-6">
@@ -128,8 +146,8 @@ export default function DatenschutzPage() {
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
           Sie haben das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu
-          beschweren. Zuständig ist das Bayerische Landesamt für
-          Datenschutzaufsicht (BayLDA), Promenade 18, 91522 Ansbach.
+          beschweren.
+          {legal?.authority ? ` Zuständig ist: ${legal.authority}.` : ""}
         </p>
       </section>
     </div>

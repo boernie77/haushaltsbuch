@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import {
   categoryAPI,
-  IMAGE_BASE_URL,
+  getImageBaseUrl,
   paperlessAPI,
   transactionAPI,
 } from "../src/services/api";
@@ -268,7 +268,7 @@ export default function TransactionDetailScreen() {
   const _selectedCategory = categories.find((c) => c.id === categoryId);
 
   const receiptUrl = transaction?.receiptImage
-    ? IMAGE_BASE_URL + transaction.receiptImage
+    ? getImageBaseUrl() + transaction.receiptImage
     : null;
 
   return (
@@ -738,7 +738,7 @@ export default function TransactionDetailScreen() {
                 >
                   <Image
                     resizeMode="cover"
-                    source={{ uri: IMAGE_BASE_URL + transaction.receiptImage }}
+                    source={{ uri: getImageBaseUrl() + transaction.receiptImage }}
                     style={styles.receiptThumb}
                   />
                   <View style={styles.fullscreenHint}>

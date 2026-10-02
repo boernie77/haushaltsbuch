@@ -217,33 +217,6 @@ router.put("/ai-settings", auth, superAdminGuard, async (req, res) => {
   }
 });
 
-// PUT /api/admin/users/:id/subscription — toggle subscriptionActive
-router.put(
-  "/users/:id/subscription",
-  auth,
-  superAdminGuard,
-  async (req, res) => {
-    try {
-      const user = await User.findByPk(req.params.id, {
-        attributes: { exclude: ["password"] },
-      });
-      if (!user) {
-        return res.status(404).json({ error: "Not found" });
-      }
-      const { subscriptionActive } = req.body;
-      const updates = { subscriptionActive: !!subscriptionActive };
-      // Reactivate user if subscription is turned on and account was disabled
-      if (subscriptionActive && !user.isActive) {
-        updates.isActive = true;
-      }
-      await user.update(updates);
-      res.json({ user });
-    } catch (err) {
-      res.status(500).json({ error: "Failed to update subscription" });
-    }
-  }
-);
-
 // PUT /api/admin/users/:id/ai-grant — toggle aiKeyGranted for a user
 router.put("/users/:id/ai-grant", auth, superAdminGuard, async (req, res) => {
   try {

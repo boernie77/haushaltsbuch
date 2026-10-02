@@ -1,48 +1,78 @@
+import { LegalMissingNotice, OperatorAddress } from "../components/LegalOperator";
+import { useAppConfig } from "../hooks/useAppConfig";
+
+const DEFAULT_SOURCE_URL = "https://github.com/boernie77/haushaltsbuch";
+
 export default function ImpressumPage() {
+  const { config, loading } = useAppConfig();
+  const legal = config?.legal;
+  const sourceUrl = config?.sourceUrl || DEFAULT_SOURCE_URL;
   return (
     <div className="mx-auto max-w-2xl p-8">
       <h1 className="mb-6 font-bold text-2xl text-gray-900 dark:text-gray-100">
         Impressum
       </h1>
 
-      <section className="mb-6">
-        <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
-          Angaben gemäß § 5 TMG
-        </h2>
-        <p className="text-gray-700 dark:text-gray-300">
-          Christian Bernauer
-          <br />
-          Dianastr. 2b
-          <br />
-          90547 Stein
-        </p>
-      </section>
+      {legal ? (
+        <>
+          <section className="mb-6">
+            <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
+              Angaben gemäß § 5 DDG
+            </h2>
+            <OperatorAddress legal={legal} />
+          </section>
+
+          {legal.email && (
+            <section className="mb-6">
+              <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
+                Kontakt
+              </h2>
+              <p className="text-gray-700 dark:text-gray-300">
+                E-Mail:{" "}
+                <a
+                  className="text-[var(--primary)] hover:underline"
+                  href={`mailto:${legal.email}`}
+                >
+                  {legal.email}
+                </a>
+              </p>
+            </section>
+          )}
+
+          <section className="mb-6">
+            <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
+              Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
+            </h2>
+            <OperatorAddress legal={legal} />
+          </section>
+        </>
+      ) : (
+        !loading && <LegalMissingNotice page="Impressum" />
+      )}
 
       <section className="mb-6">
         <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
-          Kontakt
+          Software und Quellcode
         </h2>
         <p className="text-gray-700 dark:text-gray-300">
-          E-Mail:{" "}
+          Haushaltsbuch ist freie Software unter der{" "}
           <a
             className="text-[var(--primary)] hover:underline"
-            href="mailto:christian@bernauer24.com"
+            href="https://www.gnu.org/licenses/agpl-3.0.html"
+            rel="noopener noreferrer"
+            target="_blank"
           >
-            christian@bernauer24.com
+            GNU Affero General Public License v3.0
           </a>
-        </p>
-      </section>
-
-      <section className="mb-6">
-        <h2 className="mb-2 font-semibold text-gray-800 text-lg dark:text-gray-200">
-          Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
-        </h2>
-        <p className="text-gray-700 dark:text-gray-300">
-          Christian Bernauer
-          <br />
-          Dianastr. 2b
-          <br />
-          90547 Stein
+          . Der Quellcode ist frei verfügbar:{" "}
+          <a
+            className="text-[var(--primary)] hover:underline"
+            href={sourceUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {sourceUrl}
+          </a>
         </p>
       </section>
 
@@ -51,9 +81,7 @@ export default function ImpressumPage() {
           Verwendete Open-Source-Lizenzen
         </h2>
         <p className="mb-3 text-gray-700 dark:text-gray-300">
-          Diese Anwendung verwendet Open-Source-Software. Alle eingesetzten
-          Pakete stehen unter permissiven Lizenzen (MIT, Apache 2.0, ISC), die
-          eine kommerzielle Nutzung ausdrücklich erlauben.
+          Diese Anwendung verwendet unter anderem folgende Open-Source-Pakete:
         </p>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-gray-700 text-sm dark:text-gray-300">

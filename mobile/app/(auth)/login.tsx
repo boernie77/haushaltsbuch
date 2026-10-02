@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,7 +10,11 @@ import {
 } from "react-native";
 import { Button, Text, TextInput, useTheme } from "react-native-paper";
 import Toast from "react-native-toast-message";
-import { householdAPI } from "../../src/services/api";
+import {
+  getServerUrl,
+  householdAPI,
+  setServerUrl,
+} from "../../src/services/api";
 import { useAuthStore } from "../../src/store/authStore";
 
 export default function LoginScreen() {
@@ -20,10 +24,28 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [server, setServer] = useState("");
+
+  useEffect(() => {
+    getServerUrl().then(setServer);
+  }, []);
+
+  const saveServer = async () => {
+    if (!server.trim()) {
+      Toast.show({ type: "error", text1: "Bitte die Server-Adresse eintragen" });
+      return null;
+    }
+    const url = await setServerUrl(server);
+    setServer(url);
+    return url;
+  };
 
   const handleLogin = async () => {
     if (!(email && password)) {
       Toast.show({ type: "error", text1: "Bitte alle Felder ausfüllen" });
+      return;
+    }
+    if (!(await saveServer())) {
       return;
     }
     setLoading(true);
@@ -79,6 +101,19 @@ export default function LoginScreen() {
 
             <TextInput
               autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              label="Server-Adresse"
+              left={<TextInput.Icon icon="server" />}
+              mode="outlined"
+              onChangeText={setServer}
+              placeholder="https://haushalt.example.com"
+              style={styles.input}
+              value={server}
+            />
+
+            <TextInput
+              autoCapitalize="none"
               keyboardType="email-address"
               label="E-Mail"
               left={<TextInput.Icon icon="email" />}
@@ -117,7 +152,11 @@ export default function LoginScreen() {
 
             <Button
               mode="text"
-              onPress={() => router.push("/(auth)/register")}
+              onPress={async () => {
+                if (await saveServer()) {
+                  router.push("/(auth)/register");
+                }
+              }}
               style={styles.linkButton}
             >
               Noch kein Konto? Registrieren
@@ -125,11 +164,12 @@ export default function LoginScreen() {
             <Button
               labelStyle={{ fontSize: 12, opacity: 0.7 }}
               mode="text"
-              onPress={() => {
-                const { Linking } = require("react-native");
-                Linking.openURL(
-                  "https://haushalt.bernauer24.com/forgot-password"
-                );
+              onPress={async () => {
+                const url = await saveServer();
+                if (url) {
+                  const { Linking } = require("react-native");
+                  Linking.openURL(`${url}/forgot-password`);
+                }
               }}
               style={styles.linkButton}
             >

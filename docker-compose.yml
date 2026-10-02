@@ -30,7 +30,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       APP_URL: ${APP_URL}
-      FAMILY_MODE: ${FAMILY_MODE:-true}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_SECURE: ${SMTP_SECURE:-false}
@@ -40,6 +39,12 @@ services:
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      LEGAL_NAME: ${LEGAL_NAME:-}
+      LEGAL_ADDRESS: ${LEGAL_ADDRESS:-}
+      LEGAL_EMAIL: ${LEGAL_EMAIL:-}
+      LEGAL_HOSTING: ${LEGAL_HOSTING:-}
+      LEGAL_AUTHORITY: ${LEGAL_AUTHORITY:-}
+      SOURCE_URL: ${SOURCE_URL:-}
     volumes:
       - ./data/uploads:/app/uploads
     ports:

@@ -1,18 +1,56 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://haushalt.bernauer24.com/api";
-export const IMAGE_BASE_URL = BASE_URL.replace("/api", "");
+// Server-Adresse der eigenen Installation (ohne /api). Wird beim Login
+// eingetragen und im SecureStore gemerkt; ein Build kann über
+// EXPO_PUBLIC_API_URL eine Vorbelegung mitbringen.
+const SERVER_URL_KEY = "server_url";
+const TRAILING_SLASHES = /\/+$/;
+const API_SUFFIX = /\/api$/;
+const DEFAULT_SERVER_URL = normalizeServerUrl(
+  process.env.EXPO_PUBLIC_API_URL || ""
+);
+let serverUrl: string | null = null;
+
+export function normalizeServerUrl(raw: string) {
+  let url = raw.trim().replace(TRAILING_SLASHES, "").replace(API_SUFFIX, "");
+  if (url && !url.includes("://")) {
+    url = `https://${url}`;
+  }
+  return url;
+}
+
+export async function getServerUrl() {
+  if (serverUrl === null) {
+    serverUrl =
+      (await SecureStore.getItemAsync(SERVER_URL_KEY)) || DEFAULT_SERVER_URL;
+  }
+  return serverUrl;
+}
+
+export async function setServerUrl(raw: string) {
+  serverUrl = normalizeServerUrl(raw);
+  await SecureStore.setItemAsync(SERVER_URL_KEY, serverUrl);
+  return serverUrl;
+}
+
+// Für Bild-URLs nach dem Login (Server-Adresse ist dann geladen).
+export function getImageBaseUrl() {
+  return serverUrl || DEFAULT_SERVER_URL;
+}
 
 export const api = axios.create({
-  baseURL: BASE_URL,
   timeout: 30_000,
   headers: { "Content-Type": "application/json" },
 });
 
 // Request interceptor
 api.interceptors.request.use(async (config) => {
+  const base = await getServerUrl();
+  if (!base) {
+    throw new Error("Bitte zuerst die Server-Adresse eintragen.");
+  }
+  config.baseURL = `${base}/api`;
   const token = await SecureStore.getItemAsync("auth_token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

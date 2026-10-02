@@ -6,6 +6,14 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - **Produktion:** https://haushalt.bernauer24.com (Hetzner VPS VPS-IP-ENTFERNT)
 - **Deployment:** Docker Compose, **automatischer Deploy bei jedem Push auf `main`** via GitHub Actions
 
+## ⚠️ Projektziel (verbindlich, Stand 2026-10-02)
+**Open Source zum Selbsthosten, kostenlos für jeden.** Christian ist aktuell der einzige Nutzer, weil er die App entwickelt und testet — das ist NICHT das Ziel, sondern nur der Zwischenstand.
+- Jeder soll die Software selbst hosten können (öffentlich, kostenlos).
+- Offizielle Apps in App Store und Google Play sind geplant.
+- Der frühere Plan, die App als Dienstleistung (SaaS mit Testabo/Monatsabo) zu betreiben, wird **nicht mehr verfolgt**.
+
+**Konsequenzen für jede Entscheidung:** Nichts auf Christians Banken, Server, Paperless-Instanz oder Konten zuschneiden. Features für beliebige Nutzer, Banken und Installationen denken (Konfiguration statt Hardcoding, verständliche Fehlermeldungen, Doku für Selbsthoster). Aufwand, der „für ein privates Projekt zu viel" wäre, ist für ein öffentliches Projekt oft angemessen — z.B. FinTS-Produktregistrierung (Produkteigner = Christian als Herausgeber der Open-Source-Software, eine Registrierungsnummer für alle Installationen).
+
 ## Stack
 | Bereich | Technologie |
 |---------|-------------|
@@ -74,7 +82,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 ⚠️ **KRITISCH:** NIEMALS Daten zwischen verschiedenen Haushalten (Personengruppen) verschieben oder teilen! Verschiebungen von Buchungen sind NUR zwischen den eigenen Haushaltsbüchern des angemeldeten Users erlaubt.
 
 ## Datenmodelle
-- **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted, `subscriptionType` (trial|monthly|null), `trialStartedAt`, `trialEndsAt`, `subscriptionActive`
+- **User**: id, name, email, password, role (superadmin/admin/member), theme (feminine/masculine), aiKeyGranted (Abo-Spalten aus Migration 019 sind seit v1.0.41 ungenutzt, siehe „Benutzerverwaltung")
 - **Household** (= Haushaltsbuch): id, name, currency, monthlyBudget, budgetWarningAt, anthropicApiKey, aiEnabled, adminUserId
 - **HouseholdMember**: householdId, userId, role (admin/member/viewer)
 - **Transaction**: amount, description, date, type (expense/income), categoryId, householdId, userId, receiptImage, merchant, tags, `isRecurring`, `recurringInterval` (weekly/monthly/yearly), `recurringDay`, `recurringNextDate`, `recurringEndDate` (optional, Cron stoppt Template wenn überschritten), `paperlessDocId` (INTEGER), `paperlessMetadata` (TEXT/JSON)
@@ -99,7 +107,6 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 - Erster User → automatisch superadmin + Haushalt, kein Code nötig
 - Alle weiteren User → Einladungscode zwingend
 - Admin sieht nur Statistiken, verwaltet keine fremden Haushalte
-- Registrierung mit Einladungscode startet automatisch 31-tägiges Testabo (→ Abonnement-System)
 
 ## Migrations-System
 Eigener leichtgewichtiger Runner (`src/utils/migrate.js`):
@@ -141,8 +148,6 @@ Vorhandene Migrationen (005, 018 etc.) als Referenz nutzen.
 | Zeit | Job |
 |------|-----|
 | täglich 06:00 | `processRecurringTransactions` — erstellt fällige Kopien wiederkehrender Buchungen |
-| täglich 07:00 | `deactivateExpiredTrials` — deaktiviert Konten mit abgelaufenem Testabo |
-| täglich 07:30 | `sendTrialExpiryReminders` — E-Mail-Erinnerung 5 Tage + 2 Tage vor Testabo-Ablauf |
 | alle 6h | `syncAllPaperless` — synchronisiert alle aktiven Paperless-Haushalte |
 | 1. jeden Monats 02:00 | `snapshotPreviousMonth` — Snapshot „Fester Saldo" für Vormonat (siehe `fixedBalanceService.js`) |
 | 1. jeden Monats 08:00 | `sendMonthlyReports` — HTML-Monatsberichte per E-Mail |
@@ -249,17 +254,15 @@ Niemals dasselbe FormData-Feld zweimal `append`-en (z.B. einmal generisch im Obj
 - Web: ForgotPasswordPage + ResetPasswordPage + Modal in Layout (User-Menü)
 - Mobile: Link auf Login-Seite öffnet Web-URL
 
-## Abonnement-System
-- **Testabo:** Startet automatisch bei Registrierung mit Einladungscode (31 Tage)
-  - `subscriptionType = 'trial'`, `trialStartedAt = now`, `trialEndsAt = now + 31d`
-  - Superadmin (erster User) bekommt kein Testabo
-- **Ablauf:** Login prüft Ablauf + deaktiviert Konto automatisch; Cron 07:00 räumt auf
-- **Erinnerungen:** Cron 07:30 schickt E-Mail 5 Tage + 2 Tage vor Ablauf
-- **Monatsabo:** Superadmin setzt `subscriptionActive = true` → Konto bleibt aktiv, reaktiviert falls deaktiviert
-- **API:** `PUT /api/admin/users/:id/subscription` — `{ subscriptionActive: bool }`
-- **AdminPage:** Spalte "Registriert / Testabo" zeigt Registrierungsdatum + Restlaufzeit (grau → orange ≤5d → rot ≤2d)
-  - Status-Badge und Abo-Badge sind direkt anklickbar zum Umschalten
+## Benutzerverwaltung (ehem. Abonnement-System)
+- Das Abo-System (Testabo 31 Tage, Monatsabo, `FAMILY_MODE`) wurde in **v1.0.41 entfernt** (Projektziel Open Source, siehe oben). Alle Konten sind dauerhaft aktiv, solange der Superadmin sie nicht deaktiviert.
+- Die DB-Spalten `users.subscriptionType/trialStartedAt/trialEndsAt/subscriptionActive` (Migration 019) existieren noch, sind aber nicht mehr im Modell. Eine DROP-Migration wurde vom Auto-Modus als Datenlöschung blockiert → nur mit ausdrücklicher Zustimmung des Users nachholen.
+- Konten, die früher wegen abgelaufenem Testabo deaktiviert wurden, bleiben deaktiviert → in der Administration per Status-Badge reaktivieren.
+- **AdminPage:** Spalten Registriert / Rolle / Status / KI-Zugriff. Status-Badge anklickbar zum Umschalten. Admin-Bereich ist für admin/superadmin immer sichtbar (früher in FAMILY_MODE versteckt).
 - **Schutz:** Superadmin kann sich nicht selbst deaktivieren (Frontend + Backend)
+
+## Impressum & Datenschutz (seit v1.0.41)
+Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetrennt, `LEGAL_EMAIL`, optional `LEGAL_HOSTING`, `LEGAL_AUTHORITY`) und werden über `GET /api/config` → `legal` (null wenn `LEGAL_NAME` leer) ausgeliefert, plus `sourceUrl` (AGPL-Quellcode-Link, `SOURCE_URL` oder GitHub-Repo). Web: `hooks/useAppConfig.ts`, `components/LegalOperator.tsx`, Impressum-/DatenschutzPage zeigen ohne Angaben einen Hinweis für Betreiber. **Nie wieder persönliche Daten in den Code schreiben.** Christians Instanz: GitHub-Repo-Variablen `LEGAL_*` → `deploy.yml` schreibt sie per `set_env` in die VPS-`.env`.
 
 ## Backup-System
 **Haushalt-Backup:**
@@ -324,7 +327,7 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - **SMTP:** smtp.strato.de, Port 465 (SSL)
 - **User:** christian@bernauer24.com
 - **Absender:** noreply@bernauer24.com (Strato-Alias)
-- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte, Testabo-Ablauf-Erinnerungen
+- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte
 - ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 
 ## Fester Saldo (Snapshot-Tracking)
@@ -413,7 +416,7 @@ Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `d
 - **Signing:** Automatic (Xcode verwaltet Provisioning Profile)
 - **Testgerät:** Physisches iPhone, App läuft als **Release-Build** (kein Metro!)
 - **Push Notifications:** NICHT aktiviert — `aps-environment` muss aus `.entitlements` entfernt bleiben, `expo-notifications` Plugin darf nicht in `app.json` stehen
-- **API-URL:** `https://haushalt.bernauer24.com/api` (in `mobile/src/services/api.ts`). Kein Fallback auf IP-Adressen — Domainname erzwingen!
+- **Server-Adresse (seit v1.0.41):** Nicht mehr fest im Code. Login-Screen hat Feld „Server-Adresse" (`getServerUrl`/`setServerUrl` in `mobile/src/services/api.ts`, SecureStore-Key `server_url`, `https://` wird ergänzt, `/api` angehängt per Request-Interceptor). Vorbelegung pro Build via `EXPO_PUBLIC_API_URL`. Nach dem Update auf diese Version muss Christian auf seinem iPhone einmal `https://haushalt.bernauer24.com` eintragen (bzw. vor dem Build `mobile/.env` mit `EXPO_PUBLIC_API_URL=https://haushalt.bernauer24.com/api` anlegen). Bild-URLs über `getImageBaseUrl()`.
 - **metro.config.cjs:** Dateiname `.cjs` erzwingen (nicht `.js`) — Biome würde `.js` anfassen und `__dirname` → `import.meta.dirname` umschreiben, was Metro crasht
 
 ### iOS neu bauen (nach JS-Änderungen):
@@ -562,7 +565,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.40** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.41** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -616,9 +619,9 @@ Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/me
 - **Backend-Errors an Client:** POST/PUT in `transactions.js` geben jetzt die echte Fehlermeldung (`Fehler: <err.message>`) zurück, nicht generisches „Failed to ...". Pattern für andere Routes übernehmen, wenn Fehler-Diagnose schwierig ist.
 
 ## Bank-Sync: Hintergrund & Parser (seit 2026-07-28)
-Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg und ING. Rein privat für Christian selbst (kein SaaS-Ziel, siehe Memory `project_commercial_intent.md`). Migration 028 legt `bank_import_profiles` + `merchant_category_mappings` an + `transactions."externalRef"` (Dedup-Hash, partial UNIQUE INDEX auf `(accountId, externalRef)`).
+Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank Nürnberg und ING (Christians Banken) — muss aber für beliebige deutsche Banken funktionieren (siehe „Projektziel"). Migration 028 legt `bank_import_profiles` + `merchant_category_mappings` an + `transactions."externalRef"` (Dedup-Hash, partial UNIQUE INDEX auf `(accountId, externalRef)`).
 
-**Architektur-Entscheidung:** Ein direkter FinTS/HBCI-Live-Zugang wurde verworfen — das erfordert eine PSD2-Produktregistrierung bei der Deutschen Kreditwirtschaft (kostenlos, aber ~10–15 Werktage, an Hersteller/Firmen adressiertes Formular), was für ein privates Projekt zu aufwendig ist. Stattdessen: Sparda-Bank Nürnberg bietet im Online-Banking CSV-/MT940-/CAMT.052-Export, ING bietet CSV-Export unter „Umsätze" — beides manuell exportierbar und hochladbar, ohne PIN-Speicherung oder Sidecar-Service.
+**Architektur-Entscheidung:** Ein direkter FinTS/HBCI-Live-Zugang wurde verworfen — das erfordert eine PSD2-Produktregistrierung bei der Deutschen Kreditwirtschaft (kostenlos, aber ~10–15 Werktage, an Hersteller/Firmen adressiertes Formular), was damals (fälschlich als „privates Projekt" eingeordnet) zu aufwendig erschien. **Seit 2026-10-02 neu zu bewerten:** Für ein öffentliches Open-Source-Projekt ist die Registrierung angemessen (siehe „Projektziel"). Stattdessen: Sparda-Bank Nürnberg bietet im Online-Banking CSV-/MT940-/CAMT.052-Export, ING bietet CSV-Export unter „Umsätze" — beides manuell exportierbar und hochladbar, ohne PIN-Speicherung oder Sidecar-Service.
 
 **Parser (`backend/src/utils/bankImport.js`):**
 - **MT940** via npm-Paket `mt940js` (`new mt940js.Parser().parse(text)`), Format-Erkennung: Datei beginnt mit `:20:`.
@@ -648,11 +651,11 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen für Sparda-Bank Nürnberg u
 
 ## Session-Notizen 2026-07-28
 - Bank-Sync (siehe „Bank-Sync: Hintergrund & Parser“) — **zwei Anläufe in derselben Session:**
-  1. Erster Entwurf: FinTS/HBCI-Live-Sync über Python-Sidecar (`fints-service/`, FastAPI + `python-fints`, TAN-Flow via `pause_dialog()`/`deconstruct()`). Wurde komplett gebaut, dann verworfen, nachdem klar wurde, dass die PSD2-Produktregistrierung (~10-15 Werktage, Formular an Hersteller/Firmen adressiert) für ein privates Projekt zu aufwendig ist.
+  1. Erster Entwurf: FinTS/HBCI-Live-Sync über Python-Sidecar (`fints-service/`, FastAPI + `python-fints`, TAN-Flow via `pause_dialog()`/`deconstruct()`). Wurde komplett gebaut, dann verworfen, nachdem klar wurde, dass die PSD2-Produktregistrierung (~10-15 Werktage, Formular an Hersteller/Firmen adressiert) für ein privates Projekt zu aufwendig ist. (Einordnung „privat" war falsch, siehe „Projektziel".)
   2. Zweiter Entwurf (umgesetzt): manueller CSV/MT940-Datei-Upload, kein Produkt-ID/PIN/Sidecar nötig. `fints-service/` gelöscht, `docker-compose.yml` zurückgesetzt, Migration 028 umgeschrieben (`bank_import_profiles` statt `bank_connections`). `Transaction.externalRef` + `MerchantCategoryMapping` aus dem ersten Entwurf blieben unverändert bestehen.
   - **Lektion:** Bei Bank-Integrationen immer zuerst prüfen, ob die Bank strukturierten Datei-Export (CSV/MT940/CAMT.052) anbietet, bevor ein FinTS/HBCI-Live-Zugang samt PSD2-Registrierung geplant wird — für Privatnutzer meist der pragmatischere Weg.
 - Nachträgliche Härtung vor Deploy: Fuzzy-Duplikat-Erkennung (`possibleDuplicate`) gegen manuell erfasste Buchungen ergänzt (der ursprüngliche `externalRef`-Dedup erkannte nur bereits importierte, nicht handisch eingetippte Buchungen). `/import` läuft jetzt JSON-basiert mit Zeilen aus `/preview` statt erneutem Datei-Upload, damit einzelne Zeilen per Checkbox ausgeschlossen werden können. Zusätzlich `POST /api/bank-sync/bootstrap-mappings` — lernt einmalig rückwirkend aus bestehenden manuell kategorisierten Buchungen (häufigste Kategorie pro Merchant), nicht nur vorwärts ab dem ersten Import.
-- Projektkontext geändert: App wird aktuell nur noch privat für Christian weiterentwickelt, kein 1000+-Haushalte-SaaS-Ziel mehr (siehe Memory `project_commercial_intent.md`, aktualisiert).
+- ~~Projektkontext: App nur noch privat~~ — **falsch verstanden, korrigiert 2026-10-02:** Ziel ist Open Source zum Selbsthosten für jeden + Store-Apps; nur das SaaS-Ziel ist entfallen (siehe „Projektziel").
 
 ## Session-Notizen 2026-06-18
 - **v1.0.9:** **Kalender-Feature** (siehe Section oben). Migration 027 (`accounts.startingBalanceDate`), neue Route `/api/calendar`, neue Seite `CalendarPage` (Sidebar „Kalender", CalendarDays-Icon). Daueraufträge werden in die Zukunft projiziert; `computeBalance` respektiert jetzt `startingBalanceDate`.

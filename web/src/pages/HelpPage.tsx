@@ -107,8 +107,12 @@ export default function HelpPage() {
             fest, ob du ein eigenes Buch bekommst oder einem beitrittst.
           </li>
           <li>
-            <strong>Testphase:</strong> automatisch 31 Tage, mit
-            Erinnerungs-E-Mail 5 und 2 Tage vor Ablauf.
+            <strong>Neue Installation:</strong> Die erste Person, die sich
+            registriert, wird Superadmin und braucht keinen Code.
+          </li>
+          <li>
+            <strong>Handy-App:</strong> Beim ersten Anmelden die
+            Server-Adresse deiner Installation eintragen.
           </li>
           <li>
             <strong>Passwort vergessen?</strong> Link auf der Login-Seite (Reset

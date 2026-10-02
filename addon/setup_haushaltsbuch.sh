@@ -30,7 +30,6 @@ NODE_ENV=production
 APP_URL=https://${APP_DOMAIN}
 API_URL=https://${APP_DOMAIN}/api
 ALLOWED_ORIGINS=https://${APP_DOMAIN}
-FAMILY_MODE=true
 ENV
 
 echo "[haushaltsbuch] Klone Repository..."

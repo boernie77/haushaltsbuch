@@ -28,7 +28,6 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, updateTheme, currentHousehold } = useAuthStore();
   const [isDark, setIsDark] = useState(user?.theme === "masculine");
-  const [familyMode, setFamilyMode] = useState(false);
   const [appUrl, setAppUrl] = useState("");
 
   const [aiSettings, setAiSettings] = useState<{
@@ -42,9 +41,8 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     api
-      .get<{ familyMode: boolean; appUrl: string }>("/config")
+      .get<{ appUrl: string }>("/config")
       .then(({ data }) => {
-        setFamilyMode(data.familyMode);
         setAppUrl(data.appUrl || "");
       })
       .catch(() => {});
@@ -347,8 +345,7 @@ export default function SettingsScreen() {
         />
       </List.Section>
 
-      {!familyMode &&
-        (user?.role === "admin" || user?.role === "superadmin") && (
+      {(user?.role === "admin" || user?.role === "superadmin") && (
           <>
             <Divider />
             <List.Section>

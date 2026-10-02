@@ -8,11 +8,7 @@ interface User {
   isActive: boolean;
   name: string;
   role: "superadmin" | "admin" | "member";
-  subscriptionActive: boolean;
-  subscriptionType: "trial" | "monthly" | null;
   theme: "feminine" | "masculine" | "professional-light" | "professional-dark";
-  trialEndsAt: string | null;
-  trialStartedAt: string | null;
 }
 
 interface Household {
