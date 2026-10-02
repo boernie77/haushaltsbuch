@@ -12,13 +12,15 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: VPS-IP-ENTFERNT
+          host: ${{ secrets.HETZNER_HOST }}
           username: root
           key: ${{ secrets.HETZNER_SSH_KEY }}
           script: |
             set -e
             cd /opt/haushaltsbuch
-            git pull origin main
+            # fetch + reset statt pull: übersteht auch umgeschriebene Historie
+            git fetch origin main
+            git reset --hard origin/main
 
             # .env: nur bekannte Secrets aktualisieren, alle anderen Zeilen (SMTP, ENCRYPTION_KEY usw.) bleiben erhalten
             touch .env
