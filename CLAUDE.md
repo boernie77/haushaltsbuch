@@ -2,7 +2,7 @@
 
 ## Projektübersicht
 Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanalyse.
-- **GitHub:** https://github.com/boernie77/haushaltsbuch (Lizenz AGPL-3.0)
+- **GitHub:** https://github.com/boernie77/haushaltsbuch — **öffentlich seit 2026-10-02**, Lizenz AGPL-3.0. Alles, was committet wird, ist sofort für alle sichtbar: keine persönlichen Daten, IPs, Geräte-IDs oder Zugangsdaten in Code oder dieser Datei (→ `CLAUDE.local.md`, GitHub-Secrets/-Variablen).
 - **Betrieb:** Docker Compose (siehe README). Die Instanz des Maintainers wird bei jedem Push auf `main` per GitHub Actions deployt (`.github/workflows/deploy.yml`).
 - **Betriebsdetails der Maintainer-Instanz** (VPS, SSH, SMTP, iPhone-Build, Session-Notizen): `CLAUDE.local.md` — liegt nur lokal, ist in `.gitignore`. Wenn vorhanden, IMMER mitlesen.
 
@@ -496,7 +496,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.46** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.47** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
