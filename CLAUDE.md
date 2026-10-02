@@ -262,8 +262,7 @@ Niemals dasselbe FormData-Feld zweimal `append`-en (z.B. einmal generisch im Obj
 - **Schutz:** Superadmin kann sich nicht selbst deaktivieren (Frontend + Backend)
 
 ## Verschlüsselung sensibler Felder (seit v1.0.42)
-`utils/encrypt.js` (AES-256-GCM, Format `iv:authTag:data`) über Model-Getter/-Setter für: `Household.anthropicApiKey`, `Household.bankSyncLocalApiKey`, `PaperlessConfig.apiToken`, `BackupConfig.sftpPassword`, `GlobalSettings.anthropicApiKey`, `GlobalSettings.sshPrivateKey`. Schlüssel: `ENCRYPTION_KEY` (64 Hex). **Bis v1.0.41 reichte `docker-compose.yml` den Schlüssel nicht durch → alles lag im Klartext.** Seit v1.0.42: Compose übergibt ihn, `utils/encryptExisting.js` verschlüsselt beim Start vorhandene Klartextwerte (idempotent, `isEncrypted`), ohne Schlüssel Warnung im Log. Neues verschlüsseltes Feld → in `ENCRYPTED_FIELDS` eintragen und **als TEXT anlegen** (verschlüsselt ≈ 2× Klartext + 58 Zeichen; v1.0.42 scheiterte an alten VARCHAR(255)-Spalten → Migration 035 macht sie zu TEXT). Globales Backup (`backupService.js#toBackupJSON`, seit v1.0.44) exportiert diese Felder VERSCHLÜSSELT (Rohwert, `secretsEncrypted: true`); `restoreAllData` ruft `decrypt()` vor dem Setter → funktioniert mit neuen und alten Klartext-Backups, braucht aber denselben `ENCRYPTION_KEY`.
-⚠️ **Globales Backup/Restore ist unvollständig (Stand v1.0.44):** Export enthält nur users, households, household_members, categories, transactions, budgets, global_settings, invite_codes. Es fehlen u.a. accounts, savings_goals, transaction_splits, sub_account_settlements, monthly_fixed_snapshots, paperless_*, bank_*-Tabellen, merchant_category_mappings, backup_configs. Transactions verlieren beim Restore accountId/transfer*/externalRef/paperless*/Sub-Konto-Felder. `restoreAllData` LÖSCHT aber auch Tabellen, die nicht im Backup sind (paperless_*, savings_goals, transaction_splits, backup_configs), und setzt alle Passwörter auf einen Platzhalter. → Restore ist derzeit ein Datenverlust-Risiko.
+`utils/encrypt.js` (AES-256-GCM, Format `iv:authTag:data`) über Model-Getter/-Setter für: `Household.anthropicApiKey`, `Household.bankSyncLocalApiKey`, `PaperlessConfig.apiToken`, `BackupConfig.sftpPassword`, `GlobalSettings.anthropicApiKey`, `GlobalSettings.sshPrivateKey`. Schlüssel: `ENCRYPTION_KEY` (64 Hex). **Bis v1.0.41 reichte `docker-compose.yml` den Schlüssel nicht durch → alles lag im Klartext.** Seit v1.0.42: Compose übergibt ihn, `utils/encryptExisting.js` verschlüsselt beim Start vorhandene Klartextwerte (idempotent, `isEncrypted`), ohne Schlüssel Warnung im Log. Neues verschlüsseltes Feld → in `ENCRYPTED_FIELDS` eintragen und **als TEXT anlegen** (verschlüsselt ≈ 2× Klartext + 58 Zeichen; v1.0.42 scheiterte an alten VARCHAR(255)-Spalten → Migration 035 macht sie zu TEXT). Globales Backup per `pg_dump` (siehe „Backup-System") übernimmt die verschlüsselten Rohwerte → Wiederherstellen braucht denselben `ENCRYPTION_KEY`.
 
 ## Impressum & Datenschutz (seit v1.0.41)
 Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetrennt, `LEGAL_EMAIL`, optional `LEGAL_HOSTING`, `LEGAL_AUTHORITY`) und werden über `GET /api/config` → `legal` (null wenn `LEGAL_NAME` leer) ausgeliefert, plus `sourceUrl` (AGPL-Quellcode-Link, `SOURCE_URL` oder GitHub-Repo). Web: `hooks/useAppConfig.ts`, `components/LegalOperator.tsx`, Impressum-/DatenschutzPage zeigen ohne Angaben einen Hinweis für Betreiber. **Nie wieder persönliche Daten in den Code schreiben.** Maintainer-Instanz: siehe `CLAUDE.local.md`.
@@ -273,9 +272,14 @@ Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetre
 - `GET /api/backup/export?householdId=&format=json|csv`
 - `POST /api/backup/import` — Duplikaterkennung aktiv
 
-**Admin-Backup (SFTP):**
-- `GET/PUT /api/admin/backup/config`, `POST /api/admin/backup/test`, `POST /api/admin/backup/run`
-- Format: alle Tabellen als JSON, gzip-komprimiert
+**Admin-Backup (vollständig, seit v1.0.45 per `pg_dump`):**
+- `GET/PUT /api/admin/backup/config`, `POST /api/admin/backup/test`, `POST /api/admin/backup/run` (SFTP), `GET /api/admin/backup/download` (direkt herunterladen)
+- `POST /api/admin/backup/restore/preview` (Inhaltsverzeichnis via `pg_restore --list`), `POST /api/admin/backup/restore`
+- Format: `pg_dump --format=custom --no-owner --no-privileges`, Datei `haushaltsbuch-backup-YYYY-MM-DD.dump` — ALLE Tabellen inkl. `_migrations` und Passwort-Hashes; verschlüsselte Felder bleiben verschlüsselt (gleicher `ENCRYPTION_KEY` nötig).
+- Restore: legt vorher Sicherheitskopie `uploads/restore-safety/haushaltsbuch-vor-wiederherstellung-<ts>.dump` an, dann `pg_restore --clean --if-exists --single-transaction --exit-on-error`, danach `migrate()` (ältere Backups kommen auf den aktuellen Schema-Stand).
+- Werkzeuge: `postgresql16-client` im Backend-Dockerfile — Major-Version muss zum DB-Image `postgres:16` passen. Beim Upgrade der DB beide zusammen ändern.
+- Alte JSON-Backups (bis v1.0.44, nur 8 Tabellen) werden abgelehnt; `exportAllData`/`restoreAllData` sind entfernt.
+- Getestet 2026-10-02 end-to-end gegen Wegwerf-Container (frische DB → alle Migrationen → Dump → Daten ändern → Restore → Vergleich). Dabei aufgefallen und behoben: Migration 020 brach auf frischer DB ab (ENUM fehlt) → Neuinstallationen starteten nicht.
 
 ## KI-OCR API-Key-Auflösung (3 Stufen)
 1. Haushalt eigener Key (`household.aiEnabled && household.anthropicApiKey`)
@@ -492,7 +496,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.44** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.45** (Stand 2026-10-02). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 

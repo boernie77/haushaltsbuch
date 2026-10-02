@@ -4,6 +4,7 @@ import {
   Bot,
   Copy,
   Database,
+  Download,
   Eye,
   EyeOff,
   Globe,
@@ -60,6 +61,7 @@ export default function AdminPage() {
   const [backupSaving, setBackupSaving] = useState(false);
   const [backupTesting, setBackupTesting] = useState(false);
   const [backupRunning, setBackupRunning] = useState(false);
+  const [backupDownloading, setBackupDownloading] = useState(false);
   const [sshPublicKey, setSshPublicKey] = useState<string | null>(null);
   const [sshKeyLoading, setSshKeyLoading] = useState(false);
   const [sshKeyRegenerating, setSshKeyRegenerating] = useState(false);
@@ -166,7 +168,7 @@ export default function AdminPage() {
     try {
       const { data } = await adminAPI.restoreBackup(restoreFile);
       toast.success(
-        `Wiederherstellung abgeschlossen: ${data.restored.transactions} Buchungen, ${data.restored.users} Benutzer`
+        `Wiederherstellung abgeschlossen (${data.tables.length} Tabellen). Sicherheitskopie des vorherigen Stands: ${data.safetyFile}`
       );
       setRestoreFile(null);
       setRestorePreview(null);
@@ -330,6 +332,26 @@ export default function AdminPage() {
       toast.error(err.response?.data?.message || "Verbindung fehlgeschlagen");
     } finally {
       setBackupTesting(false);
+    }
+  };
+
+  const handleDownloadBackup = async () => {
+    setBackupDownloading(true);
+    try {
+      const { data, headers } = await adminAPI.downloadBackup();
+      const name =
+        headers["content-disposition"]?.match(/filename="(.+)"/)?.[1] ||
+        "haushaltsbuch-backup.dump";
+      const url = URL.createObjectURL(new Blob([data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Backup konnte nicht erstellt werden");
+    } finally {
+      setBackupDownloading(false);
     }
   };
 
@@ -1157,6 +1179,19 @@ export default function AdminPage() {
                     Jetzt sichern
                   </button>
                   <button
+                    className="flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-2 font-medium text-sm transition-colors hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600"
+                    disabled={backupDownloading}
+                    onClick={handleDownloadBackup}
+                    title="Vollständiges Backup der Datenbank herunterladen (auch ohne SFTP)"
+                  >
+                    {backupDownloading ? (
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-500 border-t-transparent" />
+                    ) : (
+                      <Download size={15} />
+                    )}
+                    Herunterladen
+                  </button>
+                  <button
                     className="btn-primary ml-auto flex items-center gap-2 disabled:opacity-50"
                     disabled={backupSaving}
                     onClick={handleSaveBackup}
@@ -1186,10 +1221,10 @@ export default function AdminPage() {
 
                 <div>
                   <label className="mb-1 block font-medium text-gray-600 text-xs dark:text-gray-400">
-                    Backup-Datei auswählen (.json.gz oder .json)
+                    Backup-Datei auswählen (.dump)
                   </label>
                   <input
-                    accept=".json,.gz,.json.gz"
+                    accept=".dump"
                     className="block w-full text-gray-500 text-sm file:mr-3 file:rounded-xl file:border-0 file:bg-gray-100 file:px-4 file:py-2 file:font-medium file:text-gray-700 file:text-sm hover:file:bg-gray-200 dark:file:bg-slate-700 dark:file:text-gray-300"
                     onChange={handleRestoreFileChange}
                     type="file"
@@ -1211,50 +1246,15 @@ export default function AdminPage() {
                       </p>
                       <p className="text-gray-500 text-xs">
                         Erstellt am:{" "}
-                        <strong>
-                          {new Date(restorePreview.exportedAt).toLocaleString(
-                            "de-DE"
-                          )}
-                        </strong>
+                        <strong>{restorePreview.createdAt || "unbekannt"}</strong>
+                        {restorePreview.serverVersion &&
+                          ` · PostgreSQL ${restorePreview.serverVersion}`}
                       </p>
-                      <div className="mt-2 grid grid-cols-3 gap-2">
-                        {[
-                          {
-                            label: "Benutzer",
-                            value: restorePreview.counts.users,
-                          },
-                          {
-                            label: "Haushaltsbücher",
-                            value: restorePreview.counts.households,
-                          },
-                          {
-                            label: "Buchungen",
-                            value: restorePreview.counts.transactions,
-                          },
-                          {
-                            label: "Kategorien",
-                            value: restorePreview.counts.categories,
-                          },
-                          {
-                            label: "Budgets",
-                            value: restorePreview.counts.budgets,
-                          },
-                          {
-                            label: "Einladungen",
-                            value: restorePreview.counts.inviteCodes,
-                          },
-                        ].map(({ label, value }) => (
-                          <div
-                            className="rounded-lg bg-white p-2 text-center dark:bg-slate-700"
-                            key={label}
-                          >
-                            <p className="font-bold text-gray-900 text-lg dark:text-white">
-                              {value}
-                            </p>
-                            <p className="text-gray-500 text-xs">{label}</p>
-                          </div>
-                        ))}
-                      </div>
+                      <p className="text-gray-500 text-xs">
+                        Vollständiges Backup mit{" "}
+                        <strong>{restorePreview.tables.length} Tabellen</strong>
+                        : {restorePreview.tables.join(", ")}
+                      </p>
                     </div>
 
                     <div className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
@@ -1263,10 +1263,13 @@ export default function AdminPage() {
                         werden!
                       </p>
                       <p className="text-red-600 text-xs dark:text-red-400">
-                        Alle aktuellen Buchungen, Benutzer und Einstellungen
-                        werden gelöscht und durch den Backup-Stand ersetzt.
-                        Benutzer müssen danach ihr Passwort zurücksetzen
-                        (Passwort-Reset per E-Mail).
+                        Die komplette Datenbank wird durch den Backup-Stand
+                        ersetzt (alle Benutzer inkl. Passwörter, Buchungen,
+                        Konten und Einstellungen). Der aktuelle Stand wird
+                        vorher als Sicherheitskopie auf dem Server abgelegt
+                        (uploads/restore-safety). Verschlüsselte Felder
+                        brauchen denselben ENCRYPTION_KEY wie beim Erstellen
+                        des Backups.
                       </p>
                       <div>
                         <label className="mb-1 block font-medium text-red-700 text-xs dark:text-red-400">

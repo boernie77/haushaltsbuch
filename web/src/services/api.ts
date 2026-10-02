@@ -142,6 +142,11 @@ export const adminAPI = {
   saveBackupConfig: (d: any) => api.put("/admin/backup/config", d),
   testBackup: (d: any) => api.post("/admin/backup/test", d),
   runBackup: () => api.post("/admin/backup/run"),
+  downloadBackup: () =>
+    api.get("/admin/backup/download", {
+      responseType: "blob",
+      timeout: 300_000,
+    }),
   getSshPublicKey: () => api.get("/admin/backup/ssh-key"),
   regenerateSshKey: () => api.post("/admin/backup/ssh-key/regenerate"),
   previewRestore: (file: File) => {
@@ -152,7 +157,7 @@ export const adminAPI = {
   restoreBackup: (file: File) => {
     const fd = new FormData();
     fd.append("backup", file);
-    return api.post("/admin/backup/restore", fd, { timeout: 120_000 });
+    return api.post("/admin/backup/restore", fd, { timeout: 600_000 });
   },
 };
 

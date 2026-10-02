@@ -1,76 +1,15 @@
-const zlib = require("zlib");
+const { spawn } = require("node:child_process");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
 const {
-  User,
   Household,
-  HouseholdMember,
   Category,
   Transaction,
   Budget,
   GlobalSettings,
-  InviteCode,
   BackupConfig,
 } = require("../models");
-const { decrypt } = require("../utils/encrypt");
-const { ENCRYPTED_FIELDS } = require("../utils/encryptExisting");
-
-const encryptedFieldsOf = (modelName) =>
-  ENCRYPTED_FIELDS.find(([name]) => name === modelName)?.[1] || [];
-
-// toJSON() läuft über die Getter und würde API-Keys/SSH-Schlüssel
-// entschlüsselt ins Backup schreiben. Für diese Felder den gespeicherten
-// (verschlüsselten) Rohwert übernehmen — Wiederherstellen braucht dann
-// denselben ENCRYPTION_KEY.
-function toBackupJSON(instance, modelName) {
-  const json = instance.toJSON();
-  for (const field of encryptedFieldsOf(modelName)) {
-    if (field in json) {
-      json[field] = instance.getDataValue(field);
-    }
-  }
-  return json;
-}
-
-// ── Global backup (all data, gzipped JSON) ───────────────────────────────────
-async function exportAllData() {
-  const [
-    users,
-    households,
-    members,
-    categories,
-    transactions,
-    budgets,
-    globalSettings,
-    inviteCodes,
-  ] = await Promise.all([
-    User.findAll({ attributes: { exclude: ["password"] } }),
-    Household.findAll(),
-    HouseholdMember.findAll(),
-    Category.findAll(),
-    Transaction.findAll(),
-    Budget.findAll(),
-    GlobalSettings.findAll(),
-    InviteCode.findAll(),
-  ]);
-
-  return {
-    version: "1.0",
-    exportedAt: new Date().toISOString(),
-    // Geheimnisse liegen verschlüsselt vor (ENCRYPTION_KEY nötig).
-    secretsEncrypted: true,
-    tables: {
-      users: users.map((u) => u.toJSON()),
-      households: households.map((h) => toBackupJSON(h, "Household")),
-      household_members: members.map((m) => m.toJSON()),
-      categories: categories.map((c) => c.toJSON()),
-      transactions: transactions.map((t) => t.toJSON()),
-      budgets: budgets.map((b) => b.toJSON()),
-      global_settings: globalSettings.map((g) =>
-        toBackupJSON(g, "GlobalSettings")
-      ),
-      invite_codes: inviteCodes.map((i) => i.toJSON()),
-    },
-  };
-}
 
 // ── Household export (JSON or CSV) ───────────────────────────────────────────
 async function exportHouseholdData(householdId, format = "json") {
@@ -261,6 +200,140 @@ async function uploadToSftp(config, buffer, filename) {
   }
 }
 
+// ── Globales Backup per pg_dump ──────────────────────────────────────────────
+// Sichert die komplette Datenbank (alle Tabellen, alle Spalten, inkl.
+// Passwort-Hashes und _migrations) im Custom-Format von pg_dump. Verschlüsselte
+// Felder bleiben verschlüsselt → zum Wiederherstellen denselben ENCRYPTION_KEY
+// verwenden. pg_dump/pg_restore kommen aus postgresql16-client (Dockerfile),
+// Version passend zum DB-Image postgres:16.
+const PG_DUMP_MAGIC = "PGDMP";
+const SAFETY_DIR = path.join(__dirname, "../../uploads/restore-safety");
+
+function databaseUrl() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL ist nicht gesetzt");
+  }
+  return process.env.DATABASE_URL;
+}
+
+// Startet ein PostgreSQL-Werkzeug und liefert stdout als Buffer.
+function runPgTool(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args);
+    const stdout = [];
+    let stderr = "";
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (err) => {
+      reject(
+        err.code === "ENOENT"
+          ? new Error(
+              `${command} nicht gefunden — Backend-Image neu bauen (postgresql16-client fehlt)`
+            )
+          : err
+      );
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(Buffer.concat(stdout));
+      } else {
+        reject(new Error(`${command} fehlgeschlagen: ${stderr.trim()}`));
+      }
+    });
+  });
+}
+
+function createDatabaseDump() {
+  return runPgTool("pg_dump", [
+    "--format=custom",
+    "--no-owner",
+    "--no-privileges",
+    `--dbname=${databaseUrl()}`,
+  ]);
+}
+
+const isDatabaseDump = (buffer) =>
+  buffer.subarray(0, PG_DUMP_MAGIC.length).toString("latin1") ===
+  PG_DUMP_MAGIC;
+
+// Dump-Puffer in eine Temp-Datei schreiben (pg_restore liest Dateien).
+async function withTempDump(buffer, fn) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hb-restore-"));
+  const file = path.join(dir, "backup.dump");
+  try {
+    await fs.writeFile(file, buffer);
+    return await fn(file);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+// Inhaltsverzeichnis eines Dumps: Erstellungszeit, DB-Version, Tabellen.
+async function inspectDatabaseDump(buffer) {
+  if (!isDatabaseDump(buffer)) {
+    throw new Error(
+      "Keine pg_dump-Datei. Ältere JSON-Backups (bis v1.0.44) waren unvollständig und werden nicht mehr unterstützt — bitte ein neues Backup erstellen."
+    );
+  }
+  return withTempDump(buffer, async (file) => {
+    const list = (await runPgTool("pg_restore", ["--list", file])).toString(
+      "utf8"
+    );
+    const tables = [...list.matchAll(/TABLE DATA public (\S+)/g)]
+      .map((m) => m[1])
+      .sort();
+    if (!tables.includes("transactions")) {
+      throw new Error("Die Datei ist kein Haushaltsbuch-Backup");
+    }
+    return {
+      createdAt: list.match(/Archive created at (.+)/)?.[1]?.trim() || null,
+      serverVersion:
+        list.match(/Dumped from database version: (.+)/)?.[1]?.trim() || null,
+      tables,
+    };
+  });
+}
+
+// Ersetzt die komplette Datenbank durch den Dump. Vorher wird der aktuelle
+// Stand als Sicherheitskopie unter uploads/restore-safety abgelegt. Danach
+// laufen die Migrationen, damit ein älteres Backup auf den aktuellen
+// Schema-Stand kommt.
+async function restoreDatabaseDump(buffer) {
+  const info = await inspectDatabaseDump(buffer);
+
+  await fs.mkdir(SAFETY_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const safetyFile = path.join(
+    SAFETY_DIR,
+    `haushaltsbuch-vor-wiederherstellung-${stamp}.dump`
+  );
+  await fs.writeFile(safetyFile, await createDatabaseDump());
+
+  await withTempDump(buffer, (file) =>
+    runPgTool("pg_restore", [
+      "--clean",
+      "--if-exists",
+      "--no-owner",
+      "--no-privileges",
+      "--single-transaction",
+      "--exit-on-error",
+      `--dbname=${databaseUrl()}`,
+      file,
+    ])
+  );
+
+  const { sequelize } = require("../models");
+  const { migrate } = require("../utils/migrate");
+  await migrate(sequelize);
+
+  return { ...info, safetyFile: path.basename(safetyFile) };
+}
+
+const backupFilename = () =>
+  `haushaltsbuch-backup-${new Date().toISOString().split("T")[0]}.dump`;
+
 // ── Run global backup ─────────────────────────────────────────────────────────
 async function runGlobalBackup() {
   const [config, globalSettings] = await Promise.all([
@@ -274,261 +347,27 @@ async function runGlobalBackup() {
   // Prefer SSH key auth over password
   const sshPrivateKey = globalSettings?.sshPrivateKey || null;
 
-  const data = await exportAllData();
-  const compressed = zlib.gzipSync(
-    Buffer.from(JSON.stringify(data, null, 2), "utf8")
-  );
-  const date = new Date().toISOString().split("T")[0];
-  const filename = `haushaltsbuch-backup-${date}.json.gz`;
+  const dump = await createDatabaseDump();
+  const filename = backupFilename();
 
-  await uploadToSftp(
-    { ...config.toJSON(), sshPrivateKey },
-    compressed,
-    filename
-  );
+  await uploadToSftp({ ...config.toJSON(), sshPrivateKey }, dump, filename);
 
   await config.update({
     lastRunAt: new Date(),
     lastRunStatus: "success",
-    lastRunMessage: `${filename} (${Math.round(compressed.length / 1024)} KB)`,
+    lastRunMessage: `${filename} (${Math.round(dump.length / 1024)} KB)`,
   });
 
   return filename;
 }
 
-// ── Parse backup file (gzip or plain JSON) ────────────────────────────────────
-function parseBackupBuffer(buffer) {
-  let json;
-  try {
-    // Try gzip first
-    json = zlib.gunzipSync(buffer).toString("utf8");
-  } catch {
-    // Fall back to plain JSON
-    json = buffer.toString("utf8");
-  }
-  const data = JSON.parse(json);
-  if (!data.tables) {
-    throw new Error("Ungültiges Backup-Format (kein tables-Objekt)");
-  }
-  return data;
-}
-
-// ── Restore all data ──────────────────────────────────────────────────────────
-async function restoreAllData(data) {
-  const { sequelize } = require("../models");
-  const t = data.tables;
-
-  const tx = await sequelize.transaction();
-  try {
-    // Delete in reverse dependency order
-    await sequelize.query("DELETE FROM transaction_splits", {
-      transaction: tx,
-    });
-    await sequelize.query("DELETE FROM transactions", { transaction: tx });
-    await sequelize.query("DELETE FROM budgets", { transaction: tx });
-    await sequelize.query("DELETE FROM savings_goals", { transaction: tx });
-    await sequelize.query("DELETE FROM password_reset_tokens", {
-      transaction: tx,
-    });
-    await sequelize.query("DELETE FROM paperless_document_types", {
-      transaction: tx,
-    });
-    await sequelize.query("DELETE FROM paperless_correspondents", {
-      transaction: tx,
-    });
-    await sequelize.query("DELETE FROM paperless_tags", { transaction: tx });
-    await sequelize.query("DELETE FROM paperless_users", { transaction: tx });
-    await sequelize.query("DELETE FROM paperless_configs", { transaction: tx });
-    await sequelize.query("DELETE FROM invite_codes", { transaction: tx });
-    await sequelize.query("DELETE FROM household_members", { transaction: tx });
-    await sequelize.query("DELETE FROM categories", { transaction: tx });
-    await sequelize.query("DELETE FROM households", { transaction: tx });
-    await sequelize.query("DELETE FROM users", { transaction: tx });
-    await sequelize.query("DELETE FROM global_settings", { transaction: tx });
-    await sequelize.query("DELETE FROM backup_configs", { transaction: tx });
-
-    const opts = {
-      transaction: tx,
-      validate: false,
-      hooks: false,
-      individualHooks: false,
-      returning: false,
-    };
-
-    // Re-insert in forward dependency order
-    // Users — restore password hash as-is (backup excludes password field — users must reset passwords)
-    if (t.users?.length) {
-      await sequelize.query(
-        `INSERT INTO users (id, name, email, password, role, theme, "aiKeyGranted", "isActive", "createdAt", "updatedAt")
-         VALUES ${t.users.map(() => "(?,?,?,?,?,?,?,?,?,?)").join(",")}`,
-        {
-          transaction: tx,
-          replacements: t.users.flatMap((u) => [
-            u.id,
-            u.name,
-            u.email,
-            "$2b$10$placeholder.hash.that.will.not.work", // users must reset password after restore
-            u.role || "member",
-            u.theme || "masculine",
-            u.aiKeyGranted ?? false,
-            u.isActive ?? true,
-            u.createdAt || new Date(),
-            u.updatedAt || new Date(),
-          ]),
-        }
-      );
-    }
-
-    if (t.global_settings?.length) {
-      for (const g of t.global_settings) {
-        await GlobalSettings.create(
-          {
-            id: g.id || "global",
-            // decrypt(): verschlüsselte Backups entschlüsseln, alte
-            // Klartext-Backups bleiben unverändert; der Setter verschlüsselt neu.
-            anthropicApiKey: decrypt(g.anthropicApiKey) || null,
-            aiKeyPublic: g.aiKeyPublic ?? false,
-          },
-          { transaction: tx }
-        );
-      }
-    }
-
-    if (t.households?.length) {
-      for (const h of t.households) {
-        await Household.create(
-          {
-            id: h.id,
-            name: h.name,
-            currency: h.currency || "EUR",
-            monthlyBudget: h.monthlyBudget || null,
-            budgetWarningAt: h.budgetWarningAt || null,
-            anthropicApiKey: decrypt(h.anthropicApiKey) || null,
-            aiEnabled: h.aiEnabled ?? false,
-            adminUserId: h.adminUserId,
-          },
-          { transaction: tx }
-        );
-      }
-    }
-
-    if (t.household_members?.length) {
-      await HouseholdMember.bulkCreate(
-        t.household_members.map((m) => ({
-          householdId: m.householdId,
-          userId: m.userId,
-          role: m.role || "member",
-          createdAt: m.createdAt,
-          updatedAt: m.updatedAt,
-        })),
-        { ...opts, ignoreDuplicates: true }
-      );
-    }
-
-    if (t.categories?.length) {
-      await Category.bulkCreate(
-        t.categories.map((c) => ({
-          id: c.id,
-          name: c.name,
-          nameDE: c.nameDE,
-          icon: c.icon,
-          color: c.color,
-          isSystem: c.isSystem ?? false,
-          householdId: c.householdId || null,
-          sortOrder: c.sortOrder || 0,
-          createdAt: c.createdAt,
-          updatedAt: c.updatedAt,
-        })),
-        { ...opts, ignoreDuplicates: true }
-      );
-    }
-
-    if (t.transactions?.length) {
-      // Insert in chunks to avoid parameter limits
-      const CHUNK = 200;
-      for (let i = 0; i < t.transactions.length; i += CHUNK) {
-        await Transaction.bulkCreate(
-          t.transactions.slice(i, i + CHUNK).map((tr) => ({
-            id: tr.id,
-            amount: tr.amount,
-            description: tr.description,
-            note: tr.note,
-            date: tr.date,
-            type: tr.type,
-            categoryId: tr.categoryId,
-            householdId: tr.householdId,
-            userId: tr.userId,
-            merchant: tr.merchant,
-            tags: tr.tags || [],
-            isRecurring: tr.isRecurring ?? false,
-            recurringInterval: tr.recurringInterval || null,
-            recurringDay: tr.recurringDay || null,
-            recurringNextDate: tr.recurringNextDate || null,
-            tip: tr.tip || 0,
-            createdAt: tr.createdAt,
-            updatedAt: tr.updatedAt,
-          })),
-          { ...opts, ignoreDuplicates: true }
-        );
-      }
-    }
-
-    if (t.budgets?.length) {
-      await Budget.bulkCreate(
-        t.budgets.map((b) => ({
-          id: b.id,
-          householdId: b.householdId,
-          categoryId: b.categoryId,
-          limitAmount: b.limitAmount,
-          month: b.month,
-          year: b.year,
-          warningAt: b.warningAt || null,
-          createdAt: b.createdAt,
-          updatedAt: b.updatedAt,
-        })),
-        { ...opts, ignoreDuplicates: true }
-      );
-    }
-
-    if (t.invite_codes?.length) {
-      await InviteCode.bulkCreate(
-        t.invite_codes.map((c) => ({
-          id: c.id,
-          code: c.code,
-          type: c.type,
-          householdId: c.householdId,
-          role: c.role,
-          useCount: c.useCount || 0,
-          maxUses: c.maxUses || 1,
-          expiresAt: c.expiresAt || null,
-          createdAt: c.createdAt,
-          updatedAt: c.updatedAt,
-        })),
-        { ...opts, ignoreDuplicates: true }
-      );
-    }
-
-    await tx.commit();
-
-    return {
-      users: t.users?.length || 0,
-      households: t.households?.length || 0,
-      categories: t.categories?.length || 0,
-      transactions: t.transactions?.length || 0,
-      budgets: t.budgets?.length || 0,
-    };
-  } catch (err) {
-    await tx.rollback();
-    throw err;
-  }
-}
-
 module.exports = {
-  exportAllData,
+  backupFilename,
+  createDatabaseDump,
   exportHouseholdData,
   importHouseholdData,
-  uploadToSftp,
+  inspectDatabaseDump,
+  restoreDatabaseDump,
   runGlobalBackup,
-  parseBackupBuffer,
-  restoreAllData,
+  uploadToSftp,
 };

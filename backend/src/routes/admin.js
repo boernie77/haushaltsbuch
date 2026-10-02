@@ -426,76 +426,83 @@ router.post("/backup/test", auth, superAdminGuard, async (req, res) => {
   }
 });
 
-// POST /api/admin/backup/restore/preview — parse file, return metadata without restoring
-router.post("/backup/restore/preview", auth, superAdminGuard, (req, res) => {
+// Backup-Datei aus dem Upload lesen (multipart Feld "backup").
+const backupUpload = (req, res, next) => {
   const multer = require("multer");
   multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 },
-  }).single("backup")(req, res, async (err) => {
+    limits: { fileSize: 500 * 1024 * 1024 },
+  }).single("backup")(req, res, (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) {
       return res.status(400).json({ error: "Keine Datei hochgeladen" });
     }
+    next();
+  });
+};
+
+// POST /api/admin/backup/restore/preview — Inhaltsverzeichnis des Dumps
+router.post(
+  "/backup/restore/preview",
+  auth,
+  superAdminGuard,
+  backupUpload,
+  async (req, res) => {
     try {
-      const { parseBackupBuffer } = require("../services/backupService");
-      const data = parseBackupBuffer(req.file.buffer);
-      const t = data.tables;
-      res.json({
-        exportedAt: data.exportedAt,
-        version: data.version,
-        counts: {
-          users: t.users?.length || 0,
-          households: t.households?.length || 0,
-          categories: t.categories?.length || 0,
-          transactions: t.transactions?.length || 0,
-          budgets: t.budgets?.length || 0,
-          inviteCodes: t.invite_codes?.length || 0,
-        },
-      });
+      const { inspectDatabaseDump } = require("../services/backupService");
+      res.json(await inspectDatabaseDump(req.file.buffer));
     } catch (e) {
       res
         .status(400)
         .json({ error: `Backup konnte nicht gelesen werden: ${e.message}` });
     }
-  });
-});
+  }
+);
 
-// POST /api/admin/backup/restore — full restore (destructive!)
-router.post("/backup/restore", auth, superAdminGuard, (req, res) => {
-  const multer = require("multer");
-  multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 },
-  }).single("backup")(req, res, async (err) => {
-    if (err) {
-      return res.status(400).json({ error: err.message });
-    }
-    if (!req.file) {
-      return res.status(400).json({ error: "Keine Datei hochgeladen" });
-    }
+// POST /api/admin/backup/restore — ersetzt die komplette Datenbank (vorher
+// Sicherheitskopie unter uploads/restore-safety)
+router.post(
+  "/backup/restore",
+  auth,
+  superAdminGuard,
+  backupUpload,
+  async (req, res) => {
     try {
-      const {
-        parseBackupBuffer,
-        restoreAllData,
-      } = require("../services/backupService");
-      const data = parseBackupBuffer(req.file.buffer);
-      const result = await restoreAllData(data);
-      console.log("[backup] Wiederherstellung abgeschlossen:", result);
-      res.json({
-        success: true,
-        restored: result,
-        exportedAt: data.exportedAt,
-      });
+      const { restoreDatabaseDump } = require("../services/backupService");
+      const result = await restoreDatabaseDump(req.file.buffer);
+      console.log(
+        `[backup] Wiederherstellung abgeschlossen (${result.tables.length} Tabellen, Sicherheitskopie ${result.safetyFile})`
+      );
+      res.json({ success: true, ...result });
     } catch (e) {
       console.error("[backup] Restore error:", e);
       res
         .status(500)
         .json({ error: `Wiederherstellung fehlgeschlagen: ${e.message}` });
     }
-  });
+  }
+);
+
+// GET /api/admin/backup/download — vollständiges Backup direkt herunterladen
+router.get("/backup/download", auth, superAdminGuard, async (req, res) => {
+  try {
+    const {
+      backupFilename,
+      createDatabaseDump,
+    } = require("../services/backupService");
+    const dump = await createDatabaseDump();
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${backupFilename()}"`
+    );
+    res.send(dump);
+  } catch (err) {
+    console.error("Backup download error:", err);
+    res.status(500).json({ error: `Backup fehlgeschlagen: ${err.message}` });
+  }
 });
 
 // POST /api/admin/backup/run

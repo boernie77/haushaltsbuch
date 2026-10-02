@@ -23,7 +23,9 @@ Lizenz: [GNU AGPL v3.0](LICENSE)
 - **KI-Quittungserkennung** per Foto (Claude, optional)
 - **Paperless-ngx**: Belege archivieren und beim Bank-Import zuordnen
 - **Handy-App** mit Offline-Erfassung und Schnellerfassung
-- Backups (JSON/CSV, automatisch per SFTP), Monatsberichte per E-Mail,
+- Vollständige Backups der Datenbank (Download oder automatisch per SFTP) mit
+  Wiederherstellung in der Administration, Export pro Haushaltsbuch (JSON/CSV),
+  Monatsberichte per E-Mail,
   optional Single Sign-on per OpenID Connect (z. B. Authentik)
 
 Die ausführliche Bedienungsanleitung steht in [ANLEITUNG.md](ANLEITUNG.md) und in
@@ -58,8 +60,13 @@ haushalt.example.com {
 ```
 
 Die Datenbank-Migrationen laufen beim Start des Backends automatisch. Daten
-liegen unter `./data/db` (PostgreSQL) und `./data/uploads` (Belegfotos) –
-diese Ordner sichern.
+liegen unter `./data/db` (PostgreSQL) und `./data/uploads` (Belegfotos).
+
+**Backup:** Unter *Administration → Backup* lässt sich jederzeit ein
+vollständiges Datenbank-Backup herunterladen oder ein automatisches Backup per
+SFTP einrichten (`pg_dump`-Format, `.dump`). Dort wird es auch wieder
+eingespielt. Belegfotos aus `./data/uploads` separat sichern, und den
+`ENCRYPTION_KEY` getrennt aufbewahren.
 
 **Erster Start:** Die erste Person, die sich registriert, wird **Superadmin** und
 bekommt ein Haushaltsbuch. Alle weiteren brauchen einen Einladungscode, den der
