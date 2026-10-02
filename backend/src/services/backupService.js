@@ -10,6 +10,25 @@ const {
   InviteCode,
   BackupConfig,
 } = require("../models");
+const { decrypt } = require("../utils/encrypt");
+const { ENCRYPTED_FIELDS } = require("../utils/encryptExisting");
+
+const encryptedFieldsOf = (modelName) =>
+  ENCRYPTED_FIELDS.find(([name]) => name === modelName)?.[1] || [];
+
+// toJSON() läuft über die Getter und würde API-Keys/SSH-Schlüssel
+// entschlüsselt ins Backup schreiben. Für diese Felder den gespeicherten
+// (verschlüsselten) Rohwert übernehmen — Wiederherstellen braucht dann
+// denselben ENCRYPTION_KEY.
+function toBackupJSON(instance, modelName) {
+  const json = instance.toJSON();
+  for (const field of encryptedFieldsOf(modelName)) {
+    if (field in json) {
+      json[field] = instance.getDataValue(field);
+    }
+  }
+  return json;
+}
 
 // ── Global backup (all data, gzipped JSON) ───────────────────────────────────
 async function exportAllData() {
@@ -36,14 +55,18 @@ async function exportAllData() {
   return {
     version: "1.0",
     exportedAt: new Date().toISOString(),
+    // Geheimnisse liegen verschlüsselt vor (ENCRYPTION_KEY nötig).
+    secretsEncrypted: true,
     tables: {
       users: users.map((u) => u.toJSON()),
-      households: households.map((h) => h.toJSON()),
+      households: households.map((h) => toBackupJSON(h, "Household")),
       household_members: members.map((m) => m.toJSON()),
       categories: categories.map((c) => c.toJSON()),
       transactions: transactions.map((t) => t.toJSON()),
       budgets: budgets.map((b) => b.toJSON()),
-      global_settings: globalSettings.map((g) => g.toJSON()),
+      global_settings: globalSettings.map((g) =>
+        toBackupJSON(g, "GlobalSettings")
+      ),
       invite_codes: inviteCodes.map((i) => i.toJSON()),
     },
   };
@@ -361,7 +384,9 @@ async function restoreAllData(data) {
         await GlobalSettings.create(
           {
             id: g.id || "global",
-            anthropicApiKey: g.anthropicApiKey || null,
+            // decrypt(): verschlüsselte Backups entschlüsseln, alte
+            // Klartext-Backups bleiben unverändert; der Setter verschlüsselt neu.
+            anthropicApiKey: decrypt(g.anthropicApiKey) || null,
             aiKeyPublic: g.aiKeyPublic ?? false,
           },
           { transaction: tx }
@@ -378,7 +403,7 @@ async function restoreAllData(data) {
             currency: h.currency || "EUR",
             monthlyBudget: h.monthlyBudget || null,
             budgetWarningAt: h.budgetWarningAt || null,
-            anthropicApiKey: h.anthropicApiKey || null,
+            anthropicApiKey: decrypt(h.anthropicApiKey) || null,
             aiEnabled: h.aiEnabled ?? false,
             adminUserId: h.adminUserId,
           },

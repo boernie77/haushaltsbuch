@@ -52,4 +52,4 @@ async function encryptExistingSecrets(models) {
   }
 }
 
-module.exports = { encryptExistingSecrets };
+module.exports = { ENCRYPTED_FIELDS, encryptExistingSecrets };
