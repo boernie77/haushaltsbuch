@@ -48,3 +48,4 @@ backend/uploads/
 
 # Persönliche Notizen mit Zugangsdaten – niemals committen
 Gitignore - wichtige Passwörter./
+CLAUDE.local.md

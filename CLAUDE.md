@@ -2,9 +2,9 @@
 
 ## Projektübersicht
 Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanalyse.
-- **GitHub:** https://github.com/boernie77/haushaltsbuch (privat)
-- **Produktion:** https://haushalt.bernauer24.com (Hetzner VPS VPS-IP-ENTFERNT)
-- **Deployment:** Docker Compose, **automatischer Deploy bei jedem Push auf `main`** via GitHub Actions
+- **GitHub:** https://github.com/boernie77/haushaltsbuch (Lizenz AGPL-3.0)
+- **Betrieb:** Docker Compose (siehe README). Die Instanz des Maintainers wird bei jedem Push auf `main` per GitHub Actions deployt (`.github/workflows/deploy.yml`).
+- **Betriebsdetails der Maintainer-Instanz** (VPS, SSH, SMTP, iPhone-Build, Session-Notizen): `CLAUDE.local.md` — liegt nur lokal, ist in `.gitignore`. Wenn vorhanden, IMMER mitlesen.
 
 ## ⚠️ Projektziel (verbindlich, Stand 2026-10-02)
 **Open Source zum Selbsthosten, kostenlos für jeden.** Christian ist aktuell der einzige Nutzer, weil er die App entwickelt und testet — das ist NICHT das Ziel, sondern nur der Zwischenstand.
@@ -77,7 +77,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 | Begriff | Bedeutung | DB-Modell |
 |---------|-----------|-----------|
 | **Haushalt** | Eine Personengruppe (z.B. Familie). Daten verschiedener Haushalte müssen **STRIKT GETRENNT** bleiben. | Kein eigenes Modell — implizit durch HouseholdMember-Zugehörigkeiten |
-| **Haushaltsbuch** | Ein Budget-Buch innerhalb eines Haushalts. Ein User kann mehrere haben (z.B. "Unser Haushalt" + "Christian Privat"). | `Household` |
+| **Haushaltsbuch** | Ein Budget-Buch innerhalb eines Haushalts. Ein User kann mehrere haben (z.B. "Unser Haushalt" + "Privat"). | `Household` |
 
 ⚠️ **KRITISCH:** NIEMALS Daten zwischen verschiedenen Haushalten (Personengruppen) verschieben oder teilen! Verschiebungen von Buchungen sind NUR zwischen den eigenen Haushaltsbüchern des angemeldeten Users erlaubt.
 
@@ -262,7 +262,7 @@ Niemals dasselbe FormData-Feld zweimal `append`-en (z.B. einmal generisch im Obj
 - **Schutz:** Superadmin kann sich nicht selbst deaktivieren (Frontend + Backend)
 
 ## Impressum & Datenschutz (seit v1.0.41)
-Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetrennt, `LEGAL_EMAIL`, optional `LEGAL_HOSTING`, `LEGAL_AUTHORITY`) und werden über `GET /api/config` → `legal` (null wenn `LEGAL_NAME` leer) ausgeliefert, plus `sourceUrl` (AGPL-Quellcode-Link, `SOURCE_URL` oder GitHub-Repo). Web: `hooks/useAppConfig.ts`, `components/LegalOperator.tsx`, Impressum-/DatenschutzPage zeigen ohne Angaben einen Hinweis für Betreiber. **Nie wieder persönliche Daten in den Code schreiben.** Christians Instanz: GitHub-Repo-Variablen `LEGAL_*` → `deploy.yml` schreibt sie per `set_env` in die VPS-`.env`.
+Betreiberangaben kommen aus der `.env` (`LEGAL_NAME`, `LEGAL_ADDRESS` kommagetrennt, `LEGAL_EMAIL`, optional `LEGAL_HOSTING`, `LEGAL_AUTHORITY`) und werden über `GET /api/config` → `legal` (null wenn `LEGAL_NAME` leer) ausgeliefert, plus `sourceUrl` (AGPL-Quellcode-Link, `SOURCE_URL` oder GitHub-Repo). Web: `hooks/useAppConfig.ts`, `components/LegalOperator.tsx`, Impressum-/DatenschutzPage zeigen ohne Angaben einen Hinweis für Betreiber. **Nie wieder persönliche Daten in den Code schreiben.** Maintainer-Instanz: siehe `CLAUDE.local.md`.
 
 ## Backup-System
 **Haushalt-Backup:**
@@ -323,13 +323,6 @@ API-Key-Validierung: Beim Speichern gegen `claude-haiku-4-5-20251001` getestet.
 - Kaskadiert: Transactions, Budgets, Categories (non-system), InviteCodes, alle Paperless-Daten, HouseholdMembers
 - UI: Löschen-Button nur sichtbar wenn `households.length > 1`
 
-## E-Mail-Konfiguration
-- **SMTP:** smtp.strato.de, Port 465 (SSL)
-- **User:** christian@bernauer24.com
-- **Absender:** noreply@bernauer24.com (Strato-Alias)
-- **Verwendet für:** Passwort-Reset-E-Mails, Monatsberichte
-- ENV-Variablen: `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
-
 ## Fester Saldo (Snapshot-Tracking)
 Eigene Tabelle `monthly_fixed_snapshots` (Migration 023) hält pro Haushalt und Monat den „festen Saldo" fest:
 - **`fixedIncome`** = Summe der aktuell aktiven wiederkehrenden Einnahmen, monatlich hochgerechnet (weekly × 52/12, yearly ÷ 12).
@@ -375,85 +368,15 @@ Persistente Daten liegen als Bind Mounts unter `./data/`:
 - **`./data/db/`** → PostgreSQL-Daten (`/var/lib/postgresql/data` im Container, UID 70)
 - **`./data/uploads/`** → Quittungsbilder (`/app/uploads` im Container)
 - `data/` ist in `.gitignore` (wird nicht committed)
-- Auf dem VPS: `/opt/haushaltsbuch/data/db/` und `/opt/haushaltsbuch/data/uploads/`
 
-## Deployment
-```bash
-# Automatisch bei push auf main (GitHub Actions)
-# Manuell: Actions → Deploy to Hetzner VPS → Run workflow
-
-# Deploy-Script:
-#   1. git pull
-#   2. docker-compose build --no-cache
-#   3. docker-compose up -d
-#   4. node src/utils/migrate.js
-#   5. seedSystemCategories()
-
-# Direkt auf VPS (SSH-Key-Setup ggf. neu — siehe unten):
-ssh root@VPS-IP-ENTFERNT
-cd /opt/haushaltsbuch && git pull && docker-compose up -d --build
-```
-
-### Deploy-Verifikation (ohne SSH-Zugang)
-- `index.html`-Last-Modified prüfen: `curl -s -I https://haushalt.bernauer24.com/ | grep last-modified`
-- Bundle-Hash prüfen: `curl -s https://haushalt.bernauer24.com/ | grep -oE "index-[A-Za-z0-9]+\.js"` (ändert sich bei jedem Vite-Build)
-- Neue Code-Strings im Bundle suchen: `curl -s https://haushalt.bernauer24.com/assets/index-XXXX.js | grep -oE "neuerString"`
-- Seit v1.0.39 liefert `web/nginx.conf` `index.html` mit `Cache-Control: no-cache` (Bundles unter `/assets/` mit `immutable`) → neue Versionen erscheinen beim normalen Neuladen. Wer noch eine vor v1.0.39 gecachte `index.html` hat, braucht einmalig einen Hard-Reload (`Strg+Shift+R` / `Cmd+Shift+R`).
-
-### ⚠️ OIDC-Schutz beim Deploy
-Vor jedem Deploy prüfen, dass `backend/src/routes/oidc.js`, `LoginPage.tsx`, `docker-compose.yml` (OIDC_*-Env-Vars) und `.github/workflows/deploy.yml` (set_env OIDC_*) nicht versehentlich angefasst wurden. SSO via Authentik bricht sonst.
-
-### SSH-Status (Stand 2026-08-30, neuer Mac)
-- Aktiv: `~/.ssh/emailrelay_vps` (ED25519) — funktioniert direkt als root auf dem großen VPS, kein sshpass nötig. `~/.ssh/id_rsa` geht ebenfalls als Fallback.
-- `~/.ssh/id_ed25519` existiert auf diesem Mac **nicht** (frühere Doku-Referenz veraltet).
-- Alternativ Deploy via `git push origin main` (GitHub Actions hat eigenen Key in Secret `HETZNER_SSH_KEY`); VPS-Inspektion via curl auf Public-URL
-
-## iOS Mobile App
-- **Expo SDK 52**, expo-router
-- **Bundle ID:** `de.bernauer24.haushaltsbuch`
-- **Apple Development Team:** APPLE-TEAM-ID (Stand 2026-09-30 im Xcode-Projekt; früher APPLE-TEAM-ID)
-- **Gerät:** „Christians Iphone 15pro“, UDID `GERAETE-UDID-ENTFERNT` — muss für Build/Install **entsperrt** sein
-- **Signing:** Automatic (Xcode verwaltet Provisioning Profile)
-- **Testgerät:** Physisches iPhone, App läuft als **Release-Build** (kein Metro!)
+## Mobile App (Expo) — Fallstricke
+- **Expo SDK 52**, expo-router, Bundle ID `de.bernauer24.haushaltsbuch`
+- **Server-Adresse:** nicht fest im Code. Login-Screen hat Feld „Server-Adresse" (`getServerUrl`/`setServerUrl` in `mobile/src/services/api.ts`, SecureStore-Key `server_url`, `https://` wird ergänzt, `/api` hängt der Request-Interceptor an). Vorbelegung pro Build via `EXPO_PUBLIC_API_URL`. Bild-URLs über `getImageBaseUrl()`.
 - **Push Notifications:** NICHT aktiviert — `aps-environment` muss aus `.entitlements` entfernt bleiben, `expo-notifications` Plugin darf nicht in `app.json` stehen
-- **Server-Adresse (seit v1.0.41):** Nicht mehr fest im Code. Login-Screen hat Feld „Server-Adresse" (`getServerUrl`/`setServerUrl` in `mobile/src/services/api.ts`, SecureStore-Key `server_url`, `https://` wird ergänzt, `/api` angehängt per Request-Interceptor). Vorbelegung pro Build via `EXPO_PUBLIC_API_URL`. Nach dem Update auf diese Version muss Christian auf seinem iPhone einmal `https://haushalt.bernauer24.com` eintragen (bzw. vor dem Build `mobile/.env` mit `EXPO_PUBLIC_API_URL=https://haushalt.bernauer24.com/api` anlegen). Bild-URLs über `getImageBaseUrl()`.
 - **metro.config.cjs:** Dateiname `.cjs` erzwingen (nicht `.js`) — Biome würde `.js` anfassen und `__dirname` → `import.meta.dirname` umschreiben, was Metro crasht
-
-### iOS neu bauen (nach JS-Änderungen):
-1. **⇧⌘K** — Clean Build Folder
-2. **⌘R** — Build & Run
-
-Oder per CLI (funktioniert, ~5–10 min):
-```bash
-cd mobile/ios
-xcodebuild -workspace Haushaltsbuch.xcworkspace -scheme Haushaltsbuch -configuration Release \
-  -destination "id=GERAETE-UDID-ENTFERNT" -derivedDataPath build -allowProvisioningUpdates clean build
-xcrun devicectl device install app --device GERAETE-UDID-ENTFERNT build/Build/Products/Release-iphoneos/Haushaltsbuch.app
-xcrun devicectl device process launch --device GERAETE-UDID-ENTFERNT de.bernauer24.haushaltsbuch
-```
-Prüfen, ob neuer Code drin ist: `LC_ALL=C grep -a -c "<neuer Text>" build/Build/Products/Release-iphoneos/Haushaltsbuch.app/main.jsbundle` (Hermes-Bytecode, Strings bleiben lesbar).
-
-### iOS Rebuild nach nativen Änderungen (app.json, neue native Module):
-```bash
-cd mobile && expo prebuild --clean
-# Danach in Xcode: Team + Bundle ID prüfen, dann bauen
-```
-
-### Expo-Module als direkte Abhängigkeiten
-Expo-Module die nur transitive Dependencies sind (via expo-router etc.) werden von `use_expo_modules!` im Podfile **nicht** gelinkt → native Module fehlen → Runtime-Crash.
-Immer explizit in `mobile/package.json` aufnehmen und danach `pod install` ausführen:
-- `expo-linking` — muss direkte Dep sein, auch wenn expo-router es mitbringt
-
-### pod install Reihenfolge
-```bash
-cd mobile/ios && pod install
-# Danach in Xcode: ⌘R (KEIN erneutes ⇧⌘K nötig)
-```
-
-## VPS-Wartung
-- **Docker-Disk-Cleanup:** `docker system prune -af --volumes=false` — entfernt ungenutzte Images/Container. Docker overlay2 kann sich auf 50+ GB ansammeln wenn viele Deploys stattfanden.
-- Disk prüfen: `df -h /`
-- Bei vollem Disk: PostgreSQL schreibt keine Checkpoints mehr → DB-Container unhealthy → Backend-Fehler 500
+- **Expo-Module als direkte Abhängigkeiten:** Module, die nur transitiv kommen (z.B. `expo-linking` via expo-router), werden von `use_expo_modules!` nicht gelinkt → Runtime-Crash. Immer explizit in `mobile/package.json` aufnehmen, danach `pod install`.
+- Nach nativen Änderungen (app.json, neue native Module): `cd mobile && npx expo prebuild --clean`
+- Prüfen, ob neuer Code im Release-Bundle ist: `LC_ALL=C grep -a -c "<neuer Text>" …/main.jsbundle` (Hermes-Bytecode, Strings bleiben lesbar).
 
 ## Recherche-Tools
 - **Bibliotheken recherchieren:** Immer zuerst **DeepWiki** (`deepwiki.com`) verwenden — funktioniert nur für öffentliche GitHub-Repos
@@ -597,15 +520,11 @@ Kalenderansicht pro Haushaltsbuch — zeigt je Kalendertag (Vergangenheit + Zuku
 Das Suchfeld in TransactionsPage durchsucht zusätzlich zum Text (description/merchant) auch den **Betrag**. Backend (`transactions.js` GET /): `amount` wird als Text gecastet und per `iLike '%term%'` gematcht (Komma → Punkt normalisiert, nur wenn Suchterm eine Ziffer enthält) → Teiltreffer wie „12" oder „12,50" funktionieren. Placeholder: „Suchen (Text oder Betrag)...".
 
 ## Wichtige Konventionen
-- Hauptrepo-VPS verwendet `docker-compose` (mit Bindestrich, nicht Plugin `docker compose`)
-- haushaltsbuch-home auf VPS verwendet `docker compose` (Plugin-Variante — anderer Stack!)
-- SSH-Key für VPS: `~/.ssh/emailrelay_vps` (funktioniert direkt, kein sshpass nötig; `~/.ssh/id_rsa` als Fallback)
 - Web-Build: `npm install` (kein `npm ci`, kein Lockfile committed)
-- Backend ENV auf VPS: `/opt/haushaltsbuch/.env`
 - DB-User: `haushalt`, DB-Name: `haushaltsbuch`
 - 18 Systemkategorien automatisch geseedet (inkl. "Kredit" 💳) — `seedCategories.js` nutzt `findOrCreate` und läuft bei jedem Server-Start (neue Kategorien werden auch auf bestehenden Installs ergänzt)
 - Themes: `feminine` = rosa/hell, `masculine` = dunkelblau
-- API-Routes unter `/api/...` (Caddy → Port 8081 → nginx → Backend Port 3001)
+- API-Routes unter `/api/...` (Reverse Proxy → Port 8081 → nginx im web-Container → Backend)
 - **Niemals** `sequelize.sync()` in Produktion — nur Migrations-Runner verwenden
 - **Migrations-Parameter:** `sequelize` (Instanz), nicht `queryInterface`!
 - Paperless: `paperlessId` (Integer) für Paperless-API, `id` (UUID) für interne DB — beim Upload immer `paperlessId` senden
@@ -633,82 +552,6 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 
 **Bekannte Einschränkung:** CAMT.052 (von Sparda-Bank Nürnberg ebenfalls angeboten) wird nicht geparst — bewusst nicht umgesetzt, MT940 deckt den Anwendungsfall ab.
 
-## Session-Notizen 2026-10-02 (v1.0.38–v1.0.40)
-- **v1.0.38: Lernen über Händler + Betrag, PayPal & Co. über den echten Händler** (Details: Bank-Sync-Feature → Vorschlagsquelle 4 „Gelernt"). Anlass: Vorher wurde nur über den Empfängernamen gelernt → jede PayPal-Zahlung bekam die zuletzt bestätigte Kategorie. Neu: `utils/merchantLearning.js`, Migration 034 (`merchant_category_mappings.description`), Badge „Gelernt · wiederkehrend" in der Vorschau. „Aus bestehenden Buchungen lernen" wurde danach in Produktion ausgeführt (User-Bestätigung: hat geklappt).
-  - Muster für den echten Händler (`REAL_MERCHANT_PATTERNS`) sind aus typischen PayPal-Texten abgeleitet, nicht aus echten Exporten. Taucht PayPal trotzdem als „? bitte zuordnen" ohne „wiederkehrend" auf → Verwendungszweck-Beispiel holen und Muster anpassen.
-- **v1.0.39: `index.html` mit `Cache-Control: no-cache`** (`web/nginx.conf`), `/assets/` mit `immutable`. Vorher zeigte der Browser nach Deploys die alte Version. Ab jetzt reicht normales Neuladen.
-- Werkzeug-Hinweise: Lokal kein Docker-Zugriff (Socket-Rechte) und keine `node_modules` in `web/` → `tsc`/Biome laufen hier nicht. In diesem Repo ist kein `git user.email` gesetzt → Commits mit `git -c user.name=boernie77 -c user.email=115419572+boernie77@users.noreply.github.com commit …`. Direkte Lese-Abfragen auf die Produktions-DB per SSH wurden vom Auto-Modus blockiert → Daten-Checks über die UI/API machen oder den User fragen.
-- Beim Warten auf den Deploy immer per `gh run list --commit <sha>` auf den eigenen Commit warten — `--limit 1` direkt nach dem Push zeigt oft noch den vorherigen Lauf.
-- **v1.0.40:** nur Doku-Stand (CLAUDE.md-Session-Notizen).
-
-## Session-Notizen 2026-09-30 / 2026-10-01 (v1.0.17–v1.0.32)
-- Bank-Sync stark ausgebaut (siehe „Bank-Sync-Feature (v1.0.13–v1.0.31 …)“): Schnellerfassung (Mobile), Regeln, KI (Claude oder eigener OpenAI-kompatibler Server), Paperless-Abgleich (inkl. Bestellnummern), Verschmelzen vorhandener Buchungen mit Bankdatum, Umbuchungen beidseitig, IBAN bei Konten, Vorschau-Entwurf übersteht Seitenwechsel.
-- Mobile: Schnellerfassung mit eigenen Kacheln (v1.0.17/19/21), Monatsnavigation auf der Startseite (v1.0.32).
-- Anleitung (ANLEITUNG.md + HelpPage) um Kapitel 15 Bank-Import und 16 Schnellerfassung ergänzt (v1.0.31).
-- Erstes GitHub-Release v1.0.21. Releases künftig nur auf ausdrücklichen Wunsch.
-- Praxistest-Lehren Paperless-Abgleich: reine Betragstreffer → Fehlzuordnungen (Lotterie-Übersichten); Referenzen ohne Datumsfenster → alte Kontoauszüge als Beschreibung. Beides behoben (v1.0.28, v1.0.30).
-- Kreditkarte: Anbieter bietet online CSV → kein PDF-Import nötig.
-
-## Session-Notizen 2026-07-28
-- Bank-Sync (siehe „Bank-Sync: Hintergrund & Parser“) — **zwei Anläufe in derselben Session:**
-  1. Erster Entwurf: FinTS/HBCI-Live-Sync über Python-Sidecar (`fints-service/`, FastAPI + `python-fints`, TAN-Flow via `pause_dialog()`/`deconstruct()`). Wurde komplett gebaut, dann verworfen, nachdem klar wurde, dass die PSD2-Produktregistrierung (~10-15 Werktage, Formular an Hersteller/Firmen adressiert) für ein privates Projekt zu aufwendig ist. (Einordnung „privat" war falsch, siehe „Projektziel".)
-  2. Zweiter Entwurf (umgesetzt): manueller CSV/MT940-Datei-Upload, kein Produkt-ID/PIN/Sidecar nötig. `fints-service/` gelöscht, `docker-compose.yml` zurückgesetzt, Migration 028 umgeschrieben (`bank_import_profiles` statt `bank_connections`). `Transaction.externalRef` + `MerchantCategoryMapping` aus dem ersten Entwurf blieben unverändert bestehen.
-  - **Lektion:** Bei Bank-Integrationen immer zuerst prüfen, ob die Bank strukturierten Datei-Export (CSV/MT940/CAMT.052) anbietet, bevor ein FinTS/HBCI-Live-Zugang samt PSD2-Registrierung geplant wird — für Privatnutzer meist der pragmatischere Weg.
-- Nachträgliche Härtung vor Deploy: Fuzzy-Duplikat-Erkennung (`possibleDuplicate`) gegen manuell erfasste Buchungen ergänzt (der ursprüngliche `externalRef`-Dedup erkannte nur bereits importierte, nicht handisch eingetippte Buchungen). `/import` läuft jetzt JSON-basiert mit Zeilen aus `/preview` statt erneutem Datei-Upload, damit einzelne Zeilen per Checkbox ausgeschlossen werden können. Zusätzlich `POST /api/bank-sync/bootstrap-mappings` — lernt einmalig rückwirkend aus bestehenden manuell kategorisierten Buchungen (häufigste Kategorie pro Merchant), nicht nur vorwärts ab dem ersten Import.
-- ~~Projektkontext: App nur noch privat~~ — **falsch verstanden, korrigiert 2026-10-02:** Ziel ist Open Source zum Selbsthosten für jeden + Store-Apps; nur das SaaS-Ziel ist entfallen (siehe „Projektziel").
-
-## Session-Notizen 2026-06-18
-- **v1.0.9:** **Kalender-Feature** (siehe Section oben). Migration 027 (`accounts.startingBalanceDate`), neue Route `/api/calendar`, neue Seite `CalendarPage` (Sidebar „Kalender", CalendarDays-Icon). Daueraufträge werden in die Zukunft projiziert; `computeBalance` respektiert jetzt `startingBalanceDate`.
-- **v1.0.9:** **Betrags-Suche** — Suchfeld in TransactionsPage matcht zusätzlich den Betrag (amount-Cast → iLike, Komma→Punkt). Backend-only Filter im GET `/api/transactions`.
-- **v1.0.10:** **In-App-Anleitung** — neue Seite `HelpPage.tsx` (Sidebar „Anleitung", BookOpen-Icon, Route `/help`), Inhaltsverzeichnis + 14 Sektionen, inhaltlich synchron zu `ANLEITUNG.md` (Repo-Root). Bewusst als JSX gepflegt (kein Markdown-Renderer). **Fix Betrags-Suche:** `sequelize.col("amount")` war mehrdeutig (TransactionSplit-Include „splits" hat auch `amount`) → ganze Suche brach ab. Jetzt `Transaction.amount` qualifiziert.
-- **v1.0.11:** **Stichtag-Saldo-Fix** (siehe Kalender-Section). `Op.gte` → `Op.gt` (Tagesabschluss-Semantik), klarere Labels „Kontostand am Stichtag"/„Stichtag", Erklärtext, **Live-Vorschau** via neuem Endpoint `GET /api/accounts/:id/net-after`. Ursache der User-Verwirrung: heutiger Saldo mit vergangenem Stichtag eingegeben → spätere Buchungen addiert.
-- **v1.0.12:** **Buchung aus Kalender bearbeiten** — Klick auf Buchung im Detail-Panel → `setPeriod()` (Period des Buchungsdatums) + `navigate('/transactions?edit=<id>')`. TransactionsPage liest `?edit=` (`useSearchParams`), findet Buchung in geladener Period, ruft `openEdit` (Effect wartet auf `loading=false`). Projizierte Vorschauen (`proj-…`) nicht editierbar → Toast.
-
-## Session-Notizen 2026-05-29
-- **v1.0.2:** Period bleibt session-übergreifend bei Seitenwechsel erhalten — neuer `web/src/store/periodStore.ts` (Memory, nicht localStorage) + `web/src/hooks/usePeriod.ts` kapselt `selectedMonth/Year` + `prev/next/reset/Label`. DashboardPage, TransactionsPage, StatisticsPage, BudgetPage nutzen den Hook; 4-fache Period-Duplizierung im Web ist damit weg (Mobile hat noch 4 eigene Stellen). Letztes Haushaltsbuch wird im `localStorage` unter `last_household_id` gemerkt — `authStore.setCurrentHousehold` schreibt es, `loadStoredAuth`/`login`/`register` lesen es als initialen Wert.
-- **v1.0.3:** Klick auf Stift-Icon in der Buchungsliste scrollt automatisch zum Bearbeitungs-Formular oben (formRef + `scrollIntoView({behavior: 'smooth', block: 'start'})` — `window.scrollTo` wirkt NICHT, weil `<main>` der echte Scroll-Container ist).
-- **v1.0.4:** Kategorie-Filter in der Buchungsliste — Dropdown neben den Type-Filtern + X-Button zum Zurücksetzen. Backend akzeptierte `categoryId` schon, nur Frontend fehlte. Treffer-Summen-Zeile erscheint jetzt auch bei aktivem Kategorie-Filter (vorher nur bei Suchwort).
-- **v1.0.5:** **Sub-Konten-Feature** (großer Brocken, siehe Section oben). Migration 026 + neue Route `/api/sub-accounts` + neue Seite `SubAccountsPage` mit Briefcase-Icon. Alle Statistik-Endpoints filtern jetzt zusätzlich `excludeFromStats: { Op.ne: true }`; `accounts.computeBalance` filtert `affectsAccountBalance: { Op.ne: false }` für virtuelle Settlement-Buchungen.
-- **v1.0.6:** Bestehende Kategorie als Sub-Konto aktivieren — Picker-Modal auf SubAccountsPage mit Dropdown aller noch nicht aktivierten Kategorien. Nutzt vorhandenen PUT-Endpoint `/api/categories/:id`.
-- **v1.0.7:** Bulk-Backfill — neuer Endpoint `POST /api/sub-accounts/:categoryId/backfill` ordnet alle bestehenden Buchungen einer Sub-Konto-Kategorie nachträglich der Period zu (Period aus Buchungs-Datum via `getPeriodForDate(date, monthStartDay)`). Idempotent — bereits zugeordnete Buchungen + Settlements werden übersprungen. UI: Link „Bestehende einsortieren" pro Sub-Konto-Section.
-- **v1.0.8:** Sub-Konto Period-Picker Layout-Fix — `grid grid-cols-2 gap-3` mit `w-full` auf Monat-Dropdown + Jahr-Input statt vorher `flex-1`+`w-24`. Vorher kollabierte das Monatsfeld in der breiten `md:col-span-2`-Spalte.
-- **Versionsregel:** User möchte bei JEDER Änderung Patch-Stelle +1. Siehe Memory `feedback_version_bump.md`.
-- **Toaster-Position:** Von `top-right` auf `bottom-right` umgestellt (kollidierte mit „Neue Buchung"-Button oben rechts).
-- **AccountsPage Vorzeichen-Konvention:** Saldi werden vorzeichenrichtig gespeichert (Schulden = negativ). Migration 025 normalisiert bestehende positive Liability-Salden. Display ist eine einzige Regel: `balance < 0` = rot, `≥ 0` = grün. Im Anlegen-Modal fragt das Liability-Konto nach „Aktuelle Schulden" (positiv) und speichert intern als negativ.
-- **Statistik-Endpoints folgen jetzt alle dem `monthStartDay`-Period-Schema** (`/yearly`, `/wealth`, `/trends`, `/fixed-balance`) — vorher waren `/yearly` und `/wealth` bewusst Kalender-basiert via `EXTRACT(MONTH FROM date)`. JS-seitige Aggregation via `getPeriodForDate()`.
-- **Fester Saldo-Feature:** Migration 023 (`monthly_fixed_snapshots`), `fixedBalanceService.js`, Cron 1. jeden Monats 02:00 friert Vormonats-Period ein, neuer Tab „Fester Saldo" in StatisticsPage.
-- **Konten-Feature (v1.0.1):** Migration 024 + AccountsPage + Konto-Auswahl im Buchungs-Formular. Transfer zwischen eigenen Konten ist neutral in Statistiken.
-
-## Session-Notizen 2026-05-28
-- Feature: Spaltenkopf Datum/Betrag in TransactionsPage klickbar zum Sortieren (lokal, kein Reload). Default bleibt Datum absteigend
-- Feature: Summen-Karten oberhalb der Wiederkehrend-Tabelle (Ausgaben/Einnahmen/Saldo, monatlich hochgerechnet — weekly × 52/12, yearly ÷ 12)
-- Feature: Treffer-Summen-Zeile bei aktivem Suchfeld in TransactionsPage (Anzahl + Ausgaben + Einnahmen + Saldo, respektiert Type-Filter)
-- Feature: Fester Saldo — neue Migration 023 (`monthly_fixed_snapshots`), `fixedBalanceService.js`, Cron 1. jeden Monats 02:00 friert Vormonats-Period ein, Endpoint `/api/statistics/fixed-balance`, neuer Tab "Fester Saldo" in StatisticsPage (KPI-Karten + LineChart + Tabelle + Button "Aktuellen Monat festhalten")
-- Fix: ALLE Statistik-Endpoints folgen jetzt dem `monthStartDay`-Period-Schema (`/yearly`, `/wealth`, `/trends`, `/fixed-balance`). Vorher waren `/yearly` und `/wealth` bewusst Kalender-basiert via `EXTRACT(MONTH FROM date)`. JS-seitige Aggregation via `getPeriodForDate()`; bei sehr großen Haushalten (>10000 Buchungen/Jahr) ggf. später optimieren
-- CLAUDE.md: alter Hinweis "yearly/wealth bewusst Kalender" entfernt, neue Doku zu Fester Saldo + Cron-Tabelle aktualisiert
-
-## Session-Notizen 2026-04-28
-- Bug behoben: Wiederkehrende Buchung direkt anlegen schlug fehl wegen doppeltem `recurringEndDate` in FormData → multer-Array → Sequelize-Crash
-- Bug behoben: Dashboard-„Vormonat"-Zeile bei Einnahmen zeigte fälschlich `lastMonth` (Ausgaben) → jetzt `lastMonthIncome`
-- Feature: Eigene Kategorien anlegen via „+"-Button neben Kategorie-Dropdown im Buchungsformular
-- Feature: Pfeil-Navigation auf Dashboard (← →, Heute-Button), `statsAPI.overview` akzeptiert `month`/`year`, Prognose-Karte nur für laufenden Monat
-- SSH-Key zum VPS: `~/.ssh/emailrelay_vps` funktioniert direkt (`ssh -i ~/.ssh/emailrelay_vps root@VPS-IP-ENTFERNT`) — Stand 2026-04-28 war hier `~/.ssh/id_ed25519` genannt, der auf dem aktuellen Mac nicht existiert
-- haushaltsbuch-home mit Hauptrepo synchronisiert (alle Fixes seit 2026-04-05 portiert, inkl. OIDC)
-- haushaltsbuch-home auf VPS deployed: https://money.bernauer24.com (Port 8481, `/opt/haushaltsbuch-home/`)
-- `/api/config` gibt jetzt `oidcEnabled` zurück; SSO-Button nur sichtbar wenn OIDC konfiguriert
-- Migration 020 (Professional Themes) im haushaltsbuch-home safe gemacht: No-Op wenn kein ENUM existiert
-
-## haushaltsbuch-home (Self-Hosting-Fork)
-- **GitHub:** https://github.com/boernie77/haushaltsbuch-home (öffentlich)
-- **Produktion:** https://money.bernauer24.com (gleicher Hetzner VPS, Port 8481)
-- **Pfad auf VPS:** `/opt/haushaltsbuch-home/`, ENV: `/opt/haushaltsbuch-home/.env`
-- **Docker:** `docker compose` (Plugin — VPS nutzt hier Plugin-Variante, nicht `docker-compose`!)
-- **Images:** `ghcr.io/boernie77/haushaltsbuch-home-backend:latest` + `web:latest`
-- **Build:** GitHub Actions bei push auf main → ghcr.io; Watchtower zieht täglich
-- **FAMILY_MODE=true** fest im Dockerfile eingebaut — kein Trial, alle User dauerhaft aktiv
-- **OIDC:** optional (nur wenn OIDC_ISSUER_URL/CLIENT_ID/SECRET gesetzt), SSO-Button versteckt sich sonst
-- **theme-Spalte:** VARCHAR (kein PostgreSQL ENUM) → Migration 020 ist No-Op auf Frisch-Install
-
 ## Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)
 Kontoumsätze per **CSV/MT940-Datei** importieren (kein FinTS: bräuchte PSD2-Produktregistrierung). Getestet: Sparda-Bank Nürnberg (CSV/MT940), ING (CSV). Web: `BankSyncPage.tsx` (Tabs „Import“ / „Zuordnung & KI“ via `?tab=settings`), Komponenten in `web/src/components/bankSync/`.
 
@@ -730,5 +573,4 @@ Zusätzlich **Paperless-Dokument** (`paperlessMatcher.js`): liefert nur Beschrei
 
 **Schnellerfassung (Mobile, `mobile/app/quick-add.tsx`):** natives Modal (`presentation: "modal"`) → ⚠️ Paper-`Portal`/`Modal` rendern DAHINTER, nur React-Native-`<Modal>` verwenden. Legt Buchung mit `pendingBankMatch=true` an (auch Offline-Queue). Kacheln: `GET/PUT /api/transactions/quick-categories` (pro Mitglied in `household_members.quickCategories` JSON `{expense:[],income:[]}`, max. 11; ohne eigene Auswahl Top-7 der letzten 90 Tage nur aus Handbuchungen).
 
-**Paperless-Seite (Christians Instanz):** Tika (gepinnt 3.2.2.0, 4.x → 406) + Gotenberg + Mail-Regeln für Amazon-/PayPal-Mails als .eml; Paperless-AI auf Unraid setzte Datum auf 01.01. (Prompt angepasst). Details in `~/Projekte/Paperless_Admin/CLAUDE.md`.
 
