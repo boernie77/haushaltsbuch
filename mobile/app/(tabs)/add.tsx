@@ -38,45 +38,12 @@ import {
 } from "../../src/services/api";
 import { isNetworkError, offlineQueue } from "../../src/services/offlineStore";
 import { useAuthStore } from "../../src/store/authStore";
-
-const MONTH_NAMES = [
-  "Januar",
-  "Februar",
-  "März",
-  "April",
-  "Mai",
-  "Juni",
-  "Juli",
-  "August",
-  "September",
-  "Oktober",
-  "November",
-  "Dezember",
-];
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-interface Period {
-  month: number;
-  year: number;
-}
-
-// Wie backend utils/monthBounds.js#getPeriodForDate: Bei monthStartDay > 1
-// gehört ein Datum ab dem Starttag zum Folgemonat (Label = End-Monat).
-function periodForDate(iso: string, startDay: number): Period {
-  const valid = ISO_DATE.test(iso) ? iso : format(new Date(), "yyyy-MM-dd");
-  const [year, month, day] = valid.split("-").map(Number);
-  if (startDay > 1 && day >= startDay) {
-    return month === 12
-      ? { year: year + 1, month: 1 }
-      : { year, month: month + 1 };
-  }
-  return { year, month };
-}
-
-function shiftPeriod(p: Period, delta: number): Period {
-  const index = p.year * 12 + (p.month - 1) + delta;
-  return { year: Math.floor(index / 12), month: (index % 12) + 1 };
-}
+import {
+  type Period,
+  periodForDate,
+  periodLabel,
+  shiftPeriod,
+} from "../../src/utils/period";
 
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
@@ -542,8 +509,7 @@ export default function AddTransactionScreen() {
                     marginLeft: 8,
                   }}
                 >
-                  Sub-Konto · {MONTH_NAMES[subAccountPeriod.month - 1]}{" "}
-                  {subAccountPeriod.year}
+                  Sub-Konto · {periodLabel(subAccountPeriod)}
                 </Text>
                 <IconButton
                   accessibilityLabel="Vormonat"

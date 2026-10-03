@@ -28,6 +28,12 @@ import {
   offlineQueue,
 } from "../src/services/offlineStore";
 import { useAuthStore } from "../src/store/authStore";
+import {
+  type Period,
+  periodForDate,
+  periodLabel,
+  shiftPeriod,
+} from "../src/utils/period";
 
 // Schnellerfassung: Betrag + Kategorie + Stichwort in wenigen Sekunden direkt
 // beim Bezahlen. Die Buchung wird mit pendingBankMatch angelegt und beim
@@ -37,6 +43,8 @@ import { useAuthStore } from "../src/store/authStore";
 // Portals rendern hinter nativen Modals → hier nur React-Native-<Modal>.
 
 interface QuickCategory {
+  // Sammelkonto (z.B. Spesen) — nur in der vollen Kategorienliste gesetzt.
+  hasSubAccount?: boolean;
   icon: string;
   id: string;
   name: string;
@@ -426,8 +434,25 @@ export default function QuickAddScreen() {
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Sub-Konto-Monat (z.B. Spesen): null = laufender Monat (Datum ist heute).
+  const [periodOverride, setPeriodOverride] = useState<Period | null>(null);
 
   const householdId = currentHousehold?.id;
+
+  // Kacheln kommen ohne hasSubAccount → in der vollen Liste nachschlagen.
+  const isSubAccount = !!allCategories.find((c) => c.id === selected?.id)
+    ?.hasSubAccount;
+  const subAccountPeriod =
+    periodOverride ??
+    periodForDate(
+      format(new Date(), "yyyy-MM-dd"),
+      currentHousehold?.monthStartDay || 1
+    );
+
+  // Andere Kategorie gewählt → Monat wieder auf den laufenden setzen.
+  useEffect(() => {
+    setPeriodOverride(null);
+  }, [selected?.id]);
 
   useEffect(() => {
     if (!householdId) {
@@ -529,6 +554,10 @@ export default function QuickAddScreen() {
       if (selected) {
         form.append("categoryId", selected.id);
       }
+      if (isSubAccount) {
+        form.append("subAccountPeriodMonth", String(subAccountPeriod.month));
+        form.append("subAccountPeriodYear", String(subAccountPeriod.year));
+      }
       const { data } = await transactionAPI.create(form);
       if (data.budgetWarning) {
         const w = data.budgetWarning[0];
@@ -553,6 +582,12 @@ export default function QuickAddScreen() {
           categoryId: selected?.id || null,
           householdId: currentHousehold.id,
           pendingBankMatch: true,
+          ...(isSubAccount
+            ? {
+                subAccountPeriodMonth: subAccountPeriod.month,
+                subAccountPeriodYear: subAccountPeriod.year,
+              }
+            : {}),
         });
         Toast.show({
           type: "info",
@@ -662,6 +697,58 @@ export default function QuickAddScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Sub-Konto (z.B. Spesen): Monat, in dem die Ausgabe zählt */}
+        {isSubAccount && (
+          <View
+            style={[
+              styles.subAccountRow,
+              {
+                borderColor: theme.colors.primary,
+                borderRadius: theme.roundness,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              color={theme.colors.primary}
+              name="briefcase-outline"
+              size={18}
+            />
+            <Text
+              style={[styles.subAccountText, { color: theme.colors.onSurface }]}
+            >
+              Sub-Konto · {periodLabel(subAccountPeriod)}
+            </Text>
+            <TouchableOpacity
+              accessibilityLabel="Vormonat"
+              hitSlop={8}
+              onPress={() =>
+                setPeriodOverride(shiftPeriod(subAccountPeriod, -1))
+              }
+              style={styles.subAccountArrow}
+            >
+              <MaterialCommunityIcons
+                color={theme.colors.onSurface}
+                name="chevron-left"
+                size={24}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityLabel="Folgemonat"
+              hitSlop={8}
+              onPress={() =>
+                setPeriodOverride(shiftPeriod(subAccountPeriod, 1))
+              }
+              style={styles.subAccountArrow}
+            >
+              <MaterialCommunityIcons
+                color={theme.colors.onSurface}
+                name="chevron-right"
+                size={24}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TextInput
           dense
           label="Stichwort (optional)"
@@ -742,6 +829,15 @@ export default function QuickAddScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  subAccountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  subAccountText: { flex: 1, marginLeft: 8 },
+  subAccountArrow: { padding: 4 },
   // Bewusst festes Blau (wie im Konzept) statt Theme-Farbe: hebt die
   // Schnellerfassung als eigenen, kompakten Modus hervor.
   header: {

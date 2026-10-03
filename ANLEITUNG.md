@@ -438,9 +438,10 @@ automatisch „heute", und das funktioniert auch offline.
   Kategorien.
 - Die Kacheln gehören zum **in der Übersicht gewählten Haushaltsbuch**. Fehlt eine
   Kategorie, bist du vielleicht im falschen Buch.
-- **Sub-Konto (z. B. Spesen):** Wählst du in der iPhone-App unter „Neue Buchung"
-  eine Sub-Konto-Kategorie, zeigt die App, in welchem Monat die Ausgabe im Sub-Konto
-  zählt (Monat des Buchungsdatums), mit ‹ › änderst du ihn.
+- **Sub-Konto (z. B. Spesen):** Tippst du eine Sub-Konto-Kachel an (oder wählst sie
+  unter „Neue Buchung"), zeigt die App, in welchem Monat die Ausgabe im Sub-Konto
+  zählt (laufender Monat bzw. Monat des Buchungsdatums), mit ‹ › änderst du ihn,
+  z. B. für eine Hotelrechnung vom Vormonat.
 - **„Wird später abgebucht":** Für Käufe über PayPal, Klarna oder auf Rechnung. Die
   Buchung bleibt als offen (⏳) markiert, bis der Bank-Import die Abbuchung findet.
   Solange die Abbuchung noch kommen kann (bei Spesen 45 Tage), erscheint sie nicht als
