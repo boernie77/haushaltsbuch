@@ -34,7 +34,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │   ├── server.js                   Einstiegspunkt: migrate() → listen → startCron()
 │   └── src/
 │       ├── models/index.js         Alle Sequelize-Modelle
-│       ├── migrations/             001-initial … 036-bank-sync-late-match
+│       ├── migrations/             001-initial … 037-bank-imports
 │       │                           (028–034 = Bank-Sync, siehe unten)
 │       ├── routes/                 Express-Router (auth, households, transactions, admin, backup, ocr, paperless, …)
 │       ├── services/
@@ -496,7 +496,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.48** (Stand 2026-10-03). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.49** (Stand 2026-10-03). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -574,6 +574,10 @@ Kontoumsätze per **CSV/MT940-Datei** importieren (kein FinTS: bräuchte PSD2-Pr
    - **Späte Abbuchung** (v1.0.48, Migration 036): Spesen-/Rechnungsausgaben werden oft Wochen später abgebucht (Zahlungsziel, PayPal, Klarna). Fenster nach vorne pro Kategorie: `households."bankSyncLateMatchDays"` JSON `{categoryId: Tage}` (bewusst pro Haushaltsbuch, nicht an der Kategorie — Systemkategorien sind global). Ohne Eintrag: Sub-Konto-Kategorien `SUB_ACCOUNT_LATE_MATCH_DAYS = 45`, sonst normales Fenster; 0 = aus. Nur nach vorne (`matchWindow`: before = ±5/7, after = max(base, late)). Treffer außerhalb des normalen Fensters → `matchLate` + `matchDistanceDays`, Badge „spät · N Tage". UI: Bank-Sync → Zuordnung & KI → „Späte Abbuchung" (`GET|PUT /settings` → `lateMatchDays`).
    - **Von Hand verknüpfen:** Preview liefert `openEntries` (offene Ausgaben/Einnahmen, 180 Tage zurück, Betrag ±max(2 €, 10 %)), Frontend bietet sie pro Zeile an („🔗 Mit offener Buchung verknüpfen", `RowEdit.manualMatchId`). Toleranz-Formel in `bankSync.js#manualMatchTolerance` und `BankSyncPage.tsx` synchron halten. `findMergeTarget` lehnt Buchungen anderer Konten ab.
    - **Sub-Konto-Monat:** Die Period hängt an der Ausgabe, nicht an der Abbuchung. Beim Verschmelzen bleibt die gespeicherte Period (sonst Period des ursprünglichen Buchungsdatums, `mergedSubAccountFields`); Kategorie weg vom Sub-Konto → Felder zurücksetzen. Vorschau zeigt Monatswähler für Sub-Konto-Kategorien, Vorgabe: verknüpfte Buchung → Paperless-Dokumentdatum → Bankdatum (`defaultPeriod`); Request-Felder `subAccountPeriodMonth/Year`.
+   - **Import-Protokoll** (v1.0.49, Migration 037 `bank_imports`): `/import` schreibt pro Import Konto, Datei, Zeitraum der ganzen Datei (`fileDateFrom/To` vom Frontend, inkl. abgewählter Zeilen) und Zähler. `GET /bank-sync/imports` → pro Konto `ranges` (zusammengefasst, angrenzende Tage lückenlos) + `gaps` + `imports`. Altbestand wurde in der Migration abgeleitet (`derived`, Abschnitte getrennt bei > 14 Tagen ohne Umsatz). `/import` prüft jetzt, dass `accountId` zum Haushaltsbuch gehört.
+   - **Bestätigt vs. erfasst:** `externalRef`/`transferExternalRef` gesetzt = mit Kontoauszug abgeglichen. Web-Buchungsliste 🏦/✎ + Filter `GET /transactions?bankStatus=confirmed|unconfirmed`; Mobile 🏦 bzw. ⏳ (`pendingBankMatch`).
+   - **Mobile „Neue Buchung":** Sub-Konto-Kategorie → Monatsanzeige mit ‹ › (`subAccountPeriodMonth/Year`, auch in der Offline-Queue), Schalter „Wird später abgebucht" → `pendingBankMatch`. Solche Buchungen erscheinen in der Vorschau erst als „ohne passenden Umsatz", wenn ihr spätes Fenster vor dem Dateiende endet.
+   - **POST /transactions:** Sub-Konto-Period ohne Angabe = Period des **Buchungsdatums** (bis v1.0.48 fälschlich heute).
    - **Geschlossene Monate:** Preview liefert `settledPeriods`, Zeilen mit Saldo-Änderung in einem geschlossenen Monat zeigen einen Hinweis; `/import` antwortet mit `settledWarnings` (`touchedSettledPeriods`) → Hinweis „Abschluss rückgängig machen und neu schließen" mit Link auf `/sub-accounts`. Kein automatisches Neu-Schließen.
 2. **Eigene IBAN** (`accounts.iban`) → Umbuchung (source `account`).
 3. **Regeln** (`bank_categorization_rules`: field any|counterparty|purpose|iban, contains, min/maxAmount → `categoryId` ODER `targetAccountId`).

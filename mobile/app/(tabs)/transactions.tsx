@@ -236,6 +236,13 @@ export default function TransactionsScreen() {
             >
               {format(new Date(item.date), "dd. MMM yyyy", { locale: de })}
               {item.merchant ? ` · ${item.merchant}` : ""}
+              {/* 🏦 = mit dem Kontoauszug abgeglichen, ⏳ = wartet auf
+                  die Abbuchung (Schnellerfassung / "später abgebucht") */}
+              {item.externalRef || item.transferExternalRef ? "  🏦" : ""}
+              {!(item.externalRef || item.transferExternalRef) &&
+              item.pendingBankMatch
+                ? "  ⏳"
+                : ""}
             </Text>
           </View>
           <Text

@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import BankSyncSettings from "../components/bankSync/BankSyncSettings";
+import ImportHistory from "../components/bankSync/ImportHistory";
 import TargetSelect from "../components/bankSync/TargetSelect";
 import {
   type Account,
@@ -373,6 +374,8 @@ export default function BankSyncPage() {
   );
   // Nach dem Import: geschlossene Monate, deren Saldo sich geändert hat.
   const [settledWarnings, setSettledWarnings] = useState<SettledWarning[]>([]);
+  // Hochzählen → "Eingelesene Zeiträume" neu laden.
+  const [importsReloadKey, setImportsReloadKey] = useState(0);
 
   // Entwurf gehört zu einem Haushaltsbuch: beim Wechsel verwerfen.
   useEffect(() => {
@@ -692,6 +695,22 @@ export default function BankSyncPage() {
     setIncluded((prev) => prev.map((v, i) => (i === index ? !v : v)));
   };
 
+  // Zeitraum der ganzen Datei (inkl. abgewählter und schon importierter
+  // Zeilen) für das Import-Protokoll.
+  const fileMeta = () => {
+    const dates = rows
+      .map((r) => r.date)
+      .filter((d): d is string => Boolean(d));
+    // ISO-Daten lassen sich als Text vergleichen.
+    const earliest = (a: string, b: string) => (b < a ? b : a);
+    const latest = (a: string, b: string) => (b > a ? b : a);
+    return {
+      fileName,
+      fileDateFrom: dates.length ? dates.reduce(earliest) : undefined,
+      fileDateTo: dates.length ? dates.reduce(latest) : undefined,
+    };
+  };
+
   const doImport = async () => {
     if (!(currentHousehold && accountId && format)) {
       return;
@@ -727,7 +746,8 @@ export default function BankSyncPage() {
         accountId,
         format,
         selected,
-        format === "csv" ? mapping : undefined
+        format === "csv" ? mapping : undefined,
+        fileMeta()
       );
       const parts = [`${data.imported} neu importiert`];
       if (data.merged) {
@@ -744,6 +764,7 @@ export default function BankSyncPage() {
       toast.success(parts.join(", "));
       discardPreview();
       setSettledWarnings(data.settledWarnings || []);
+      setImportsReloadKey((k) => k + 1);
     } catch (err: any) {
       toast.error(err.response?.data?.error || "Import fehlgeschlagen");
     } finally {
@@ -1236,6 +1257,13 @@ export default function BankSyncPage() {
                 </table>
               </div>
             </div>
+          )}
+
+          {currentHousehold && (
+            <ImportHistory
+              householdId={currentHousehold.id}
+              reloadKey={importsReloadKey}
+            />
           )}
 
           <p className="text-gray-400 text-sm">

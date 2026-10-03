@@ -79,6 +79,7 @@ router.get("/", auth, async (req, res) => {
       page = 1,
       limit = 50,
       search,
+      bankStatus,
     } = req.query;
     if (!householdId) {
       return res.status(400).json({ error: "householdId required" });
@@ -116,6 +117,20 @@ router.get("/", auth, async (req, res) => {
         );
       }
       where[Op.or] = orConds;
+    }
+
+    // Von der Bank bestätigt = mit einem importierten Umsatz verknüpft
+    // (externalRef, bei Umbuchungen auch nur die Ziel-Seite).
+    const bankLinked = {
+      [Op.or]: [
+        { externalRef: { [Op.ne]: null } },
+        { transferExternalRef: { [Op.ne]: null } },
+      ],
+    };
+    if (bankStatus === "confirmed") {
+      where[Op.and] = [bankLinked];
+    } else if (bankStatus === "unconfirmed") {
+      where[Op.and] = [{ externalRef: null, transferExternalRef: null }];
     }
 
     if (month && year) {
@@ -462,13 +477,14 @@ router.post("/", auth, upload.single("receipt"), async (req, res) => {
           resolvedSubAccountMonth = explicitMonth;
           resolvedSubAccountYear = explicitYear;
         } else {
-          // Default = aktuelle Period des Haushalts
+          // Default = Period des Buchungsdatums (nicht heute): Eine am 02.10.
+          // nachgetragene Hotelrechnung vom 28.09. gehört in den September.
           const { getPeriodForDate } = require("../utils/monthBounds");
           const household = await Household.findByPk(householdId, {
             attributes: ["monthStartDay"],
           });
           const period = getPeriodForDate(
-            new Date(),
+            date || new Date(),
             household?.monthStartDay || 1
           );
           resolvedSubAccountMonth = period.month;

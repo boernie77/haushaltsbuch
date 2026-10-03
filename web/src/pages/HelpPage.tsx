@@ -432,6 +432,14 @@ export default function HelpPage() {
           Betrag (bis 10 %, mindestens 2 €). Der Betrag der Bank gilt.
         </p>
         <p>
+          <strong>Eingelesene Zeiträume:</strong> Unter dem Import siehst du pro
+          Konto, welche Tage schon per Datei eingelesen sind, mit{" "}
+          <strong>Lücken</strong>. In der Buchungsliste zeigt 🏦 eine mit dem
+          Kontoauszug abgeglichene Buchung, ✎ eine nur erfasste. Der Filter „Nur
+          erfasst" zeigt alle noch offenen. In der iPhone-App heißt ⏳: wartet
+          auf die Abbuchung („Wird später abgebucht").
+        </p>
+        <p>
           <strong>Sub-Konto-Monat:</strong> Bei Sub-Konto-Kategorien wählst du
           in der Vorschau den Monat. Vorgegeben ist der Monat, in dem die
           Ausgabe angefallen ist: Monat der verknüpften Buchung, sonst Datum der

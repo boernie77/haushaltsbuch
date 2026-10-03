@@ -362,6 +362,20 @@ Kreditkarten-Datei ein, erkennt die App den Ausgleich als Gegenseite derselben
 Umbuchung und legt nichts doppelt an. Vorhandene Umbuchungen (auch aus
 Daueraufträgen) werden genauso abgeglichen.
 
+### Eingelesene Zeiträume und bestätigte Buchungen
+Unter dem Import zeigt **„Eingelesene Zeiträume"** pro Konto, für welche Tage du
+schon Dateien eingelesen hast, und markiert **Lücken** (z. B. „Lücke: 01.08.–31.08.").
+Mit **„… Importe"** klappst du die einzelnen Importe auf (Datum, Datei, Zeitraum,
+neu/ergänzt/übersprungen). Für Importe vor Version 1.0.49 gibt es kein Protokoll.
+Ihr Zeitraum wurde aus den importierten Buchungen abgeleitet („abgeleitet"),
+ruhige Wochen ohne Umsatz können dort wie eine Lücke aussehen.
+
+In der **Buchungsliste** steht neben dem Datum **🏦**, wenn die Buchung mit dem
+Kontoauszug abgeglichen ist, und **✎**, wenn sie nur erfasst wurde. Mit dem Filter
+**„🏦 Von der Bank bestätigt" / „✎ Nur erfasst"** siehst du z. B. alle noch offenen
+Buchungen. In der iPhone-App erscheint 🏦 ebenfalls, ⏳ heißt: wartet noch auf die
+Abbuchung.
+
 ### Tab „Zuordnung & KI"
 - **Schalter:** vorhandene Buchungen abgleichen, mit Paperless abgleichen, Regeln
   anwenden.
@@ -424,6 +438,13 @@ automatisch „heute", und das funktioniert auch offline.
   Kategorien.
 - Die Kacheln gehören zum **in der Übersicht gewählten Haushaltsbuch**. Fehlt eine
   Kategorie, bist du vielleicht im falschen Buch.
+- **Sub-Konto (z. B. Spesen):** Wählst du in der iPhone-App unter „Neue Buchung"
+  eine Sub-Konto-Kategorie, zeigt die App, in welchem Monat die Ausgabe im Sub-Konto
+  zählt (Monat des Buchungsdatums), mit ‹ › änderst du ihn.
+- **„Wird später abgebucht":** Für Käufe über PayPal, Klarna oder auf Rechnung. Die
+  Buchung bleibt als offen (⏳) markiert, bis der Bank-Import die Abbuchung findet.
+  Solange die Abbuchung noch kommen kann (bei Spesen 45 Tage), erscheint sie nicht als
+  „kein passender Umsatz".
 - Die Buchung zählt sofort in Budgets und Statistik. Beim nächsten **Bank-Import**
   wird sie mit dem Kontoumsatz zusammengeführt (Kapitel 15). Schnellerfassungen ohne
   passenden Umsatz zeigt die Vorschau als Hinweis, z. B. bei Barzahlung. Dort kannst

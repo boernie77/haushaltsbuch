@@ -58,6 +58,9 @@ export interface OfflineTransaction {
   merchant: string;
   note?: string;
   pendingBankMatch?: boolean;
+  // Sub-Konto-Monat (z.B. Spesen), sonst Monat des Buchungsdatums.
+  subAccountPeriodMonth?: number;
+  subAccountPeriodYear?: number;
   type: "expense" | "income";
 }
 

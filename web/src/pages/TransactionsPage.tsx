@@ -41,6 +41,9 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
+  // "" = alle, "confirmed" = mit Kontoauszug abgeglichen, "unconfirmed" = nur
+  // erfasst (siehe GET /api/transactions?bankStatus=).
+  const [bankFilter, setBankFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const toggleSort = (col: "date" | "amount") => {
@@ -145,6 +148,7 @@ export default function TransactionsPage() {
         year: selectedYear,
         type: typeFilter === "all" ? undefined : typeFilter,
         categoryId: categoryFilter || undefined,
+        bankStatus: bankFilter || undefined,
         search: search || undefined,
       });
       if (requestId !== loadCountRef.current) {
@@ -166,6 +170,7 @@ export default function TransactionsPage() {
     currentHousehold,
     typeFilter,
     categoryFilter,
+    bankFilter,
     selectedMonth,
     selectedYear,
   ]);
@@ -583,7 +588,10 @@ export default function TransactionsPage() {
     .filter((t) => t.type === "income")
     .reduce((sum, t) => sum + Number.parseFloat(t.amount), 0);
   // Treffer-Summen-Zeile erscheint, sobald Suche oder Kategorie-Filter aktiv
-  const searchActive = search.trim().length > 0 || categoryFilter.length > 0;
+  const searchActive =
+    search.trim().length > 0 ||
+    categoryFilter.length > 0 ||
+    bankFilter.length > 0;
 
   const favDocTypes =
     paperlessData?.documentTypes?.filter((x: any) => x.isFavorite) || [];
@@ -712,6 +720,18 @@ export default function TransactionsPage() {
               </button>
             )}
           </div>
+        )}
+        {typeFilter !== "recurring" && (
+          <select
+            aria-label="Abgleich mit der Bank"
+            className="input w-auto min-w-[180px]"
+            onChange={(e) => setBankFilter(e.target.value)}
+            value={bankFilter}
+          >
+            <option value="">Bank: alle</option>
+            <option value="confirmed">🏦 Von der Bank bestätigt</option>
+            <option value="unconfirmed">✎ Nur erfasst</option>
+          </select>
         )}
       </div>
 
@@ -1479,8 +1499,23 @@ export default function TransactionsPage() {
                   className="transition-colors hover:bg-pink-50/50 dark:hover:bg-slate-700/50"
                   key={t.id}
                 >
-                  <td className="px-4 py-3 text-gray-600 text-sm dark:text-gray-400">
+                  <td className="whitespace-nowrap px-4 py-3 text-gray-600 text-sm dark:text-gray-400">
                     {format(new Date(t.date), "dd.MM.yyyy")}
+                    {t.externalRef || t.transferExternalRef ? (
+                      <span
+                        className="ml-1"
+                        title="Von der Bank bestätigt: mit dem Kontoauszug abgeglichen"
+                      >
+                        🏦
+                      </span>
+                    ) : (
+                      <span
+                        className="ml-1 text-gray-300 dark:text-gray-600"
+                        title="Nur erfasst: noch nicht mit dem Kontoauszug abgeglichen"
+                      >
+                        ✎
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span className="inline-flex items-center gap-2 text-sm">

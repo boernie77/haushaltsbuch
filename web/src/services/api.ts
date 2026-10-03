@@ -211,7 +211,13 @@ export const bankSyncAPI = {
     accountId: string,
     format: string,
     transactions: any[],
-    columnMapping?: Record<string, string | null>
+    columnMapping?: Record<string, string | null>,
+    // Für das Import-Protokoll: Datei + Zeitraum der ganzen Datei.
+    file?: {
+      fileName?: string | null;
+      fileDateFrom?: string;
+      fileDateTo?: string;
+    }
   ) =>
     api.post("/bank-sync/import", {
       householdId,
@@ -219,7 +225,10 @@ export const bankSyncAPI = {
       format,
       transactions,
       columnMapping,
+      ...file,
     }),
+  getImports: (householdId: string) =>
+    api.get("/bank-sync/imports", { params: { householdId } }),
   getSettings: (householdId: string) =>
     api.get("/bank-sync/settings", { params: { householdId } }),
   updateSettings: (householdId: string, d: Record<string, unknown>) =>

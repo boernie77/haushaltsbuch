@@ -756,6 +756,35 @@ BankCategorizationRule.belongsTo(Account, {
   as: "targetAccount",
 });
 
+// ── BankImport ────────────────────────────────────────────────────────────────
+// Protokoll der Bank-Sync-Importe (Migration 037): welche Datei für welches
+// Konto welchen Zeitraum abgedeckt hat. derived = aus alten Buchungen
+// abgeleitet (Importe vor dem Protokoll, nur Näherung).
+const BankImport = sequelize.define(
+  "BankImport",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    accountId: { type: DataTypes.UUID, allowNull: false },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    fileName: { type: DataTypes.TEXT, allowNull: true },
+    format: { type: DataTypes.TEXT, allowNull: true },
+    dateFrom: { type: DataTypes.DATEONLY, allowNull: false },
+    dateTo: { type: DataTypes.DATEONLY, allowNull: false },
+    rowCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+    imported: { type: DataTypes.INTEGER, defaultValue: 0 },
+    merged: { type: DataTypes.INTEGER, defaultValue: 0 },
+    skipped: { type: DataTypes.INTEGER, defaultValue: 0 },
+    derived: { type: DataTypes.BOOLEAN, defaultValue: false },
+  },
+  { tableName: "bank_imports", timestamps: true }
+);
+BankImport.belongsTo(User, { foreignKey: "userId" });
+
 Household.hasMany(BankImportProfile, { foreignKey: "householdId" });
 BankImportProfile.belongsTo(Household, { foreignKey: "householdId" });
 Account.hasMany(BankImportProfile, { foreignKey: "accountId" });
@@ -786,6 +815,7 @@ module.exports = {
   MonthlyFixedSnapshot,
   Account,
   SubAccountSettlement,
+  BankImport,
   BankImportProfile,
   MerchantCategoryMapping,
   BankCategorizationRule,

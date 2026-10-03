@@ -8,6 +8,7 @@ const { Op } = require("sequelize");
 const {
   Account,
   BankCategorizationRule,
+  BankImport,
   BankImportProfile,
   Category,
   Household,
@@ -16,6 +17,7 @@ const {
   SubAccountSettlement,
   Transaction,
   MerchantCategoryMapping,
+  User,
 } = require("../models");
 const { auth } = require("../middleware/auth");
 const { resolveApiKey } = require("../utils/anthropicKey");
@@ -27,6 +29,7 @@ const {
   MAX_LATE_MATCH_DAYS,
   SUB_ACCOUNT_LATE_MATCH_DAYS,
   findMatchingRule,
+  lateMatchDaysFor,
   parseLateMatchDays,
   listLocalModels,
   normalizeLocalUrl,
@@ -378,8 +381,8 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   // beim Import mit dem Bankumsatz verschmolzen statt doppelt angelegt.
   let candidates = [];
   let matchedEntryIds = new Set();
+  const lateMatchDays = parseLateMatchDays(household.bankSyncLateMatchDays);
   if (household.bankSyncMatchQuickEntries) {
-    const lateMatchDays = parseLateMatchDays(household.bankSyncLateMatchDays);
     candidates = await loadMatchCandidates(
       householdId,
       accountId,
@@ -542,7 +545,9 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   };
 
   // Schnellerfassungen im Zeitraum der Datei ohne passenden Bankumsatz →
-  // Hinweis (Barzahlung? Tippfehler beim Betrag?).
+  // Hinweis (Barzahlung? Tippfehler beim Betrag?). Ausgenommen: Buchungen,
+  // deren späte Abbuchung (z.B. Spesen) erst nach dem Ende der Datei kommen
+  // kann — die sind einfach noch nicht abgebucht.
   const dates = rows
     .map((r) => r.date)
     .filter(Boolean)
@@ -554,7 +559,9 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
             e.pendingBankMatch &&
             !matchedEntryIds.has(e.id) &&
             e.date >= dates[0] &&
-            e.date <= dates.at(-1)
+            e.date <= dates.at(-1) &&
+            addDaysIso(e.date, lateMatchDaysFor(e.Category, lateMatchDays)) <=
+              dates.at(-1)
         )
         .map(entryJson)
     : [];
@@ -722,9 +729,7 @@ router.post("/bootstrap-mappings", auth, async (req, res) => {
         merchantPattern: key,
         categoryId: mostFrequent(list.map((t) => t.categoryId)),
         targetAccountId: null,
-        description: description
-          ? description.slice(0, TEXT_MAX_LENGTH)
-          : null,
+        description: description ? description.slice(0, TEXT_MAX_LENGTH) : null,
       });
       recurringLearned++;
     }
@@ -735,7 +740,8 @@ router.post("/bootstrap-mappings", auth, async (req, res) => {
         attributes: ["id", "merchantPattern"],
       })
     ).filter(
-      (m) => !isAmountKey(m.merchantPattern) && isPaymentProvider(m.merchantPattern)
+      (m) =>
+        !isAmountKey(m.merchantPattern) && isPaymentProvider(m.merchantPattern)
     );
     if (stale.length) {
       await MerchantCategoryMapping.destroy({
@@ -1094,7 +1100,9 @@ async function findMergeTarget(tx, householdId, accountId) {
   // Ausgaben/Einnahmen eines anderen Kontos nie übernehmen (von Hand
   // verknüpfte Buchungen kommen direkt aus dem Request).
   const sameAccount =
-    entry?.type === "transfer" || !entry?.accountId || entry.accountId === accountId;
+    entry?.type === "transfer" ||
+    !entry?.accountId ||
+    entry.accountId === accountId;
   return unlinked && sameAccount && entrySide(entry, accountId) === rowSide
     ? entry
     : null;
@@ -1164,6 +1172,123 @@ async function learnMapping({ tx, target, householdId, mappingByMerchant }) {
   return learned;
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const FILE_NAME_MAX_LENGTH = 255;
+
+// Import-Protokoll schreiben (Migration 037). Zeitraum = ganze Datei
+// (fileDateFrom/To vom Frontend, inkl. abgewählter und schon importierter
+// Zeilen), sonst die übernommenen Zeilen.
+async function logImport({ req, accountId, format, transactions, counts }) {
+  const sentDates = transactions
+    .map((t) => t.date)
+    .filter((d) => typeof d === "string" && ISO_DATE.test(d))
+    .sort();
+  const { fileDateFrom, fileDateTo, fileName } = req.body;
+  const dateFrom = ISO_DATE.test(fileDateFrom || "")
+    ? fileDateFrom
+    : sentDates[0];
+  const dateTo = ISO_DATE.test(fileDateTo || "")
+    ? fileDateTo
+    : sentDates.at(-1);
+  if (!(dateFrom && dateTo)) {
+    return;
+  }
+  await BankImport.create({
+    householdId: req.body.householdId,
+    accountId,
+    userId: req.user.id,
+    fileName: fileName ? String(fileName).slice(0, FILE_NAME_MAX_LENGTH) : null,
+    format: format || null,
+    dateFrom,
+    dateTo,
+    rowCount: transactions.length,
+    imported: counts.imported,
+    merged: counts.merged,
+    skipped: counts.skipped,
+  });
+}
+
+// Fasst Zeiträume zu zusammenhängenden Abschnitten zusammen (angrenzende
+// Tage zählen als lückenlos) und liefert die Lücken dazwischen.
+function coverage(imports) {
+  const sorted = [...imports].sort((a, b) =>
+    a.dateFrom.localeCompare(b.dateFrom)
+  );
+  const ranges = [];
+  for (const imp of sorted) {
+    const last = ranges.at(-1);
+    if (last && imp.dateFrom <= addDaysIso(last.to, 1)) {
+      if (imp.dateTo > last.to) {
+        last.to = imp.dateTo;
+      }
+      last.derived = last.derived && imp.derived;
+    } else {
+      ranges.push({ from: imp.dateFrom, to: imp.dateTo, derived: imp.derived });
+    }
+  }
+  const gaps = ranges.slice(1).map((r, i) => ({
+    from: addDaysIso(ranges[i].to, 1),
+    to: addDaysIso(r.from, -1),
+  }));
+  return { ranges, gaps };
+}
+
+function addDaysIso(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// GET /api/bank-sync/imports?householdId= — Import-Protokoll + abgedeckte
+// Zeiträume und Lücken pro Konto.
+router.get("/imports", auth, async (req, res) => {
+  try {
+    const { householdId } = req.query;
+    if (!(await checkAccess(req.user.id, householdId))) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const [accounts, imports] = await Promise.all([
+      loadAccounts(householdId),
+      BankImport.findAll({
+        where: { householdId },
+        include: [{ model: User, attributes: ["id", "name"] }],
+        order: [["createdAt", "DESC"]],
+      }),
+    ]);
+    const rows = imports.map((i) => ({
+      id: i.id,
+      accountId: i.accountId,
+      fileName: i.fileName,
+      format: i.format,
+      dateFrom: i.dateFrom,
+      dateTo: i.dateTo,
+      rowCount: i.rowCount,
+      imported: i.imported,
+      merged: i.merged,
+      skipped: i.skipped,
+      derived: i.derived,
+      createdAt: i.createdAt,
+      userName: i.User?.name || null,
+    }));
+    const byAccount = accounts
+      .map((a) => {
+        const own = rows.filter((r) => r.accountId === a.id);
+        return {
+          accountId: a.id,
+          name: a.name,
+          icon: a.icon,
+          ...coverage(own),
+          imports: own,
+        };
+      })
+      .filter((a) => a.imports.length > 0);
+    res.json({ accounts: byAccount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: `Fehler: ${err.message}` });
+  }
+});
+
 // POST /api/bank-sync/import — importiert eine vom Frontend bestätigte Liste
 // von Buchungen (aus /preview, ggf. vom User gekürzt und mit geänderter
 // Kategorie/Beschreibung/Umbuchung). Kein erneuter Datei-Upload nötig, da
@@ -1198,6 +1323,11 @@ router.post("/import", auth, async (req, res) => {
       accountIds: new Set(accounts.map((a) => a.id)),
       mappingByMerchant: mappingMap(mappings),
     };
+    if (!context.accountIds.has(accountId)) {
+      return res
+        .status(400)
+        .json({ error: "Konto gehört nicht zu diesem Haushaltsbuch" });
+    }
     const settledPeriods = await loadSettledPeriods(householdId);
     const touchedSettled = new Set();
 
@@ -1288,6 +1418,8 @@ router.post("/import", auth, async (req, res) => {
         columnMapping: JSON.stringify(columnMapping),
       });
     }
+
+    await logImport({ req, accountId, format, transactions, counts });
 
     // Bereits geschlossene Sub-Konto-Monate, deren Saldo sich geändert hat →
     // Hinweis im Frontend ("Abschluss rückgängig machen und neu schließen").

@@ -39,6 +39,45 @@ import {
 import { isNetworkError, offlineQueue } from "../../src/services/offlineStore";
 import { useAuthStore } from "../../src/store/authStore";
 
+const MONTH_NAMES = [
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember",
+];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface Period {
+  month: number;
+  year: number;
+}
+
+// Wie backend utils/monthBounds.js#getPeriodForDate: Bei monthStartDay > 1
+// gehört ein Datum ab dem Starttag zum Folgemonat (Label = End-Monat).
+function periodForDate(iso: string, startDay: number): Period {
+  const valid = ISO_DATE.test(iso) ? iso : format(new Date(), "yyyy-MM-dd");
+  const [year, month, day] = valid.split("-").map(Number);
+  if (startDay > 1 && day >= startDay) {
+    return month === 12
+      ? { year: year + 1, month: 1 }
+      : { year, month: month + 1 };
+  }
+  return { year, month };
+}
+
+function shiftPeriod(p: Period, delta: number): Period {
+  const index = p.year * 12 + (p.month - 1) + delta;
+  return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+}
+
 export default function AddTransactionScreen() {
   const theme = useTheme() as any;
   const insets = useSafeAreaInsets();
@@ -74,6 +113,15 @@ export default function AddTransactionScreen() {
   const [paperlessCorrespondent, setPaperlessCorrespondent] =
     useState<any>(null);
   const [paperlessTags, setPaperlessTags] = useState<any[]>([]);
+  // Sub-Konto-Monat (z.B. Spesen): null = Monat des Buchungsdatums.
+  const [periodOverride, setPeriodOverride] = useState<Period | null>(null);
+  // Wird erst später abgebucht (PayPal, Klarna, Rechnung): bleibt offen, bis
+  // der Bank-Import die Abbuchung findet (pendingBankMatch).
+  const [laterDebit, setLaterDebit] = useState(false);
+
+  const isSubAccount = !!selectedCategory?.hasSubAccount && !isRecurring;
+  const subAccountPeriod =
+    periodOverride ?? periodForDate(date, currentHousehold?.monthStartDay || 1);
 
   useEffect(() => {
     if (currentHousehold) {
@@ -206,6 +254,13 @@ export default function AddTransactionScreen() {
           name: "receipt.jpg",
         } as any);
       }
+      if (isSubAccount) {
+        form.append("subAccountPeriodMonth", String(subAccountPeriod.month));
+        form.append("subAccountPeriodYear", String(subAccountPeriod.year));
+      }
+      if (laterDebit && !isRecurring) {
+        form.append("pendingBankMatch", "true");
+      }
       if (isRecurring) {
         form.append("isRecurring", "true");
         form.append("recurringInterval", recurringInterval);
@@ -261,6 +316,13 @@ export default function AddTransactionScreen() {
           type,
           categoryId: selectedCategory?.id || null,
           householdId: currentHousehold.id,
+          pendingBankMatch: laterDebit && !isRecurring,
+          ...(isSubAccount
+            ? {
+                subAccountPeriodMonth: subAccountPeriod.month,
+                subAccountPeriodYear: subAccountPeriod.year,
+              }
+            : {}),
         });
         Toast.show({
           type: "info",
@@ -455,6 +517,87 @@ export default function AddTransactionScreen() {
               size={20}
             />
           </TouchableOpacity>
+
+          {/* Sub-Konto (z.B. Spesen): Monat, in dem die Ausgabe zählt */}
+          {isSubAccount && (
+            <View
+              style={[
+                styles.subAccountBox,
+                {
+                  borderColor: theme.colors.primary,
+                  borderRadius: theme.roundness,
+                },
+              ]}
+            >
+              <View style={styles.subAccountRow}>
+                <MaterialCommunityIcons
+                  color={theme.colors.primary}
+                  name="briefcase-outline"
+                  size={18}
+                />
+                <Text
+                  style={{
+                    color: theme.colors.onSurface,
+                    flex: 1,
+                    marginLeft: 8,
+                  }}
+                >
+                  Sub-Konto · {MONTH_NAMES[subAccountPeriod.month - 1]}{" "}
+                  {subAccountPeriod.year}
+                </Text>
+                <IconButton
+                  accessibilityLabel="Vormonat"
+                  icon="chevron-left"
+                  onPress={() =>
+                    setPeriodOverride(shiftPeriod(subAccountPeriod, -1))
+                  }
+                  size={20}
+                />
+                <IconButton
+                  accessibilityLabel="Folgemonat"
+                  icon="chevron-right"
+                  onPress={() =>
+                    setPeriodOverride(shiftPeriod(subAccountPeriod, 1))
+                  }
+                  size={20}
+                />
+              </View>
+              <Text
+                style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
+              >
+                Die Ausgabe zählt in diesem Monat, auch wenn sie später
+                abgebucht wird. Der Bank-Import findet die Abbuchung auch Wochen
+                danach.
+              </Text>
+            </View>
+          )}
+
+          {/* Wird später abgebucht (PayPal, Klarna, Rechnung) */}
+          {!isRecurring && (
+            <View style={styles.recurringRow}>
+              <MaterialCommunityIcons
+                color={theme.colors.primary}
+                name="bank-transfer-out"
+                size={18}
+              />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={{ color: theme.colors.onSurface }}>
+                  Wird später abgebucht
+                </Text>
+                <Text
+                  style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
+                >
+                  PayPal, Klarna, Rechnung: bleibt offen, bis der Bank-Import
+                  die Abbuchung findet.
+                </Text>
+              </View>
+              <Switch
+                color={theme.colors.primary}
+                onValueChange={setLaterDebit}
+                value={laterDebit}
+              />
+            </View>
+          )}
 
           {/* Receipt Image */}
           <View style={styles.receiptSection}>
@@ -881,6 +1024,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 12,
   },
+  subAccountBox: {
+    borderWidth: 1,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  subAccountRow: { flexDirection: "row", alignItems: "center" },
   receiptSection: { marginBottom: 12 },
   sectionLabel: {
     fontSize: 13,

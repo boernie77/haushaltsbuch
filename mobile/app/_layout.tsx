@@ -34,6 +34,10 @@ async function flushOfflineQueue() {
       if (tx.pendingBankMatch) {
         form.append("pendingBankMatch", "true");
       }
+      if (tx.subAccountPeriodMonth && tx.subAccountPeriodYear) {
+        form.append("subAccountPeriodMonth", String(tx.subAccountPeriodMonth));
+        form.append("subAccountPeriodYear", String(tx.subAccountPeriodYear));
+      }
       await transactionAPI.create(form);
       await offlineQueue.remove(tx._offlineId);
       synced++;
