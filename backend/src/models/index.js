@@ -120,6 +120,9 @@ const Household = sequelize.define(
         this.setDataValue("bankSyncLocalApiKey", encrypt(v));
       },
     },
+    // Späte Abbuchung pro Kategorie: JSON { "<categoryId>": Tage }
+    // (Migration 036, siehe utils/bankCategorizer.js#lateMatchDaysFor).
+    bankSyncLateMatchDays: { type: DataTypes.TEXT, allowNull: true },
   },
   { tableName: "households", timestamps: true }
 );

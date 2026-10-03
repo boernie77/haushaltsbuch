@@ -13,6 +13,7 @@ const {
   Household,
   HouseholdMember,
   PaperlessConfig,
+  SubAccountSettlement,
   Transaction,
   MerchantCategoryMapping,
 } = require("../models");
@@ -21,8 +22,12 @@ const { resolveApiKey } = require("../utils/anthropicKey");
 const {
   AI_MODELS,
   AI_PROVIDERS,
+  AMOUNT_TOLERANCE,
   DEFAULT_AI_MODEL,
+  MAX_LATE_MATCH_DAYS,
+  SUB_ACCOUNT_LATE_MATCH_DAYS,
   findMatchingRule,
+  parseLateMatchDays,
   listLocalModels,
   normalizeLocalUrl,
   entrySide,
@@ -50,6 +55,13 @@ const { getPeriodForDate } = require("../utils/monthBounds");
 const { matchPaperlessDocuments } = require("../utils/paperlessMatcher");
 
 const TEXT_MAX_LENGTH = 255;
+// Von Hand verknüpfen ("Mit offener Buchung verknüpfen"): so weit zurück
+// werden offene Buchungen angeboten, und so stark darf der Betrag abweichen
+// (Klarna-Gebühr, Fremdwährung). Siehe manualMatchTolerance.
+const OPEN_ENTRY_LOOKBACK_DAYS = 180;
+const OPEN_ENTRY_LOOKAHEAD_DAYS = 5;
+const MANUAL_MATCH_MIN_TOLERANCE = 2;
+const MANUAL_MATCH_RELATIVE_TOLERANCE = 0.1;
 // Quellen, aus denen beim Import ein Merchant→Kategorie-Mapping gelernt
 // wird. Regeln + bestehende Mappings nicht (wären nur Wiederholung).
 const LEARNING_SOURCES = new Set(["quick", "existing", "ai", "manual"]);
@@ -184,8 +196,81 @@ function entryJson(entry) {
     note: entry.note,
     isQuickEntry: entry.pendingBankMatch,
     isRecurring: !!entry.recurringSourceId,
+    categoryId: entry.categoryId,
+    subAccountPeriodMonth: entry.subAccountPeriodMonth ?? null,
+    subAccountPeriodYear: entry.subAccountPeriodYear ?? null,
     Category: entry.Category || null,
   };
+}
+
+// Erlaubte Betragsabweichung beim Verknüpfen von Hand (Frontend nutzt
+// dieselbe Formel, siehe BankSyncPage.tsx).
+function manualMatchTolerance(amount) {
+  return Math.max(
+    MANUAL_MATCH_MIN_TOLERANCE,
+    Math.abs(amount) * MANUAL_MATCH_RELATIVE_TOLERANCE
+  );
+}
+
+// Offene Ausgaben/Einnahmen (noch nicht mit der Bank verknüpft), die der User
+// in der Vorschau von Hand mit einem Umsatz verknüpfen kann — z.B. eine
+// Hotelrechnung, die noch später als das eingestellte Fenster abgebucht wurde
+// oder deren Betrag leicht abweicht. Nur Buchungen, deren Betrag zu
+// mindestens einer Zeile der Datei passt.
+async function loadOpenEntries(householdId, accountId, rows) {
+  const open = rows.filter(
+    (r) => !r.alreadyImported && r.date && typeof r.amount === "number"
+  );
+  if (open.length === 0) {
+    return [];
+  }
+  const dates = open.map((r) => r.date).sort();
+  const from = new Date(dates[0]);
+  from.setDate(from.getDate() - OPEN_ENTRY_LOOKBACK_DAYS);
+  const to = new Date(dates.at(-1));
+  to.setDate(to.getDate() + OPEN_ENTRY_LOOKAHEAD_DAYS);
+  const entries = await Transaction.findAll({
+    where: {
+      householdId,
+      type: { [Op.in]: ["expense", "income"] },
+      externalRef: null,
+      isRecurring: { [Op.ne]: true },
+      isSubAccountSettlement: { [Op.ne]: true },
+      date: { [Op.between]: [from, to] },
+      [Op.or]: [{ accountId: null }, { accountId }],
+    },
+    include: [
+      {
+        model: Category,
+        attributes: ["id", "name", "nameDE", "icon", "color", "hasSubAccount"],
+      },
+    ],
+    order: [["date", "DESC"]],
+  });
+  return entries
+    .filter((entry) =>
+      open.some((row) => {
+        const rowType = txType(row.amount);
+        const diff = Math.abs(Number(entry.amount) - Math.abs(row.amount));
+        return (
+          entry.type === rowType &&
+          diff <= manualMatchTolerance(row.amount) + AMOUNT_TOLERANCE
+        );
+      })
+    )
+    .map(entryJson);
+}
+
+// Geschlossene Sub-Konto-Monate des Haushaltsbuchs als Set
+// "categoryId|year|month".
+async function loadSettledPeriods(householdId) {
+  const settlements = await SubAccountSettlement.findAll({
+    where: { householdId },
+    attributes: ["categoryId", "year", "month"],
+  });
+  return new Set(
+    settlements.map((s) => `${s.categoryId}|${s.year}|${s.month}`)
+  );
 }
 
 // Dedup-Schlüssel: Hash aus Datum + Betrag + Verwendungszweck + Gegenkonto.
@@ -294,15 +379,22 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
   let candidates = [];
   let matchedEntryIds = new Set();
   if (household.bankSyncMatchQuickEntries) {
-    candidates = await loadMatchCandidates(householdId, accountId, rows);
+    const lateMatchDays = parseLateMatchDays(household.bankSyncLateMatchDays);
+    candidates = await loadMatchCandidates(
+      householdId,
+      accountId,
+      rows,
+      lateMatchDays
+    );
     const { matches, usedEntryIds } = matchExistingEntries(
       rows,
       candidates,
       skip,
-      accountId
+      accountId,
+      lateMatchDays
     );
     matchedEntryIds = usedEntryIds;
-    for (const [index, entry] of matches) {
+    for (const [index, { entry, distance, late }] of matches) {
       const isTransfer = entry.type === "transfer";
       suggestions[index] = {
         source: entry.pendingBankMatch ? "quick" : "existing",
@@ -313,6 +405,10 @@ async function buildSuggestions({ household, userId, accountId, rows }) {
         description: entry.description || null,
         matchTransactionId: entry.id,
         matchedEntry: entryJson(entry),
+        // Späte Abbuchung (z.B. Spesen per PayPal/Klarna): in der Vorschau
+        // deutlich markieren, weil gleicher Betrag über Wochen Zufall sein kann.
+        matchLate: late,
+        matchDistanceDays: distance,
       };
     }
   }
@@ -717,6 +813,12 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
         accountId,
         rows: annotatedRows,
       });
+    const openEntries = await loadOpenEntries(
+      householdId,
+      accountId,
+      annotatedRows
+    );
+    const settledPeriods = [...(await loadSettledPeriods(householdId))];
 
     res.json({
       format,
@@ -729,6 +831,8 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
       aiStatus,
       paperlessStatus,
       unmatchedQuickEntries,
+      openEntries,
+      settledPeriods,
     });
   } catch (err) {
     console.error(err);
@@ -755,6 +859,8 @@ function parsePaperlessDocId(tx) {
 // gilt immer, damit Salden zum Kontoauszug passen (User-Entscheidung
 // 2026-10-01). Ausnahme: Ziel-Seite einer Umbuchung, deren Quell-Seite schon
 // importiert ist — dann bleibt das Datum der Quell-Bank.
+// Der Betrag kommt ebenfalls von der Bank: bei automatischen Treffern ist er
+// gleich, beim Verknüpfen von Hand darf er leicht abweichen (Gebühr, Kurs).
 async function mergeIntoExistingEntry({
   entry,
   tx,
@@ -762,6 +868,7 @@ async function mergeIntoExistingEntry({
   transferAccountId,
   accountId,
   externalRef,
+  context,
 }) {
   const merchant = (tx.counterpartyName || "").trim();
   const description = (tx.description || "").trim();
@@ -792,34 +899,109 @@ async function mergeIntoExistingEntry({
   if (transferAccountId) {
     await entry.update({
       ...common,
+      amount: Math.abs(tx.amount),
       date: tx.date,
       ...transferFields(tx.amount, accountId, transferAccountId, externalRef),
+      ...NO_SUB_ACCOUNT_FIELDS,
     });
     return;
   }
 
+  const finalCategoryId =
+    tx.categoryId === undefined ? entry.categoryId : categoryId;
+  // Vor dem Update berechnen: braucht das ursprüngliche Buchungsdatum.
+  const subAccount = mergedSubAccountFields(
+    entry,
+    context.categoriesById.get(finalCategoryId),
+    tx,
+    context.monthStartDay
+  );
   await entry.update({
     ...common,
+    amount: Math.abs(tx.amount),
     date: tx.date,
     accountId,
     externalRef,
     paperlessDocId: entry.paperlessDocId || parsePaperlessDocId(tx),
-    categoryId: tx.categoryId === undefined ? entry.categoryId : categoryId,
+    categoryId: finalCategoryId,
+    ...subAccount,
   });
 }
 
+const NO_SUB_ACCOUNT_FIELDS = {
+  excludeFromStats: false,
+  subAccountPeriodMonth: null,
+  subAccountPeriodYear: null,
+};
+
+// Vom User in der Vorschau gewählter Sub-Konto-Monat, sofern gültig.
+function requestedPeriod(tx) {
+  const month = Number.parseInt(tx.subAccountPeriodMonth, 10);
+  const year = Number.parseInt(tx.subAccountPeriodYear, 10);
+  const valid = month >= 1 && month <= 12 && year >= 2000 && year <= 2100;
+  return valid ? { month, year } : null;
+}
+
 // Sub-Konto-Kategorien (z.B. Spesen) wie beim manuellen Anlegen behandeln:
-// aus Statistik ausschließen + Period des Buchungsdatums zuordnen.
-function subAccountFields(category, date, monthStartDay) {
+// aus Statistik ausschließen + Period zuordnen. Ohne Wahl in der Vorschau
+// die Period des Datums.
+function subAccountFields(category, date, monthStartDay, period = null) {
   if (!category?.hasSubAccount) {
     return {};
   }
-  const period = getPeriodForDate(date, monthStartDay || 1);
+  const p = period || getPeriodForDate(date, monthStartDay || 1);
   return {
     excludeFromStats: true,
-    subAccountPeriodMonth: period.month,
-    subAccountPeriodYear: period.year,
+    subAccountPeriodMonth: p.month,
+    subAccountPeriodYear: p.year,
   };
+}
+
+// Sub-Konto-Felder beim Verschmelzen. Die Period hängt an der Ausgabe, nicht
+// an der Abbuchung: Eine im September erfasste Hotelrechnung bleibt im
+// September, auch wenn PayPal sie im Oktober abbucht. Wechselt die Kategorie
+// weg vom Sub-Konto, werden die Felder zurückgesetzt (wie PUT /transactions).
+function mergedSubAccountFields(entry, category, tx, monthStartDay) {
+  if (!category?.hasSubAccount) {
+    return entry.subAccountPeriodMonth ? NO_SUB_ACCOUNT_FIELDS : {};
+  }
+  const stored =
+    entry.subAccountPeriodMonth && entry.subAccountPeriodYear
+      ? {
+          month: entry.subAccountPeriodMonth,
+          year: entry.subAccountPeriodYear,
+        }
+      : null;
+  return subAccountFields(
+    category,
+    entry.date,
+    monthStartDay,
+    requestedPeriod(tx) || stored
+  );
+}
+
+// "categoryId|year|month" einer Sub-Konto-Buchung, sonst null.
+function subAccountPeriodKey(t) {
+  if (!(t?.excludeFromStats && t.categoryId && t.subAccountPeriodMonth)) {
+    return null;
+  }
+  return `${t.categoryId}|${t.subAccountPeriodYear}|${t.subAccountPeriodMonth}`;
+}
+
+// Welche bereits geschlossenen Sub-Konto-Monate ändern sich durch diesen
+// Import-Schritt? (Buchung neu im Monat, aus ihm heraus oder Betrag anders.)
+function touchedSettledPeriods(before, after, settledPeriods) {
+  const afterKey = subAccountPeriodKey(after);
+  const amountChanged =
+    before && Math.abs(before.amount - Number(after.amount)) > AMOUNT_TOLERANCE;
+  const touched = [];
+  if (afterKey && (afterKey !== before?.key || amountChanged)) {
+    touched.push(afterKey);
+  }
+  if (before?.key && (before.key !== afterKey || amountChanged)) {
+    touched.push(before.key);
+  }
+  return touched.filter((key) => settledPeriods.has(key));
 }
 
 // Kategorie bzw. Umbuchungs-Zielkonto für eine Zeile bestimmen. Neuere
@@ -877,7 +1059,8 @@ function createFromBankRow({
         ...subAccountFields(
           context.categoriesById.get(categoryId),
           tx.date,
-          context.monthStartDay
+          context.monthStartDay,
+          requestedPeriod(tx)
         ),
       };
   return Transaction.create({
@@ -908,7 +1091,13 @@ async function findMergeTarget(tx, householdId, accountId) {
   const rowSide = tx.amount < 0 ? "out" : "in";
   const unlinked =
     entry?.type === "transfer" || (entry && entry.externalRef === null);
-  return unlinked && entrySide(entry, accountId) === rowSide ? entry : null;
+  // Ausgaben/Einnahmen eines anderen Kontos nie übernehmen (von Hand
+  // verknüpfte Buchungen kommen direkt aus dem Request).
+  const sameAccount =
+    entry?.type === "transfer" || !entry?.accountId || entry.accountId === accountId;
+  return unlinked && sameAccount && entrySide(entry, accountId) === rowSide
+    ? entry
+    : null;
 }
 
 // Gelernte Zuordnung schreiben, sofern sie sich ändert. true = geändert.
@@ -1009,6 +1198,8 @@ router.post("/import", auth, async (req, res) => {
       accountIds: new Set(accounts.map((a) => a.id)),
       mappingByMerchant: mappingMap(mappings),
     };
+    const settledPeriods = await loadSettledPeriods(householdId);
+    const touchedSettled = new Set();
 
     const counts = {
       imported: 0,
@@ -1036,7 +1227,13 @@ router.post("/import", auth, async (req, res) => {
       // eslint-disable-next-line no-await-in-loop
       const existingEntry = await findMergeTarget(tx, householdId, accountId);
 
+      let saved;
+      let before = null;
       if (existingEntry) {
+        before = {
+          key: subAccountPeriodKey(existingEntry),
+          amount: Number(existingEntry.amount),
+        };
         // eslint-disable-next-line no-await-in-loop
         await mergeIntoExistingEntry({
           entry: existingEntry,
@@ -1044,11 +1241,13 @@ router.post("/import", auth, async (req, res) => {
           ...target,
           accountId,
           externalRef,
+          context,
         });
+        saved = existingEntry;
         counts.merged++;
       } else {
         // eslint-disable-next-line no-await-in-loop
-        await createFromBankRow({
+        saved = await createFromBankRow({
           tx,
           ...target,
           accountId,
@@ -1056,6 +1255,9 @@ router.post("/import", auth, async (req, res) => {
           context,
         });
         counts.imported++;
+      }
+      for (const key of touchedSettledPeriods(before, saved, settledPeriods)) {
+        touchedSettled.add(key);
       }
 
       const isTransfer =
@@ -1087,7 +1289,20 @@ router.post("/import", auth, async (req, res) => {
       });
     }
 
-    res.json(counts);
+    // Bereits geschlossene Sub-Konto-Monate, deren Saldo sich geändert hat →
+    // Hinweis im Frontend ("Abschluss rückgängig machen und neu schließen").
+    const settledWarnings = [...touchedSettled].map((key) => {
+      const [categoryId, year, month] = key.split("|");
+      const category = context.categoriesById.get(categoryId);
+      return {
+        categoryId,
+        categoryName: category ? category.nameDE || category.name : "",
+        year: Number(year),
+        month: Number(month),
+      };
+    });
+
+    res.json({ ...counts, settledWarnings });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
@@ -1116,7 +1331,40 @@ function settingsJson(
     // Key selbst nie ausliefern, nur ob einer gesetzt ist.
     localHasApiKey: !!household.bankSyncLocalApiKey,
     canEditLocalServer,
+    // Späte Abbuchung: { categoryId: Tage }, ohne Eintrag gilt für
+    // Sub-Konto-Kategorien subAccountLateMatchDays.
+    lateMatchDays: parseLateMatchDays(household.bankSyncLateMatchDays),
+    subAccountLateMatchDays: SUB_ACCOUNT_LATE_MATCH_DAYS,
+    maxLateMatchDays: MAX_LATE_MATCH_DAYS,
   };
+}
+
+// Validiert { categoryId: Tage | null } aus dem Request. null/"" = Eintrag
+// entfernen (Standard gilt wieder). Nur Kategorien dieses Haushaltsbuchs
+// bzw. Systemkategorien. Gibt {error} oder {value} (JSON-String) zurück.
+async function parseLateMatchDaysInput(input, householdId) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { error: "Ungültige Angabe für die späte Abbuchung" };
+  }
+  const categories = await loadCategories(householdId);
+  const allowed = new Set(categories.map((c) => c.id));
+  const result = {};
+  for (const [categoryId, raw] of Object.entries(input)) {
+    if (!allowed.has(categoryId)) {
+      return { error: "Unbekannte Kategorie" };
+    }
+    if (raw === null || raw === "") {
+      continue;
+    }
+    const days = Number.parseInt(raw, 10);
+    if (!(Number.isInteger(days) && days >= 0 && days <= MAX_LATE_MATCH_DAYS)) {
+      return {
+        error: `Tage müssen zwischen 0 und ${MAX_LATE_MATCH_DAYS} liegen`,
+      };
+    }
+    result[categoryId] = days;
+  }
+  return { value: Object.keys(result).length ? JSON.stringify(result) : null };
 }
 
 async function sendSettings(res, household, member, userId) {
@@ -1201,6 +1449,16 @@ router.put("/settings", auth, async (req, res) => {
     }
     if (Object.values(AI_PROVIDERS).includes(req.body.aiProvider)) {
       updates.bankSyncAiProvider = req.body.aiProvider;
+    }
+    if (req.body.lateMatchDays !== undefined) {
+      const { error, value } = await parseLateMatchDaysInput(
+        req.body.lateMatchDays,
+        householdId
+      );
+      if (error) {
+        return res.status(400).json({ error });
+      }
+      updates.bankSyncLateMatchDays = value;
     }
     const touchesLocalServer = LOCAL_SERVER_FIELDS.some(
       (f) => req.body[f] !== undefined

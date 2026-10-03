@@ -186,6 +186,15 @@ Hast du eine Kategorie nachträglich zum Sub-Konto gemacht, kannst du mit
 **„Bestehende einsortieren"** alle alten Buchungen dieser Kategorie nachträglich
 ihren Perioden zuordnen.
 
+### Spesen, die erst später abgebucht werden
+Eine Hotelrechnung erfasst du im September, abgebucht wird sie aber erst im Oktober
+(Zahlungsziel, PayPal, Klarna)? Der **Bank-Import** erkennt das: Bei
+Sub-Konto-Kategorien sucht er die passende Buchung bis zu **45 Tage** vor der
+Abbuchung (einstellbar, siehe Kapitel 15 „Späte Abbuchung"). Die Ausgabe **bleibt im
+September**, nur Datum und Konto kommen von der Bank. Ist der September schon
+geschlossen und ändert sich sein Saldo (z. B. durch eine PayPal-Gebühr), weist dich
+die App darauf hin: Schließen rückgängig machen und neu schließen.
+
 ---
 
 ## 9. Kalender 📅
@@ -308,7 +317,10 @@ Die App prüft der Reihe nach:
    sie **ergänzt statt doppelt angelegt**. Sie bekommt das **Bankdatum**, das Konto,
    den Empfänger und den Verwendungszweck. **Kategorie und Beschreibung bleiben
    deine.** Stimmt die Zuordnung nicht, klickst du auf **„Verknüpfung lösen"**, dann
-   wird der Umsatz als neue Buchung importiert.
+   wird der Umsatz als neue Buchung importiert. Bei Kategorien mit **später
+   Abbuchung** (z. B. Spesen, siehe unten) darf die Abbuchung auch Wochen nach der
+   Buchung kommen. Solche Treffer tragen das Etikett **„spät · 38 Tage"**: kurz
+   prüfen, denn gleicher Betrag über Wochen kann auch Zufall sein.
 2. **Eigenes Konto** („↔ Eigenes Konto (IBAN)"): Überweisung auf oder von der IBAN
    eines deiner Konten → Umbuchung.
 3. **Regel** (siehe unten).
@@ -319,6 +331,21 @@ Die App prüft der Reihe nach:
 
 Zusätzlich kann ein **Paperless-Dokument** die Beschreibung liefern („📄 …", siehe
 unten). „? bitte zuordnen" heißt: kein Vorschlag gefunden.
+
+### Von Hand mit einer offenen Buchung verknüpfen
+Hat die App eine schon erfasste Buchung nicht erkannt, weil sie noch später
+abgebucht wurde oder der Betrag leicht abweicht (Klarna-Gebühr, Fremdwährung), wähle
+unter dem Vorschlag **„🔗 Mit offener Buchung verknüpfen"**. Angeboten werden noch
+nicht verknüpfte Buchungen der letzten 180 Tage mit ähnlichem Betrag (bis 10 %,
+mindestens 2 € Abweichung). Die Buchung wird dann ergänzt statt doppelt angelegt und
+übernimmt den **Betrag der Bank**.
+
+### Sub-Konto-Monat (z. B. Spesen)
+Hat ein Umsatz eine Sub-Konto-Kategorie, wählst du in der Vorschau den
+**Sub-Konto-Monat**. Vorgegeben ist der Monat, in dem die Ausgabe angefallen ist:
+bei einer verknüpften Buchung deren Monat, sonst das Datum der Paperless-Rechnung,
+sonst das Bankdatum. Ist dieser Monat schon geschlossen, zeigt die Vorschau einen
+Hinweis, und nach dem Import steht oben, welche Monate du neu schließen solltest.
 
 > **Die App lernt mit:** Bestätigst du einen KI-Vorschlag, änderst du eine Kategorie
 > oder wird eine Schnellerfassung zugeordnet, merkt sich die App den Empfänger und
@@ -338,6 +365,11 @@ Daueraufträgen) werden genauso abgeglichen.
 ### Tab „Zuordnung & KI"
 - **Schalter:** vorhandene Buchungen abgleichen, mit Paperless abgleichen, Regeln
   anwenden.
+- **Späte Abbuchung:** pro Kategorie, wie viele Tage **nach** der Buchung die
+  Abbuchung noch kommen darf. Sub-Konto-Kategorien stehen automatisch in der Liste
+  und haben ohne Angabe **45 Tage**, alle anderen ±5 Tage. Weitere Kategorien (z. B.
+  „Rechnungskauf") lassen sich hinzufügen, **0** schaltet die späte Abbuchung für
+  eine Kategorie ab. Die Einstellung gilt nur für dieses Haushaltsbuch.
 - **Regeln:** „Wenn *Empfänger / Verwendungszweck / IBAN* enthält *…*" (optional mit
   Betragsbereich) „→ Kategorie *oder* Umbuchung", optional mit fester Beschreibung.
   Die erste passende Regel gewinnt, Groß- und Kleinschreibung spielt keine Rolle.

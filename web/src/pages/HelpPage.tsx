@@ -111,8 +111,8 @@ export default function HelpPage() {
             registriert, wird Superadmin und braucht keinen Code.
           </li>
           <li>
-            <strong>Handy-App:</strong> Beim ersten Anmelden die
-            Server-Adresse deiner Installation eintragen.
+            <strong>Handy-App:</strong> Beim ersten Anmelden die Server-Adresse
+            deiner Installation eintragen.
           </li>
           <li>
             <strong>Passwort vergessen?</strong> Link auf der Login-Seite (Reset
@@ -253,6 +253,14 @@ export default function HelpPage() {
             <strong>„Bestehende einsortieren"</strong> ordnet alte Buchungen
             einer neu markierten Kategorie nachträglich zu.
           </li>
+          <li>
+            <strong>Später abgebucht?</strong> Eine im September erfasste
+            Hotelrechnung, die erst im Oktober per PayPal oder Klarna abgebucht
+            wird, erkennt der Bank-Import (bis 45 Tage, einstellbar unter
+            Bank-Sync → „Späte Abbuchung"). Sie bleibt im September. Ist der
+            September schon geschlossen und ändert sich sein Saldo, weist die
+            App darauf hin: Schließen rückgängig machen und neu schließen.
+          </li>
         </ul>
       </Section>
 
@@ -387,7 +395,10 @@ export default function HelpPage() {
             Daueraufträgen ±7): wird{" "}
             <strong>ergänzt statt doppelt angelegt</strong> und bekommt das
             Bankdatum. Kategorie und Beschreibung bleiben deine. Falsch
-            zugeordnet? „Verknüpfung lösen".
+            zugeordnet? „Verknüpfung lösen". Bei Kategorien mit{" "}
+            <strong>später Abbuchung</strong> (z. B. Spesen) darf die Abbuchung
+            auch Wochen später kommen. Etikett „spät · 38 Tage": bitte kurz
+            prüfen.
           </li>
           <li>
             <strong>Eigenes Konto</strong>: Überweisung auf/von der IBAN eines
@@ -414,6 +425,20 @@ export default function HelpPage() {
           bei …"), nie den Zahlungsdienst selbst.
         </Callout>
         <p>
+          <strong>Von Hand verknüpfen:</strong> Wurde eine schon erfasste
+          Buchung nicht erkannt (noch später abgebucht, Betrag leicht anders
+          wegen Gebühr oder Kurs), wähle „🔗 Mit offener Buchung verknüpfen".
+          Angeboten werden offene Buchungen der letzten 180 Tage mit ähnlichem
+          Betrag (bis 10 %, mindestens 2 €). Der Betrag der Bank gilt.
+        </p>
+        <p>
+          <strong>Sub-Konto-Monat:</strong> Bei Sub-Konto-Kategorien wählst du
+          in der Vorschau den Monat. Vorgegeben ist der Monat, in dem die
+          Ausgabe angefallen ist: Monat der verknüpften Buchung, sonst Datum der
+          Paperless-Rechnung, sonst Bankdatum. Ist der Monat schon geschlossen,
+          gibt es einen Hinweis.
+        </p>
+        <p>
           <strong>Umbuchungen:</strong> Statt einer Kategorie „↔ Konto …"
           wählen, z. B. für die Kreditkartenabrechnung. Sie zählt dann nicht als
           Ausgabe. Liest du später die Kreditkarten-Datei ein, wird der
@@ -421,17 +446,19 @@ export default function HelpPage() {
         </p>
         <p>
           <strong>Tab „Zuordnung &amp; KI":</strong> Schalter für die Quellen,{" "}
-          <strong>Regeln</strong> („Empfänger / Verwendungszweck / IBAN enthält
-          …", optional Betragsbereich → Kategorie oder Umbuchung) und{" "}
-          <strong>KI-Vorschläge</strong> (standardmäßig aus): entweder Claude
-          (API-Key aus Haushalt → KI-Einstellungen, mit Haiku ca. 1 Cent pro 100
-          Buchungen) oder ein <strong>eigener KI-Server</strong> mit
-          OpenAI-kompatibler Schnittstelle (Ollama, LM Studio, vLLM …; nur
-          Admins, muss vom Haushaltsbuch-Server erreichbar sein). An die KI
-          gehen nur Betrag, Empfänger, Verwendungszweck und Kategorienamen,
-          keine IBAN und kein Kontostand. Unter <strong>„Wartung"</strong>{" "}
-          findest du „Aus bestehenden Buchungen lernen" und „Importierte
-          Buchungen löschen".
+          <strong>Späte Abbuchung</strong> (pro Kategorie, wie viele Tage nach
+          der Buchung die Abbuchung noch kommen darf; Sub-Konto-Kategorien ohne
+          Angabe 45 Tage, 0 = aus), <strong>Regeln</strong> („Empfänger /
+          Verwendungszweck / IBAN enthält …", optional Betragsbereich →
+          Kategorie oder Umbuchung) und <strong>KI-Vorschläge</strong>{" "}
+          (standardmäßig aus): entweder Claude (API-Key aus Haushalt →
+          KI-Einstellungen, mit Haiku ca. 1 Cent pro 100 Buchungen) oder ein{" "}
+          <strong>eigener KI-Server</strong> mit OpenAI-kompatibler
+          Schnittstelle (Ollama, LM Studio, vLLM …; nur Admins, muss vom
+          Haushaltsbuch-Server erreichbar sein). An die KI gehen nur Betrag,
+          Empfänger, Verwendungszweck und Kategorienamen, keine IBAN und kein
+          Kontostand. Unter <strong>„Wartung"</strong> findest du „Aus
+          bestehenden Buchungen lernen" und „Importierte Buchungen löschen".
         </p>
         <p>
           <strong>Abgleich mit Paperless:</strong> Der Import sucht zu jedem

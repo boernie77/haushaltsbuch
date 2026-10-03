@@ -1,4 +1,6 @@
 export interface Category {
+  // Sammelkonto (z.B. Spesen), siehe SubAccountsPage.
+  hasSubAccount?: boolean;
   icon: string;
   id: string;
   name: string;

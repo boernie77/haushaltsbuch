@@ -2,7 +2,8 @@
 // Reihenfolge der Quellen (erste Quelle mit Treffer gewinnt, siehe
 // routes/bankSync.js /preview):
 //   1. Vorhandene Buchung (Schnellerfassung, von Hand erfasst oder aus
-//      Dauerauftrag; gleicher Betrag, Datum im Abgleichfenster) → wird beim
+//      Dauerauftrag; gleicher Betrag, Datum im Abgleichfenster, bei
+//      Sub-Konto-Kategorien wie Spesen auch Wochen später) → wird beim
 //      Import mit dem Bankumsatz verschmolzen, Bankdatum gilt
 //   2. Regeln (bank_categorization_rules, vom User gepflegt)
 //   3. Gelerntes Merchant-Mapping (merchant_category_mappings)
@@ -17,6 +18,12 @@ const { Transaction, Category } = require("../models");
 const QUICK_ENTRY_MATCH_DAYS = 5;
 const RECURRING_MATCH_DAYS = 7;
 const MAX_MATCH_DAYS = Math.max(QUICK_ENTRY_MATCH_DAYS, RECURRING_MATCH_DAYS);
+// Späte Abbuchung: Sub-Konto-Kategorien (z.B. Spesen) werden oft erst Wochen
+// nach der Erfassung abgebucht (Hotelrechnung mit Zahlungsziel, PayPal,
+// Klarna). Pro Haushaltsbuch je Kategorie einstellbar (households.
+// "bankSyncLateMatchDays"), ohne Eintrag gilt für Sub-Konto-Kategorien 45.
+const SUB_ACCOUNT_LATE_MATCH_DAYS = 45;
+const MAX_LATE_MATCH_DAYS = 365;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const AMOUNT_TOLERANCE = 0.01;
 // Pro KI-Aufruf maximal so viele Umsätze, damit die Antwort sicher in
@@ -50,8 +57,9 @@ function txType(amount) {
   return amount < 0 ? "expense" : "income";
 }
 
-function daysBetween(a, b) {
-  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / MS_PER_DAY;
+// Tage von a nach b (positiv, wenn b später liegt).
+function signedDaysBetween(a, b) {
+  return (new Date(b).getTime() - new Date(a).getTime()) / MS_PER_DAY;
 }
 
 // ── 1. Vorhandene Buchungen (Schnellerfassung, von Hand, Dauerauftrag) ─────
@@ -64,6 +72,55 @@ function matchWindowDays(entry) {
     : QUICK_ENTRY_MATCH_DAYS;
 }
 
+// Liest households."bankSyncLateMatchDays" → { categoryId: Tage }. Ungültige
+// Einträge werden ignoriert.
+function parseLateMatchDays(raw) {
+  let parsed = {};
+  try {
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+  const result = {};
+  for (const [categoryId, days] of Object.entries(parsed || {})) {
+    const n = Number.parseInt(days, 10);
+    if (Number.isInteger(n) && n >= 0 && n <= MAX_LATE_MATCH_DAYS) {
+      result[categoryId] = n;
+    }
+  }
+  return result;
+}
+
+// Wie viele Tage nach der Buchung die Abbuchung noch kommen darf. 0 = kein
+// spätes Fenster (es gilt das normale ±5/±7-Tage-Fenster).
+function lateMatchDaysFor(category, lateMatchDays = {}) {
+  if (!category) {
+    return 0;
+  }
+  if (Object.hasOwn(lateMatchDays, category.id)) {
+    return lateMatchDays[category.id];
+  }
+  return category.hasSubAccount ? SUB_ACCOUNT_LATE_MATCH_DAYS : 0;
+}
+
+// Größtes späte Fenster, das in diesem Haushaltsbuch vorkommen kann (für das
+// Laden der Kandidaten).
+function maxLateMatchDays(lateMatchDays = {}) {
+  return Math.max(SUB_ACCOUNT_LATE_MATCH_DAYS, ...Object.values(lateMatchDays));
+}
+
+// Abgleichfenster einer vorhandenen Buchung in Tagen relativ zum Bankdatum:
+// Abbuchung bis `before` Tage vor und `after` Tage nach der Buchung. Das
+// späte Fenster gilt nur nach vorne — bezahlt wird nach der Rechnung.
+function matchWindow(entry, lateMatchDays) {
+  const base = matchWindowDays(entry);
+  const late =
+    entry.type === "transfer"
+      ? 0
+      : lateMatchDaysFor(entry.Category, lateMatchDays);
+  return { before: base, after: Math.max(base, late), base };
+}
+
 // Lädt alle Buchungen, die zu einem Bankumsatz der Datei gehören könnten
 // (keine Dauerauftrags-Vorlagen):
 // - Ausgabe/Einnahme, noch nicht mit der Bank verknüpft (externalRef NULL),
@@ -71,7 +128,9 @@ function matchWindowDays(entry) {
 // - Umbuchung VON diesem Konto, Quell-Seite noch nicht verknüpft
 // - Umbuchung AUF dieses Konto, Ziel-Seite noch nicht verknüpft
 //   (transferExternalRef NULL) — die Quell-Seite darf schon importiert sein
-function loadMatchCandidates(householdId, accountId, rows) {
+// lateMatchDays: { categoryId: Tage } (siehe parseLateMatchDays) — bestimmt,
+// wie weit vor dem ersten Umsatz der Datei noch gesucht wird.
+function loadMatchCandidates(householdId, accountId, rows, lateMatchDays = {}) {
   const dates = rows
     .map((r) => r.date)
     .filter(Boolean)
@@ -80,7 +139,9 @@ function loadMatchCandidates(householdId, accountId, rows) {
     return [];
   }
   const from = new Date(dates[0]);
-  from.setDate(from.getDate() - MAX_MATCH_DAYS);
+  from.setDate(
+    from.getDate() - Math.max(MAX_MATCH_DAYS, maxLateMatchDays(lateMatchDays))
+  );
   const to = new Date(dates.at(-1));
   to.setDate(to.getDate() + MAX_MATCH_DAYS);
   return Transaction.findAll({
@@ -106,7 +167,7 @@ function loadMatchCandidates(householdId, accountId, rows) {
     include: [
       {
         model: Category,
-        attributes: ["id", "name", "nameDE", "icon", "color"],
+        attributes: ["id", "name", "nameDE", "icon", "color", "hasSubAccount"],
       },
     ],
     order: [["date", "ASC"]],
@@ -133,7 +194,15 @@ function entrySide(entry, accountId) {
 
 // Ordnet jeder Bankzeile höchstens eine vorhandene Buchung zu und umgekehrt.
 // Bei mehreren Kandidaten gewinnt der mit dem geringsten Datumsabstand.
-function matchExistingEntries(rows, entries, skipIndexes, accountId) {
+// Liefert Map rowIndex → { entry, distance (Tage), late (außerhalb des
+// normalen Fensters, nur über "späte Abbuchung" gefunden) }.
+function matchExistingEntries(
+  rows,
+  entries,
+  skipIndexes,
+  accountId,
+  lateMatchDays = {}
+) {
   const candidates = [];
   rows.forEach((row, index) => {
     if (skipIndexes.has(index) || !row.date || typeof row.amount !== "number") {
@@ -145,9 +214,17 @@ function matchExistingEntries(rows, entries, skipIndexes, accountId) {
       const sameType = entrySide(entry, accountId) === rowSide;
       const sameAmount =
         Math.abs(Number(entry.amount) - amount) <= AMOUNT_TOLERANCE;
-      const distance = daysBetween(entry.date, row.date);
-      if (sameType && sameAmount && distance <= matchWindowDays(entry)) {
-        candidates.push({ index, entry, distance });
+      // > 0: Abbuchung nach der Buchung.
+      const offset = signedDaysBetween(entry.date, row.date);
+      const window = matchWindow(entry, lateMatchDays);
+      const inWindow = offset >= -window.before && offset <= window.after;
+      if (sameType && sameAmount && inWindow) {
+        candidates.push({
+          index,
+          entry,
+          distance: Math.abs(offset),
+          late: Math.abs(offset) > window.base,
+        });
       }
     }
   });
@@ -155,11 +232,11 @@ function matchExistingEntries(rows, entries, skipIndexes, accountId) {
 
   const matches = new Map();
   const usedEntries = new Set();
-  for (const { index, entry } of candidates) {
+  for (const { index, entry, distance, late } of candidates) {
     if (matches.has(index) || usedEntries.has(entry.id)) {
       continue;
     }
-    matches.set(index, entry);
+    matches.set(index, { entry, distance: Math.round(distance), late });
     usedEntries.add(entry.id);
   }
   return { matches, usedEntryIds: usedEntries };
@@ -500,8 +577,13 @@ module.exports = {
   DEFAULT_AI_MODEL,
   listLocalModels,
   normalizeLocalUrl,
+  AMOUNT_TOLERANCE,
+  MAX_LATE_MATCH_DAYS,
   QUICK_ENTRY_MATCH_DAYS,
+  SUB_ACCOUNT_LATE_MATCH_DAYS,
   findMatchingRule,
+  lateMatchDaysFor,
+  parseLateMatchDays,
   entrySide,
   loadMatchCandidates,
   matchExistingEntries,

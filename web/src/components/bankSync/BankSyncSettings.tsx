@@ -21,13 +21,183 @@ interface Settings {
   aiModels: { id: string; label: string }[];
   aiProvider: AiProvider;
   canEditLocalServer: boolean;
+  // Späte Abbuchung: { categoryId: Tage }; null beim Speichern = Eintrag
+  // entfernen (Standard gilt wieder).
+  lateMatchDays: Record<string, number | null>;
   localHasApiKey: boolean;
   localModel: string;
   localUrl: string;
   matchPaperless: boolean;
   matchQuickEntries: boolean;
+  maxLateMatchDays: number;
   paperlessConfigured: boolean;
   rulesEnabled: boolean;
+  subAccountLateMatchDays: number;
+}
+
+// Normales Abgleichfenster ohne späte Abbuchung (bankCategorizer.js).
+const NORMAL_MATCH_DAYS = 5;
+// Vorgabe, wenn eine weitere Kategorie hinzugefügt wird.
+const NEW_LATE_MATCH_DAYS = 30;
+
+interface LateMatchProps {
+  categories: Category[];
+  disabled: boolean;
+  onSave: (lateMatchDays: Record<string, number | null>) => void;
+  settings: Settings;
+}
+
+// Pro Kategorie: Wie viele Tage nach der Buchung darf die Abbuchung noch
+// kommen (Hotelrechnung mit Zahlungsziel, PayPal, Klarna, …)?
+function LateMatchSettings({
+  categories,
+  disabled,
+  onSave,
+  settings,
+}: LateMatchProps) {
+  const overrides = settings.lateMatchDays;
+  const hasOverride = (id: string) =>
+    overrides[id] !== null && overrides[id] !== undefined;
+  const listed = categories.filter((c) => c.hasSubAccount || hasOverride(c.id));
+  const addable = categories.filter(
+    (c) => !(c.hasSubAccount || hasOverride(c.id))
+  );
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const defaultDays = (c: Category) =>
+    c.hasSubAccount ? settings.subAccountLateMatchDays : NORMAL_MATCH_DAYS;
+
+  const save = (id: string, value: number | null) =>
+    onSave({ ...overrides, [id]: value });
+
+  const commit = (c: Category) => {
+    const raw = drafts[c.id];
+    if (raw === undefined) {
+      return;
+    }
+    setDrafts(({ [c.id]: _, ...rest }) => rest);
+    if (raw.trim() === "") {
+      // Sub-Konto: leer = Standard. Andere Kategorie: leer = entfernen.
+      save(c.id, null);
+      return;
+    }
+    const days = Number.parseInt(raw, 10);
+    if (
+      !Number.isInteger(days) ||
+      days < 0 ||
+      days > settings.maxLateMatchDays
+    ) {
+      toast.error(`Bitte 0 bis ${settings.maxLateMatchDays} Tage eingeben`);
+      return;
+    }
+    save(c.id, days);
+  };
+
+  return (
+    <div className="card space-y-3 p-4">
+      <div>
+        <h2 className="font-semibold text-gray-900 dark:text-white">
+          Späte Abbuchung
+        </h2>
+        <p className="text-gray-500 text-xs dark:text-gray-400">
+          Manche Ausgaben werden erst Wochen nach dem Erfassen abgebucht, z. B.
+          eine Hotelrechnung mit Zahlungsziel oder ein Kauf über PayPal oder
+          Klarna. Hier stellst du pro Kategorie ein, wie viele Tage nach der
+          Buchung die Abbuchung noch kommen darf, damit beide beim Import
+          verknüpft werden. Für Sub-Konto-Kategorien (z. B. Spesen) gelten ohne
+          Angabe {settings.subAccountLateMatchDays} Tage, für alle anderen ±
+          {NORMAL_MATCH_DAYS} Tage. 0 schaltet die späte Abbuchung für eine
+          Kategorie ab. Solche Treffer sind in der Vorschau als „spät“ markiert.
+          Die Ausgabe bleibt im Sub-Konto-Monat, in dem du sie erfasst hast.
+        </p>
+      </div>
+      {listed.length === 0 && (
+        <p className="text-gray-400 text-sm">
+          Noch keine Kategorie. Sub-Konto-Kategorien erscheinen hier
+          automatisch.
+        </p>
+      )}
+      <ul className="space-y-2">
+        {listed.map((c) => {
+          const value =
+            drafts[c.id] ?? (hasOverride(c.id) ? String(overrides[c.id]) : "");
+          return (
+            <li
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 px-3 py-2 text-sm dark:border-slate-800"
+              key={c.id}
+            >
+              <span className="text-gray-700 dark:text-gray-300">
+                {categoryLabel(c)}
+                {c.hasSubAccount && (
+                  <span className="ml-2 text-gray-400 text-xs">Sub-Konto</span>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                <input
+                  aria-label={`Tage für ${c.nameDE || c.name}`}
+                  className="input w-24 py-1"
+                  disabled={disabled}
+                  max={settings.maxLateMatchDays}
+                  min={0}
+                  onBlur={() => commit(c)}
+                  onChange={(e) =>
+                    setDrafts((prev) => ({ ...prev, [c.id]: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      commit(c);
+                    }
+                  }}
+                  placeholder={String(defaultDays(c))}
+                  type="number"
+                  value={value}
+                />
+                <span className="text-gray-500 text-xs">
+                  Tage nach der Buchung
+                </span>
+                {!c.hasSubAccount && (
+                  <button
+                    aria-label="Kategorie entfernen"
+                    className="text-gray-400 hover:text-red-600"
+                    disabled={disabled}
+                    onClick={() => save(c.id, null)}
+                    type="button"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {addable.length > 0 && (
+        <select
+          aria-label="Weitere Kategorie hinzufügen"
+          className="input max-w-xs"
+          disabled={disabled}
+          onChange={(e) => {
+            if (e.target.value) {
+              save(e.target.value, NEW_LATE_MATCH_DAYS);
+            }
+          }}
+          value=""
+        >
+          <option value="">+ Weitere Kategorie (z. B. Rechnungskauf)…</option>
+          {addable.map((c) => (
+            <option key={c.id} value={c.id}>
+              {categoryLabel(c)}
+            </option>
+          ))}
+        </select>
+      )}
+      {disabled && (
+        <p className="text-amber-700 text-xs dark:text-amber-400">
+          Wirkt nur, wenn „Vorhandene Buchungen abgleichen“ eingeschaltet ist.
+        </p>
+      )}
+    </div>
+  );
 }
 
 type RuleField = "any" | "counterparty" | "purpose" | "iban";
@@ -555,7 +725,7 @@ export default function BankSyncSettings({
         </p>
         <ToggleRow
           checked={settings.matchQuickEntries}
-          description="Bereits erfasste Buchungen (Schnellerfassung, von Hand oder aus Dauerauftrag) werden mit dem Bankumsatz verschmolzen statt doppelt angelegt: gleicher Betrag, Datum ±5 Tage, bei Daueraufträgen ±7 Tage. Kategorie und Beschreibung bleiben deine, Datum, Konto und Empfänger kommen von der Bank."
+          description="Bereits erfasste Buchungen (Schnellerfassung, von Hand oder aus Dauerauftrag) werden mit dem Bankumsatz verschmolzen statt doppelt angelegt: gleicher Betrag, Datum ±5 Tage, bei Daueraufträgen ±7 Tage, bei später Abbuchung (siehe unten) auch Wochen danach. Kategorie und Beschreibung bleiben deine, Datum, Konto und Empfänger kommen von der Bank."
           label="Vorhandene Buchungen abgleichen"
           onChange={(v) => updateSetting({ matchQuickEntries: v })}
         />
@@ -577,6 +747,13 @@ export default function BankSyncSettings({
           onChange={(v) => updateSetting({ rulesEnabled: v })}
         />
       </div>
+
+      <LateMatchSettings
+        categories={categories}
+        disabled={!settings.matchQuickEntries}
+        onSave={(lateMatchDays) => updateSetting({ lateMatchDays })}
+        settings={settings}
+      />
 
       <div className="card p-4">
         <h2 className="mb-1 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
