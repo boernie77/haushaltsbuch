@@ -8,6 +8,7 @@ Die FinTS-Produktregistrierungsnummer kommt aus FINTS_PRODUCT_ID (Pflicht,
 vertraulich, nie ins Repo). Ohne sie meldet /health configured=false.
 """
 
+import logging
 import os
 import secrets
 import threading
@@ -22,6 +23,36 @@ from pydantic import BaseModel
 PRODUCT_ID = os.environ.get("FINTS_PRODUCT_ID", "").strip()
 PRODUCT_VERSION = os.environ.get("FINTS_PRODUCT_VERSION", "1.0")
 SESSION_TTL_SECONDS = 600
+
+class BankMessages(logging.Handler):
+    """Sammelt die Antwortcodes der Bank ("Dialog response: 9xxx - Text").
+
+    python-fints loggt nur Codes und Klartext-Meldungen der Bank, keine PIN.
+    Ohne diese Meldungen sieht man bei Fehlern nur Folgefehler wie
+    "Could not find system_id".
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.messages = []
+        self.lock = threading.Lock()
+
+    def emit(self, record):
+        text = record.getMessage()
+        if text.startswith("Dialog response:"):
+            with self.lock:
+                self.messages = (self.messages + [text[len("Dialog response:") :].strip()])[-15:]
+
+    def take(self):
+        with self.lock:
+            out, self.messages = self.messages, []
+        return out
+
+
+bank_messages = BankMessages()
+_fints_logger = logging.getLogger("fints.client")
+_fints_logger.setLevel(logging.INFO)
+_fints_logger.addHandler(bank_messages)
 
 app = FastAPI(title="Haushaltsbuch FinTS")
 sessions: dict = {}
@@ -199,6 +230,9 @@ def done(sid, transactions):
 
 
 def error(message, code="error"):
+    messages = bank_messages.take()
+    if messages:
+        message = f"{message} — Meldungen der Bank: {' | '.join(messages)}"
     return {"status": "error", "code": code, "error": message}
 
 
@@ -251,6 +285,7 @@ def fetch(req: FetchRequest):
     if not PRODUCT_ID:
         return error("FINTS_PRODUCT_ID ist nicht konfiguriert.", "not_configured")
     cleanup()
+    bank_messages.take()
     try:
         started, early = start(
             (
