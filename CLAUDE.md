@@ -51,6 +51,7 @@ Budget-App für Haushalte mit Web, Mobile (iOS/Android) und KI-OCR-Quittungsanal
 │           ├── paperlessClient.js  getPaperlessClient + fetchAllPages (geteilt)
 │           ├── anthropicKey.js     resolveApiKey (geteilt von OCR + Bank-Sync)
 │           └── seedCategories.js   18 Systemkategorien (findOrCreate, läuft bei jedem Start)
+├── fints-service/                  Python-Sidecar (FastAPI + python-fints), siehe „FinTS-Abruf“
 ├── web/
 │   └── src/
 │       ├── pages/                  Alle Seiten
