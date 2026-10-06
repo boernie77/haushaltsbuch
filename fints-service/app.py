@@ -37,11 +37,15 @@ class BankMessages(logging.Handler):
         self.messages = []
         self.lock = threading.Lock()
 
+    def add(self, text):
+        with self.lock:
+            if text not in self.messages:
+                self.messages = (self.messages + [text])[-15:]
+
     def emit(self, record):
         text = record.getMessage()
         if text.startswith("Dialog response:"):
-            with self.lock:
-                self.messages = (self.messages + [text[len("Dialog response:") :].strip()])[-15:]
+            self.add(text[len("Dialog response:") :].strip())
 
     def take(self):
         with self.lock:
@@ -92,8 +96,24 @@ class Session:
         self.lock = threading.Lock()
 
 
+class LoggingClient(FinTS3PinTanClient):
+    """Merkt sich alle Antwortcodes der Bank.
+
+    python-fints loggt Antworten des ersten Dialogs (Synchronisierung) nicht,
+    genau dort lehnt die Bank aber bei falschen Zugangsdaten oder unbekannter
+    Produkt-ID ab. Folge wäre nur "Could not find system_id".
+    """
+
+    def process_response_message(self, dialog, message, internal_send=True):
+        for kind in ("HIRMG", "HIRMS"):
+            for seg in message.find_segments(kind):
+                for r in seg.responses:
+                    bank_messages.add(f"{r.code} - {r.text}")
+        return super().process_response_message(dialog, message, internal_send)
+
+
 def new_client(c: Connection):
-    return FinTS3PinTanClient(
+    return LoggingClient(
         c.bankCode,
         c.login,
         c.pin,

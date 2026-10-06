@@ -497,7 +497,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.54** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.55** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
