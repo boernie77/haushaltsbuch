@@ -39,6 +39,10 @@ jobs:
             if [ -n "${{ secrets.ENCRYPTION_KEY }}" ]; then
               set_env ENCRYPTION_KEY "${{ secrets.ENCRYPTION_KEY }}"
             fi
+            # FinTS-Registrierungsnummer (vertraulich): nur setzen, wenn das Secret existiert.
+            if [ -n "${{ secrets.FINTS_PRODUCT_ID }}" ]; then
+              set_env FINTS_PRODUCT_ID "${{ secrets.FINTS_PRODUCT_ID }}"
+            fi
             set_env ANTHROPIC_API_KEY "${{ secrets.ANTHROPIC_API_KEY }}"
             set_env ALLOWED_ORIGINS "https://haushalt.bernauer24.com"
             set_env APP_URL "https://haushalt.bernauer24.com"

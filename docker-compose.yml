@@ -46,10 +46,21 @@ services:
       LEGAL_HOSTING: ${LEGAL_HOSTING:-}
       LEGAL_AUTHORITY: ${LEGAL_AUTHORITY:-}
       SOURCE_URL: ${SOURCE_URL:-}
+      FINTS_SERVICE_URL: http://fints:8000
     volumes:
       - ./data/uploads:/app/uploads
     ports:
       - "3001:3000"
+
+  # FinTS-Sidecar (Bank-Sync per FinTS/HBCI). Nicht nach außen veröffentlicht.
+  # Ohne FINTS_PRODUCT_ID (eigene Registrierungsnummer, siehe README) bleibt
+  # die Funktion ausgeschaltet; der Dienst läuft dann nur leer mit.
+  fints:
+    build: ./fints-service
+    container_name: haushaltsbuch-fints
+    restart: unless-stopped
+    environment:
+      FINTS_PRODUCT_ID: ${FINTS_PRODUCT_ID:-}
 
   web:
     build:

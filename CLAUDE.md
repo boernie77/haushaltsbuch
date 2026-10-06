@@ -496,7 +496,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.52** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.53** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -559,6 +559,12 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 **Aktueller Stand** (Vorschlagsquellen, Abgleich vorhandener Buchungen, Umbuchungen, KI, Paperless, Schnellerfassung, Endpoints) → Abschnitt „Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)“ am Ende. Die frühere ±3-Tage-Warnung `possibleDuplicate` gibt es seit v1.0.23 nicht mehr (ersetzt durch Verschmelzen vorhandener Buchungen).
 
 **Bekannte Einschränkung:** CAMT.052 (von Sparda-Bank Nürnberg ebenfalls angeboten) wird nicht geparst — bewusst nicht umgesetzt, MT940 deckt den Anwendungsfall ab.
+
+## FinTS-Abruf (seit v1.0.53, Migration 038) — ungetestet gegen echte Bank
+`fints-service/` (Python, FastAPI + python-fints 4.2.x, Compose-Service `fints`, nicht nach außen veröffentlicht) spricht FinTS/PIN-TAN. Backend `routes/fints.js` (`/api/fints/*`: status, connection GET/PUT/DELETE, tan-methods, fetch, tan) speichert Zugang pro Konto in `fints_connections` (PIN optional, verschlüsselt) und schickt das Ergebnis durch `buildPreviewPayload` (aus `bankSync.js` extrahiert, auch vom Datei-Upload genutzt) → gleiche Vorschau/Import wie CSV, `format: "fints"`. Web: `components/bankSync/FintsFetch.tsx` im Import-Tab (nur sichtbar, wenn `GET /api/fints/status` → `available`). Ohne `FINTS_PRODUCT_ID` (Env am fints-Container, vertraulich, siehe oben) ist die Funktion aus.
+- TAN-Dialog: Sidecar hält den Client im Speicher (1 Worker, TTL 10 min), Sitzungs-ID wandert über das Backend (an User gebunden) zum Frontend. Entkoppelte Push-TAN: „Weiter“ mit leerer TAN. photoTAN-Grafik als Base64.
+- Zeitraum: ab letztem `bank_imports.dateTo` − 7 Tage, sonst 90 Tage.
+- Offen: Cron-Abruf (braucht gespeicherte PIN + regelmäßige TAN-Erneuerung, Erinnerungsmail), Bankenliste mit FinTS-URLs, TAN-Medium-Auswahl, Dedup gegen CSV-Importe (Verwendungszweck-Texte unterscheiden sich → anderer `externalRef`), README-Abschnitt für Selbsthoster.
 
 ## Bank-Sync-Feature (v1.0.13–v1.0.31, Migrationen 028–033)
 Kontoumsätze per **CSV/MT940-Datei** importieren (kein FinTS: bräuchte PSD2-Produktregistrierung). Getestet: Sparda-Bank Nürnberg (CSV/MT940), ING (CSV). Web: `BankSyncPage.tsx` (Tabs „Import“ / „Zuordnung & KI“ via `?tab=settings`), Komponenten in `web/src/components/bankSync/`.

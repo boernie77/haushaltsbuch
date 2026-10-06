@@ -760,6 +760,45 @@ router.post("/bootstrap-mappings", auth, async (req, res) => {
   }
 });
 
+// Gemeinsamer Teil der Vorschau (Datei-Upload und FinTS-Abruf): markiert
+// bereits importierte Zeilen und ergänzt Vorschläge, offene Buchungen und
+// geschlossene Perioden.
+async function buildPreviewPayload({ householdId, accountId, userId, rows }) {
+  const annotatedRows = await Promise.all(
+    rows.map(async (tx) => ({
+      ...tx,
+      alreadyImported: await isExactDuplicate(accountId, tx),
+    }))
+  );
+
+  const household = await Household.findByPk(householdId);
+  const { suggestions, aiStatus, paperlessStatus, unmatchedQuickEntries } =
+    await buildSuggestions({
+      household,
+      userId,
+      accountId,
+      rows: annotatedRows,
+    });
+  const openEntries = await loadOpenEntries(
+    householdId,
+    accountId,
+    annotatedRows
+  );
+  const settledPeriods = [...(await loadSettledPeriods(householdId))];
+
+  return {
+    rows: annotatedRows.map((row, i) => ({
+      ...row,
+      suggestion: suggestions[i],
+    })),
+    aiStatus,
+    paperlessStatus,
+    unmatchedQuickEntries,
+    openEntries,
+    settledPeriods,
+  };
+}
+
 // POST /api/bank-sync/preview — Datei hochladen, Format erkennen, bei CSV
 // Spalten-Mapping vorschlagen. Markiert Zeilen, die vermutlich bereits
 // importiert oder manuell erfasst wurden. Importiert noch nichts.
@@ -804,42 +843,13 @@ router.post("/preview", auth, upload.single("file"), async (req, res) => {
       rows = applyCsvMapping(preview.rawRows, suggestedMapping);
     }
 
-    const annotatedRows = await Promise.all(
-      rows.map(async (tx) => ({
-        ...tx,
-        alreadyImported: await isExactDuplicate(accountId, tx),
-      }))
-    );
-
-    const household = await Household.findByPk(householdId);
-    const { suggestions, aiStatus, paperlessStatus, unmatchedQuickEntries } =
-      await buildSuggestions({
-        household,
-        userId: req.user.id,
-        accountId,
-        rows: annotatedRows,
-      });
-    const openEntries = await loadOpenEntries(
+    const payload = await buildPreviewPayload({
       householdId,
       accountId,
-      annotatedRows
-    );
-    const settledPeriods = [...(await loadSettledPeriods(householdId))];
-
-    res.json({
-      format,
-      headers,
-      rows: annotatedRows.map((row, i) => ({
-        ...row,
-        suggestion: suggestions[i],
-      })),
-      suggestedMapping,
-      aiStatus,
-      paperlessStatus,
-      unmatchedQuickEntries,
-      openEntries,
-      settledPeriods,
+      userId: req.user.id,
+      rows,
     });
+    res.json({ format, headers, suggestedMapping, ...payload });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: `Fehler: ${err.message}` });
@@ -1835,3 +1845,6 @@ router.put("/quick-entries/:id/dismiss", auth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildPreviewPayload = buildPreviewPayload;
+module.exports.checkAccess = checkAccess;
+module.exports.checkWriteAccess = checkWriteAccess;

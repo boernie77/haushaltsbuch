@@ -250,6 +250,23 @@ export const bankSyncAPI = {
     api.put(`/bank-sync/quick-entries/${id}/dismiss`),
 };
 
+export const fintsAPI = {
+  status: () => api.get("/fints/status"),
+  getConnection: (householdId: string, accountId: string) =>
+    api.get("/fints/connection", { params: { householdId, accountId } }),
+  saveConnection: (body: Record<string, unknown>) =>
+    api.put("/fints/connection", body),
+  deleteConnection: (householdId: string, accountId: string) =>
+    api.delete("/fints/connection", { params: { householdId, accountId } }),
+  tanMethods: (body: Record<string, unknown>) =>
+    api.post("/fints/tan-methods", body),
+  // Bank-Dialoge mit Push-TAN dauern; Timeout wie bei der Vorschau.
+  fetch: (body: Record<string, unknown>) =>
+    api.post("/fints/fetch", body, { timeout: BANK_SYNC_PREVIEW_TIMEOUT_MS }),
+  sendTan: (body: Record<string, unknown>) =>
+    api.post("/fints/tan", body, { timeout: BANK_SYNC_PREVIEW_TIMEOUT_MS }),
+};
+
 export const calendarAPI = {
   get: (householdId: string, year: number, month: number) =>
     api.get("/calendar", { params: { householdId, year, month } }),

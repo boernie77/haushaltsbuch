@@ -7,6 +7,7 @@ const ENCRYPTED_FIELDS = [
   ["Household", ["anthropicApiKey", "bankSyncLocalApiKey"]],
   ["PaperlessConfig", ["apiToken"]],
   ["BackupConfig", ["sftpPassword"]],
+  ["FintsConnection", ["pin"]],
   ["GlobalSettings", ["anthropicApiKey", "sshPrivateKey"]],
 ];
 

@@ -420,6 +420,38 @@ const BackupConfig = sequelize.define(
   { tableName: "backup_configs", timestamps: true }
 );
 
+// ── FintsConnection ───────────────────────────────────────────────────────────
+// FinTS-Zugang pro Konto. PIN optional, verschlüsselt (ENCRYPTED_FIELDS).
+const FintsConnection = sequelize.define(
+  "FintsConnection",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    householdId: { type: DataTypes.UUID, allowNull: false },
+    accountId: { type: DataTypes.UUID, allowNull: false, unique: true },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    bankCode: { type: DataTypes.TEXT, allowNull: false },
+    fintsUrl: { type: DataTypes.TEXT, allowNull: false },
+    loginName: { type: DataTypes.TEXT, allowNull: false },
+    pin: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        return decrypt(this.getDataValue("pin"));
+      },
+      set(v) {
+        this.setDataValue("pin", encrypt(v));
+      },
+    },
+    tanMethod: { type: DataTypes.TEXT, allowNull: true },
+    tanMedium: { type: DataTypes.TEXT, allowNull: true },
+  },
+  { tableName: "fints_connections", timestamps: true }
+);
+
 // ── GlobalSettings ────────────────────────────────────────────────────────────
 // Single-row table (id = 'global') for app-wide settings managed by superadmin
 const GlobalSettings = sequelize.define(
@@ -812,6 +844,7 @@ module.exports = {
   GlobalSettings,
   InviteCode,
   BackupConfig,
+  FintsConnection,
   MonthlyFixedSnapshot,
   Account,
   SubAccountSettlement,

@@ -39,6 +39,7 @@ app.use("/api/accounts", require("./src/routes/accounts"));
 app.use("/api/sub-accounts", require("./src/routes/subAccounts"));
 app.use("/api/calendar", require("./src/routes/calendar"));
 app.use("/api/bank-sync", require("./src/routes/bankSync"));
+app.use("/api/fints", require("./src/routes/fints"));
 app.use("/api/reports", require("./src/routes/reports").router);
 
 // Angaben des Betreibers dieser Installation für Impressum/Datenschutz

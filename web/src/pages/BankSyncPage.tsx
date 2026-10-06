@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useSearchParams } from "react-router-dom";
 import BankSyncSettings from "../components/bankSync/BankSyncSettings";
+import FintsFetch from "../components/bankSync/FintsFetch";
 import ImportHistory from "../components/bankSync/ImportHistory";
 import TargetSelect from "../components/bankSync/TargetSelect";
 import {
@@ -340,7 +341,7 @@ export default function BankSyncPage() {
   const [bootstrapping, setBootstrapping] = useState(false);
   const [deletingImported, setDeletingImported] = useState(false);
 
-  const [format, setFormat] = useDraftState<"csv" | "mt940" | null>(
+  const [format, setFormat] = useDraftState<"csv" | "mt940" | "fints" | null>(
     "format",
     null
   );
@@ -977,6 +978,18 @@ export default function BankSyncPage() {
                 )}
               </div>
             </div>
+
+            {currentHousehold && accountId && (
+              <FintsFetch
+                accountId={accountId}
+                householdId={currentHousehold.id}
+                onResult={(data, label) => {
+                  setFile(null);
+                  setFileName(label);
+                  applyPreviewResult(data);
+                }}
+              />
+            )}
 
             <button
               className="btn-secondary flex items-center gap-2 disabled:opacity-50"
