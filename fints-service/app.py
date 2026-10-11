@@ -57,10 +57,12 @@ class BankMessages(logging.Handler):
     def __init__(self):
         super().__init__(level=logging.INFO)
         self.messages = []
-        self.lock = threading.Lock()
+        # NICHT self.lock: logging.Handler benutzt dieses Attribut selbst
+        # (RLock). Überschreiben führte zum Deadlock beim Loggen.
+        self.messages_lock = threading.Lock()
 
     def add(self, text):
-        with self.lock:
+        with self.messages_lock:
             if text not in self.messages:
                 self.messages = (self.messages + [text])[-15:]
 
@@ -70,7 +72,7 @@ class BankMessages(logging.Handler):
             self.add(text[len("Dialog response:") :].strip())
 
     def take(self):
-        with self.lock:
+        with self.messages_lock:
             out, self.messages = self.messages, []
         return out
 
