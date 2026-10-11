@@ -192,6 +192,12 @@ def tan_methods(client):
                     mechanisms[p.security_function] = p
     for code, m in mechanisms.items():
         methods.append({"code": code, "name": getattr(m, "name", code)})
+    # Erlaubte Verfahren, zu denen python-fints keine Parameter lesen kann
+    # (ING: nur HITANS in Version 1) trotzdem anbieten, mit der Kennung.
+    known = {m["code"] for m in methods}
+    for code in client.allowed_security_functions or []:
+        if code not in known:
+            methods.append({"code": code, "name": f"Verfahren {code} (von der Bank gemeldet)"})
     return methods
 
 

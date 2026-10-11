@@ -1,6 +1,6 @@
 {
   "name": "haushaltsbuch-web",
-  "version": "1.0.73",
+  "version": "1.0.74",
   "type": "module",
   "scripts": {
     "dev": "vite",
