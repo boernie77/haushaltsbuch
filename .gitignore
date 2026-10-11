@@ -29,7 +29,7 @@ web-build/
 
 # Docker
 docker-compose.override.yml
-data/
+/data/
 
 # OS
 .DS_Store
