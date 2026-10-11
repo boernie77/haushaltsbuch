@@ -54,6 +54,7 @@ interface Probe {
 
 const EMPTY_FORM = {
   bankCode: "",
+  bankName: "",
   fintsUrl: "",
   loginName: "",
   pin: "",
@@ -93,7 +94,6 @@ export default function FintsFetch({
   const [probe, setProbe] = useState<Probe | null>(null);
   const [bankQuery, setBankQuery] = useState("");
   const [bankHits, setBankHits] = useState<BankHit[]>([]);
-  const [bankName, setBankName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,6 +129,7 @@ export default function FintsFetch({
       connection
         ? {
             bankCode: connection.bankCode,
+            bankName: connection.bankName || "",
             fintsUrl: connection.fintsUrl,
             loginName: connection.loginName,
             pin: "",
@@ -139,7 +140,6 @@ export default function FintsFetch({
         : EMPTY_FORM
     );
     setMethods([]);
-    setBankName(connection?.bankName || "");
     setEditing(true);
   };
 
@@ -180,8 +180,12 @@ export default function FintsFetch({
   };
 
   const pickBank = (b: BankHit) => {
-    setForm((f) => ({ ...f, bankCode: b.blz, fintsUrl: b.url }));
-    setBankName(b.name);
+    setForm((f) => ({
+      ...f,
+      bankCode: b.blz,
+      bankName: b.name,
+      fintsUrl: b.url,
+    }));
     setBankQuery("");
     setBankHits([]);
   };
@@ -451,11 +455,6 @@ export default function FintsFetch({
               placeholder="z. B. Sparda oder 76090500"
               value={bankQuery}
             />
-            {bankName && (
-              <p className="mt-1 text-gray-600 text-xs dark:text-gray-300">
-                Gewählt: <strong>{bankName}</strong>
-              </p>
-            )}
             {bankHits.length > 0 && (
               <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800">
                 {bankHits.map((b) => (
@@ -473,6 +472,9 @@ export default function FintsFetch({
             )}
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {field("Bankname", "bankName", {
+              placeholder: "wird bei der Suche ausgefüllt",
+            })}
             {field("Bankleitzahl", "bankCode", { placeholder: "12345678" })}
             {field("FinTS-Adresse (https://…)", "fintsUrl", {
               placeholder: "https://fints.beispielbank.de/fints",

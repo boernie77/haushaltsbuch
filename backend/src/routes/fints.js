@@ -144,7 +144,8 @@ function connectionJson(c) {
   return c
     ? {
         bankCode: c.bankCode,
-        bankName: BANKS.find((b) => b.blz === c.bankCode)?.name || null,
+        bankName:
+          c.bankName || BANKS.find((b) => b.blz === c.bankCode)?.name || null,
         fintsUrl: c.fintsUrl,
         loginName: c.loginName,
         hasPin: Boolean(c.pin),
@@ -265,6 +266,7 @@ router.put("/connection", auth, async (req, res) => {
     }
     const {
       bankCode,
+      bankName,
       fintsUrl,
       loginName,
       pin,
@@ -287,6 +289,7 @@ router.put("/connection", auth, async (req, res) => {
       accountId: ctx.accountId,
       userId: req.user.id,
       bankCode: String(bankCode).replace(/\s/g, ""),
+      bankName: bankName ? String(bankName).trim() : null,
       fintsUrl: String(fintsUrl).trim(),
       loginName: String(loginName).trim(),
       tanMethod: tanMethod || null,

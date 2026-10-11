@@ -434,6 +434,7 @@ const FintsConnection = sequelize.define(
     accountId: { type: DataTypes.UUID, allowNull: false, unique: true },
     userId: { type: DataTypes.UUID, allowNull: true },
     bankCode: { type: DataTypes.TEXT, allowNull: false },
+    bankName: { type: DataTypes.TEXT, allowNull: true },
     fintsUrl: { type: DataTypes.TEXT, allowNull: false },
     loginName: { type: DataTypes.TEXT, allowNull: false },
     pin: {

@@ -1,6 +1,6 @@
 {
   "name": "haushaltsbuch-backend",
-  "version": "1.0.67",
+  "version": "1.0.68",
   "description": "Haushaltsbuch Backend API",
   "main": "server.js",
   "scripts": {
