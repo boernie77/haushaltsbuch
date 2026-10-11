@@ -21,7 +21,7 @@ import xml.etree.ElementTree as ET
 
 import requests
 from fastapi import FastAPI
-from fints.client import FinTS3PinTanClient, NeedTANResponse
+from fints.client import ING_BANK_IDENTIFIER, FinTS3PinTanClient, NeedTANResponse
 from fints.exceptions import FinTSUnsupportedOperation
 from fints.formals import SupportedMessageTypes
 from fints.segments.statement import HKCAZ1
@@ -139,6 +139,11 @@ class LoggingClient(FinTS3PinTanClient):
             for seg in message.find_segments(kind):
                 for r in seg.responses:
                     bank_messages.add(f"{r.code} - {r.text}")
+                    # python-fints übernimmt die erlaubten TAN-Verfahren (3920)
+                    # bei ING bewusst nicht → Liste bliebe leer. Nur die Liste
+                    # setzen, die Auswahl trifft weiterhin der Nutzer.
+                    if r.code == "3920" and self.bank_identifier == ING_BANK_IDENTIFIER:
+                        self.allowed_security_functions = list(r.parameters)
         return super().process_response_message(dialog, message, internal_send)
 
 
