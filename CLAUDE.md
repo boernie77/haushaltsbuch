@@ -497,7 +497,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.74** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.75** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -584,6 +584,7 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 - **v1.0.71 (ING):** ING nennt die erlaubten TAN-Verfahren schon in der anonymen Anfrage nicht (`POST /tan-methods` lieferte 200 mit leerer Liste) → `tan_methods()` bietet dann alle Verfahren aus den Bankparametern (HITANS) an; UI meldet leere Liste per Toast. Erlaubte Auswahl bei ING damit ungeprüft.
 - **v1.0.72 (ING):** ING liefert auch die Bankparameter (HITANS) erst im angemeldeten Dialog → `list_methods()` meldet sich bei leerer Liste einmal mit dem Einschritt-Verfahren an (`discover_via_login`, ohne TAN/Umsätze) und liest 3920/BPD aus. Heißt: „TAN-Verfahren laden“ und „Verbindung testen" können bei ING ein echter Login-Versuch sein (Hinweis im UI). python-fints-Maintainer testet nur Banken, bei denen er Konten hat → ING-Verhalten ist reverse-engineered.
 - **v1.0.74 (ING, Log-Befund 2026-10-11):** Nach der Einschritt-Anmeldung meldet ING `3920` → erlaubte Funktion nur **'900'**, Bankparameter nur **HITANS Version 1** (python-fints kennt ab v2 → `get_tan_mechanisms()` leer). `tan_methods()` hängt erlaubte Codes ohne lesbare Parameter als „Verfahren 900 (von der Bank gemeldet)“ an. Offen: ob der Abruf mit '900' funktioniert (`_get_tan_segment` braucht Parameter → evtl. KeyError, dann HKTAN v1 nachbilden oder Einschritt '999' für Umsätze testen).
+- **v1.0.75 (ING):** Test mit Verfahren '900': Login → `9010 Ungültiger Signaturaufbau` (Zwei-Schritt-Signatur mit 900 passt nicht). Einschritt-Login (kein Verfahren gewählt = '999') klappte. Deshalb bietet `tan_methods()` bei nicht lesbaren Verfahren zusätzlich „Einschritt – nur PIN (999)“ an (steht vor den unlesbaren). Ob ING damit Konten/Umsätze ohne TAN liefert: offen.
 - **Offene Punkte (Stand 2026-10-11, v1.0.63), in Reihenfolge:**
   1. **Doppelte Buchungen FinTS↔CSV** beobachten (anderer Verwendungszweck → anderer `externalRef`); bei Bedarf Abgleich angleichen.
   2. **Cron-Abruf** (braucht gespeicherte PIN, Entscheidung Christian steht aus; Erinnerungsmail wenn TAN-Freigabe erneuert werden muss).

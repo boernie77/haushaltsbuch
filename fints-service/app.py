@@ -195,9 +195,14 @@ def tan_methods(client):
     # Erlaubte Verfahren, zu denen python-fints keine Parameter lesen kann
     # (ING: nur HITANS in Version 1) trotzdem anbieten, mit der Kennung.
     known = {m["code"] for m in methods}
-    for code in client.allowed_security_functions or []:
-        if code not in known:
-            methods.append({"code": code, "name": f"Verfahren {code} (von der Bank gemeldet)"})
+    unreadable = [c for c in (client.allowed_security_functions or []) if c not in known]
+    if unreadable and "999" not in known:
+        # Einschritt (nur PIN): ohne lesbare Parameter der sicherste Versuch,
+        # die Anmeldung funktioniert damit (ING: Zwei-Schritt "900" wird mit
+        # 9010 "Ungültiger Signaturaufbau" abgelehnt).
+        methods.insert(0, {"code": "999", "name": "Einschritt – nur PIN (999)"})
+    for code in unreadable:
+        methods.append({"code": code, "name": f"Verfahren {code} (von der Bank gemeldet, kann scheitern)"})
     return methods
 
 

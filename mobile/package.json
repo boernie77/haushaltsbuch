@@ -1,6 +1,6 @@
 {
   "name": "haushaltsbuch-mobile",
-  "version": "1.0.74",
+  "version": "1.0.75",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
