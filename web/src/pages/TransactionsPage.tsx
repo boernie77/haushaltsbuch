@@ -1629,7 +1629,7 @@ export default function TransactionsPage() {
           onClick={() => setMoveDialog(null)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 font-bold text-gray-900 text-lg dark:text-white">
@@ -1716,7 +1716,7 @@ export default function TransactionsPage() {
       {/* Paperless Upload Dialog */}
       {paperlessDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
                 <FileText className="text-[var(--primary)]" size={18} /> Zu
@@ -1920,7 +1920,7 @@ export default function TransactionsPage() {
           onClick={() => setShowCategoryModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
