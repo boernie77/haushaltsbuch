@@ -10,6 +10,7 @@ vertraulich, nie ins Repo). Ohne sie meldet /health configured=false.
 
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -22,6 +23,8 @@ import requests
 from fastapi import FastAPI
 from fints.client import FinTS3PinTanClient, NeedTANResponse
 from fints.exceptions import FinTSUnsupportedOperation
+from fints.formals import SupportedMessageTypes
+from fints.segments.statement import HKCAZ1
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -263,7 +266,10 @@ def camt_to_rows(streams):
                     if _local(u.tag) == "Ustrd" and u.text
                 ]
                 side = "Dbtr" if credit else "Cdtr"
-                name = _text(details, "RltdPties", side, "Nm")
+                # camt.052.001.08: Name unter Pty/Nm, ältere Versionen direkt Nm.
+                name = _text(details, "RltdPties", side, "Nm") or _text(
+                    details, "RltdPties", side, "Pty", "Nm"
+                )
                 iban = _text(details, "RltdPties", side + "Acct", "Id", "IBAN")
             purpose = " ".join(purpose_parts) or _text(ntry, "AddtlNtryInf")
             rows.append(
@@ -278,13 +284,54 @@ def camt_to_rows(streams):
     return rows
 
 
+CAMT_PATTERN = re.compile(r"urn:iso:std:iso:20022:tech:xsd:camt\.052\.001\.(\d+)")
+DEFAULT_CAMT = "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"
+
+
+def pick_camt_type(client):
+    """camt.052-Version, die die Bank laut BPD (HICAZS) zulässt.
+
+    python-fints fragt fest camt.052.001.02 an; Sparda lehnt das mit 9010
+    "camt-Nachricht nicht zugelassen" ab und erlaubt nur .08.
+    """
+    found = set()
+    for seg in client.bpd.find_segments("HICAZS"):
+        found.update(CAMT_PATTERN.findall(repr(seg)))
+    if not found:
+        return DEFAULT_CAMT
+    best = sorted(found, key=int)[-1]
+    chosen = f"urn:iso:std:iso:20022:tech:xsd:camt.052.001.{best}"
+    log.info("camt-Version laut BPD: %s (verfügbar: %s)", chosen, sorted(found))
+    return chosen
+
+
+def get_transactions_camt(client, account, start, end):
+    """Wie FinTS3PinTanClient.get_transactions_xml, aber mit passender camt-Version."""
+    camt_type = pick_camt_type(client)
+    with client._get_dialog() as dialog:
+        hkcaz = client._find_highest_supported_command(HKCAZ1)
+        return client._fetch_with_touchdowns(
+            dialog,
+            lambda touchdown: hkcaz(
+                account=hkcaz._fields["account"].type.from_sepa_account(account),
+                all_accounts=False,
+                date_start=start,
+                date_end=end,
+                touchdown_point=touchdown,
+                supported_camt_messages=SupportedMessageTypes([camt_type]),
+            ),
+            FinTS3PinTanClient._response_handler_get_transactions_xml,
+            "HICAZ",
+        )
+
+
 def fetch_transactions(sess):
     """MT940 (HKKAZ), sonst camt (HKCAZ) — Sparda & Co. bieten nur camt an."""
     try:
         return sess.client.get_transactions(sess.account, sess.date_from, sess.date_to)
     except FinTSUnsupportedOperation:
         log.info("Bank bietet kein HKKAZ (MT940), verwende HKCAZ (camt.052)")
-        return sess.client.get_transactions_xml(sess.account, sess.date_from, sess.date_to)
+        return get_transactions_camt(sess.client, sess.account, sess.date_from, sess.date_to)
 
 
 def run(sid, sess, tan):

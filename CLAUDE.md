@@ -497,7 +497,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.60** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.61** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -572,6 +572,7 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 - **v1.0.58:** Sidecar setzt Bank-Timeout (15 s/120 s; python-fints hat keinen, Abruf hing sonst ewig), `FINTS_DEBUG=1` (Env am fints-Container) loggt die Nachrichten mit der Bank (PIN maskiert), tan-methods-Timeout im Web 3 min.
 - **v1.0.59:** Deadlock im Sidecar behoben: `BankMessages` (logging.Handler) überschrieb `self.lock` (Handler-RLock) mit einem Lock → Hänger direkt nach dem Laden der Konten. Lehre: bei Handler-Subklassen nie `self.lock` benutzen. Login mit Sparda funktioniert (PIN gültig, SCA für Init nicht nötig, Zugangsname = „Sparda-NetKey oder Alias“).
 - **v1.0.60:** Sparda-Bank Nürnberg bietet nur **HKCAZ (camt.052.001.02)**, kein HKKAZ (MT940) → Sidecar fällt bei `FinTSUnsupportedOperation` auf `get_transactions_xml` zurück und parst die XML selbst (`camt_to_rows`: Ntry → Datum/Betrag/Verwendungszweck/Gegenpartei, nur gebuchte Umsätze). Parser nur mit Beispiel-XML getestet.
+- **v1.0.61:** Sparda lehnte camt.052.001.02 mit 9010 ab (python-fints fragt fest .02 an); HICAZS der Bank nennt .08 → `get_transactions_camt` wählt die Version aus der BPD (`pick_camt_type`) und baut den HKCAZ selbst (private python-fints-APIs, daher auf 4.2.x gepinnt). Parser kennt Name unter `Pty/Nm` (camt .08).
 - **Teststand 2026-10-11:** 9078 weg (Nummer bei Sparda angekommen), erst falsche PIN (9942), mit neuer PIN dauert der Abruf ~30 s und endet mit „Abruf fehlgeschlagen“ ohne Servertext → Ursache offen (vermutlich Proxy-Timeout oder Dialog-Problem), mit v1.0.57 per Logs klären.
 - Offen: Cron-Abruf (braucht gespeicherte PIN + regelmäßige TAN-Erneuerung, Erinnerungsmail), Bankenliste mit FinTS-URLs, TAN-Medium-Auswahl, Dedup gegen CSV-Importe (Verwendungszweck-Texte unterscheiden sich → anderer `externalRef`), README-Abschnitt für Selbsthoster.
 
