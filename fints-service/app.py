@@ -16,9 +16,12 @@ import time
 from datetime import date
 from typing import Optional
 
+import xml.etree.ElementTree as ET
+
 import requests
 from fastapi import FastAPI
 from fints.client import FinTS3PinTanClient, NeedTANResponse
+from fints.exceptions import FinTSUnsupportedOperation
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -210,6 +213,80 @@ def to_rows(transactions):
     return [r for r in rows if r["date"]]
 
 
+def _local(tag):
+    return tag.rsplit("}", 1)[-1]
+
+
+def _child(node, *path):
+    """Erstes Kind-Element entlang eines Pfads (Namespace-unabhängig)."""
+    for name in path:
+        found = None
+        for c in node:
+            if _local(c.tag) == name:
+                found = c
+                break
+        if found is None:
+            return None
+        node = found
+    return node
+
+
+def _text(node, *path):
+    n = _child(node, *path) if path else node
+    return (n.text or "").strip() if n is not None and n.text else ""
+
+
+def camt_to_rows(streams):
+    """camt.052 (XML) → dieselben Zeilen wie to_rows() (nur gebuchte Umsätze)."""
+    rows = []
+    for stream in streams:
+        root = ET.fromstring(stream)
+        for ntry in root.iter():
+            if _local(ntry.tag) != "Ntry":
+                continue
+            amount = _text(ntry, "Amt")
+            if not amount:
+                continue
+            value = float(amount)
+            credit = _text(ntry, "CdtDbtInd") == "CRDT"
+            if not credit:
+                value = -value
+            booking = _text(ntry, "BookgDt", "Dt") or _text(ntry, "ValDt", "Dt")
+            if not booking:
+                continue
+            details = _child(ntry, "NtryDtls", "TxDtls")
+            purpose_parts, name, iban = [], "", ""
+            if details is not None:
+                purpose_parts = [
+                    (u.text or "").strip()
+                    for u in details.iter()
+                    if _local(u.tag) == "Ustrd" and u.text
+                ]
+                side = "Dbtr" if credit else "Cdtr"
+                name = _text(details, "RltdPties", side, "Nm")
+                iban = _text(details, "RltdPties", side + "Acct", "Id", "IBAN")
+            purpose = " ".join(purpose_parts) or _text(ntry, "AddtlNtryInf")
+            rows.append(
+                {
+                    "date": booking[:10],
+                    "amount": value,
+                    "purpose": purpose,
+                    "counterpartyName": name or None,
+                    "counterpartyIban": iban or None,
+                }
+            )
+    return rows
+
+
+def fetch_transactions(sess):
+    """MT940 (HKKAZ), sonst camt (HKCAZ) — Sparda & Co. bieten nur camt an."""
+    try:
+        return sess.client.get_transactions(sess.account, sess.date_from, sess.date_to)
+    except FinTSUnsupportedOperation:
+        log.info("Bank bietet kein HKKAZ (MT940), verwende HKCAZ (camt.052)")
+        return sess.client.get_transactions_xml(sess.account, sess.date_from, sess.date_to)
+
+
 def run(sid, sess, tan):
     """Treibt den Dialog bis zur nächsten TAN-Abfrage oder zum Ergebnis."""
     c = sess.client
@@ -250,7 +327,7 @@ def run(sid, sess, tan):
         sess.account = pick_account(res, sess.iban)
         sess.stage = "transactions"
 
-    res = c.get_transactions(sess.account, sess.date_from, sess.date_to)
+    res = fetch_transactions(sess)
     if isinstance(res, NeedTANResponse):
         sess.pending = res
         return challenge_json(sid, sess)
@@ -267,12 +344,17 @@ def pick_account(accounts, iban):
 
 
 def done(sid, transactions):
-    log.info("Abruf fertig: %d Umsätze", len(transactions))
+    # camt-Abruf liefert (gebuchte XML-Dokumente, vorgemerkte XML-Dokumente).
+    if isinstance(transactions, tuple):
+        rows = camt_to_rows(transactions[0])
+    else:
+        rows = to_rows(transactions)
+    log.info("Abruf fertig: %d Umsätze", len(rows))
     with sessions_lock:
         sess = sessions.pop(sid, None)
     if sess:
         close(sess)
-    return {"status": "ok", "transactions": to_rows(transactions)}
+    return {"status": "ok", "transactions": rows}
 
 
 def error(message, code="error"):
