@@ -209,6 +209,18 @@ def discover_via_login(c):
         log.info("Anmeldung zur Verfahrenssuche: %s", err)
         if not login.allowed_security_functions:
             raise
+    try:
+        versions = sorted(
+            {int(x.header.version) for x in login.bpd.find_segments("HITANS")}
+        )
+    except Exception:
+        versions = "keine BPD"
+    log.info(
+        "Nach Anmeldung: erlaubte Funktionen=%s, HITANS-Versionen=%s, Meldungen=%s",
+        login.allowed_security_functions,
+        versions,
+        list(bank_messages.messages),
+    )
     return tan_methods(login)
 
 
