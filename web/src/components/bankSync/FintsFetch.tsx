@@ -41,8 +41,17 @@ const EMPTY_FORM = {
   tanMedium: "",
 };
 
-const errorText = (err: any, fallback: string) =>
-  err.response?.data?.error || fallback;
+// Bevorzugt die Meldung des Servers; sonst Status/Fehlercode, damit "Abruf
+// fehlgeschlagen" nicht ohne Anhaltspunkt bleibt (z. B. Zeitüberschreitung).
+const errorText = (err: any, fallback: string) => {
+  const serverMessage = err.response?.data?.error;
+  if (serverMessage) {
+    return serverMessage;
+  }
+  const status = err.response?.status;
+  const detail = status ? `HTTP ${status}` : err.code || err.message;
+  return `${fallback} (${detail})`;
+};
 
 export default function FintsFetch({
   accountId,

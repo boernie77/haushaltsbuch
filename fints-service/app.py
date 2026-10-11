@@ -20,6 +20,9 @@ from fastapi import FastAPI
 from fints.client import FinTS3PinTanClient, NeedTANResponse
 from pydantic import BaseModel
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("haushaltsbuch.fints")
+
 PRODUCT_ID = os.environ.get("FINTS_PRODUCT_ID", "").strip()
 PRODUCT_VERSION = os.environ.get("FINTS_PRODUCT_VERSION", "1.0")
 SESSION_TTL_SECONDS = 600
@@ -146,6 +149,7 @@ def tan_methods(client):
 
 def challenge_json(sid, sess):
     p = sess.pending
+    log.info("TAN verlangt (Stufe %s, entkoppelt: %s)", sess.stage, bool(getattr(p, "decoupled", False)))
     matrix = getattr(p, "challenge_matrix", None)
     image = None
     if matrix:
@@ -242,6 +246,7 @@ def pick_account(accounts, iban):
 
 
 def done(sid, transactions):
+    log.info("Abruf fertig: %d Umsätze", len(transactions))
     with sessions_lock:
         sess = sessions.pop(sid, None)
     if sess:
@@ -253,6 +258,8 @@ def error(message, code="error"):
     messages = bank_messages.take()
     if messages:
         message = f"{message} — Meldungen der Bank: {' | '.join(messages)}"
+    # Nie PIN oder Zugangsdaten loggen, nur Fehlertext und Bankcodes.
+    log.error("Fehler (%s): %s", code, message)
     return {"status": "error", "code": code, "error": message}
 
 
@@ -306,6 +313,7 @@ def fetch(req: FetchRequest):
         return error("FINTS_PRODUCT_ID ist nicht konfiguriert.", "not_configured")
     cleanup()
     bank_messages.take()
+    log.info("Abruf gestartet: Bank %s, %s bis %s", req.bankCode, req.dateFrom, req.dateTo)
     try:
         started, early = start(
             (
@@ -327,7 +335,8 @@ def fetch(req: FetchRequest):
                 close(sess)
                 raise
     except Exception as err:
-        return error(str(err))
+        log.exception("Abruf fehlgeschlagen")
+        return error(str(err) or err.__class__.__name__)
 
 
 @app.post("/tan")
@@ -344,4 +353,5 @@ def tan(req: TanRequest):
             with sessions_lock:
                 sessions.pop(req.session, None)
             close(sess)
-            return error(str(err))
+            log.exception("TAN-Schritt fehlgeschlagen")
+            return error(str(err) or err.__class__.__name__)

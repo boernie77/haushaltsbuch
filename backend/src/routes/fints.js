@@ -47,7 +47,9 @@ async function defaultDateRange(accountId) {
     order: [["dateTo", "DESC"]],
   });
   const from = last
-    ? new Date(new Date(`${last.dateTo}T00:00:00Z`).getTime() - OVERLAP_DAYS * DAY_MS)
+    ? new Date(
+        new Date(`${last.dateTo}T00:00:00Z`).getTime() - OVERLAP_DAYS * DAY_MS
+      )
     : new Date(today.getTime() - DEFAULT_LOOKBACK_DAYS * DAY_MS);
   return { dateFrom: isoDate(from), dateTo: isoDate(today) };
 }
@@ -64,14 +66,18 @@ async function loadContext(req, res, { needConnection = true } = {}) {
     res.status(403).json({ error: "Forbidden" });
     return null;
   }
-  const account = await Account.findOne({ where: { id: accountId, householdId } });
+  const account = await Account.findOne({
+    where: { id: accountId, householdId },
+  });
   if (!account) {
     res.status(404).json({ error: "Konto nicht gefunden" });
     return null;
   }
   const connection = await FintsConnection.findOne({ where: { accountId } });
   if (needConnection && !connection) {
-    res.status(400).json({ error: "Für dieses Konto ist kein FinTS-Zugang eingerichtet." });
+    res
+      .status(400)
+      .json({ error: "Für dieses Konto ist kein FinTS-Zugang eingerichtet." });
     return null;
   }
   return { householdId, accountId, account, connection };
@@ -104,6 +110,9 @@ function connectionJson(c) {
 // Verarbeitet die Antwort des Sidecars: bei "ok" die Vorschau bauen, sonst
 // TAN-Abfrage bzw. Fehler an den Client weiterreichen.
 async function relay(result, ctx, userId, res) {
+  console.log(
+    `[fints] Konto ${ctx.accountId}: ${result.status}${result.error ? ` – ${result.error}` : ""}`
+  );
   if (result.status === "ok") {
     const rows = result.transactions || [];
     const payload = await bankSync.buildPreviewPayload({
@@ -141,9 +150,20 @@ async function relay(result, ctx, userId, res) {
 }
 
 function serviceDown(res, err) {
-  console.error("[fints]", err.message);
+  console.error(
+    "[fints] Sidecar-Aufruf fehlgeschlagen:",
+    err.name,
+    err.message
+  );
+  if (err.name === "TimeoutError") {
+    return res.status(504).json({
+      error:
+        "Zeitüberschreitung beim FinTS-Dienst (die Bank hat nicht rechtzeitig geantwortet).",
+    });
+  }
   return res.status(503).json({
-    error: "Der FinTS-Dienst ist nicht erreichbar. Läuft der Container „fints“?",
+    error:
+      "Der FinTS-Dienst ist nicht erreichbar. Läuft der Container „fints“?",
   });
 }
 
@@ -178,15 +198,24 @@ router.put("/connection", auth, async (req, res) => {
     if (!ctx) {
       return;
     }
-    const { bankCode, fintsUrl, loginName, pin, savePin, tanMethod, tanMedium } =
-      req.body;
+    const {
+      bankCode,
+      fintsUrl,
+      loginName,
+      pin,
+      savePin,
+      tanMethod,
+      tanMedium,
+    } = req.body;
     if (!(bankCode && fintsUrl && loginName)) {
-      return res
-        .status(400)
-        .json({ error: "Bankleitzahl, FinTS-Adresse und Zugangsname sind Pflicht." });
+      return res.status(400).json({
+        error: "Bankleitzahl, FinTS-Adresse und Zugangsname sind Pflicht.",
+      });
     }
     if (!/^https:\/\//i.test(String(fintsUrl).trim())) {
-      return res.status(400).json({ error: "Die FinTS-Adresse muss mit https:// beginnen." });
+      return res
+        .status(400)
+        .json({ error: "Die FinTS-Adresse muss mit https:// beginnen." });
     }
     const values = {
       householdId: ctx.householdId,
@@ -236,7 +265,9 @@ router.post("/tan-methods", auth, async (req, res) => {
     const stored = ctx.connection;
     const effectivePin = pin || stored?.pin;
     if (!(bankCode && fintsUrl && loginName && effectivePin)) {
-      return res.status(400).json({ error: "Bank-Angaben und PIN sind nötig." });
+      return res
+        .status(400)
+        .json({ error: "Bank-Angaben und PIN sind nötig." });
     }
     const result = await callService("/tan-methods", {
       bankCode,
@@ -289,7 +320,9 @@ router.post("/tan", auth, async (req, res) => {
     const { session, tan } = req.body;
     const info = pendingSessions.get(session);
     if (!info || info.userId !== req.user.id) {
-      return res.status(410).json({ error: "Sitzung abgelaufen. Bitte neu abrufen." });
+      return res
+        .status(410)
+        .json({ error: "Sitzung abgelaufen. Bitte neu abrufen." });
     }
     const result = await callService("/tan", { session, tan: tan || "" });
     if (result.status !== "tan_required") {

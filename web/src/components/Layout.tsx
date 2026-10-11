@@ -31,6 +31,7 @@ import { applyThemeClasses } from "../App";
 import { api, householdAPI } from "../services/api";
 import { useAuthStore } from "../store/authStore";
 import { APP_VERSION } from "../version";
+import NotificationBell from "./NotificationBell";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Übersicht", exact: true },
@@ -285,25 +286,28 @@ export default function Layout() {
           ))}
 
           {(user?.role === "admin" || user?.role === "superadmin") && (
-              <NavLink
-                className={({ isActive }) =>
-                  clsx(
-                    "mx-2 mb-1 flex items-center gap-3 rounded-xl px-4 py-3 font-medium text-sm transition-all",
-                    isActive
-                      ? "bg-[var(--primary)] text-white"
-                      : "text-gray-600 hover:bg-pink-50 dark:text-gray-400 dark:hover:bg-slate-700"
-                  )
-                }
-                to="/admin"
-              >
-                <Shield className="shrink-0" size={20} />
-                {sidebarOpen && "Administration"}
-              </NavLink>
-            )}
+            <NavLink
+              className={({ isActive }) =>
+                clsx(
+                  "mx-2 mb-1 flex items-center gap-3 rounded-xl px-4 py-3 font-medium text-sm transition-all",
+                  isActive
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-gray-600 hover:bg-pink-50 dark:text-gray-400 dark:hover:bg-slate-700"
+                )
+              }
+              to="/admin"
+            >
+              <Shield className="shrink-0" size={20} />
+              {sidebarOpen && "Administration"}
+            </NavLink>
+          )}
         </nav>
 
         {/* User */}
         <div className="border-pink-100 border-t p-4 dark:border-slate-700">
+          <div className={sidebarOpen ? "mb-2" : "mb-3 flex justify-center"}>
+            <NotificationBell compact={!sidebarOpen} />
+          </div>
           {sidebarOpen ? (
             <div className="relative" ref={userMenuRef}>
               <button
