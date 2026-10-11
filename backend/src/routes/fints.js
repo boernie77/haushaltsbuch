@@ -6,6 +6,9 @@ const router = require("express").Router();
 const { Account, BankImport, FintsConnection } = require("../models");
 const { auth } = require("../middleware/auth");
 const bankSync = require("./bankSync");
+// Institutsliste (BLZ → Name, FinTS-Adresse, Rechenzentrum), Stand 2026-08-20.
+// Nur ein Vorschlag zum Vorausfüllen; die Adresse bleibt im Formular änderbar.
+const BANKS = require("../data/fints-banks.json");
 
 const SERVICE_URL = process.env.FINTS_SERVICE_URL || "http://fints:8000";
 // Bank-Dialoge mit Push-TAN können Minuten dauern.
@@ -166,6 +169,24 @@ function serviceDown(res, err) {
       "Der FinTS-Dienst ist nicht erreichbar. Läuft der Container „fints“?",
   });
 }
+
+const BANK_SEARCH_LIMIT = 15;
+const BANK_SEARCH_MIN_LENGTH = 2;
+
+// GET /api/fints/banks?q= — Bank per Name oder Bankleitzahl(anfang) suchen.
+router.get("/banks", auth, (req, res) => {
+  const q = String(req.query.q || "")
+    .trim()
+    .toLowerCase();
+  if (q.length < BANK_SEARCH_MIN_LENGTH) {
+    return res.json({ banks: [] });
+  }
+  const numeric = /^\d+$/.test(q);
+  const banks = BANKS.filter((b) =>
+    numeric ? b.blz.startsWith(q) : b.name.toLowerCase().includes(q)
+  ).slice(0, BANK_SEARCH_LIMIT);
+  res.json({ banks });
+});
 
 // GET /api/fints/status — ist FinTS auf dieser Installation nutzbar?
 router.get("/status", auth, async (_req, res) => {

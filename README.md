@@ -130,7 +130,8 @@ Deutsche Kreditwirtschaft (DK) erlaubt nicht, eine gemeinsame Nummer in einem
 4. In der App: *Bank-Sync → Import → Direkt von der Bank abrufen (FinTS)*
    einrichten. Du brauchst die **IBAN beim Konto** (Konten → Bearbeiten), die
    **FinTS-Adresse deiner Bank** (steht in der FinTS-Bankenliste der DK, die du
-   mit der Nummer bekommst, oder auf der Seite deiner Bank), Bankleitzahl,
+   mit der Nummer bekommst, oder auf der Seite deiner Bank; die App schlägt sie
+   per Bankleitzahl aus der mitgelieferten Institutsliste vor, Stand August 2026), Bankleitzahl,
    Zugangsname (je nach Bank Anmeldename, VR-NetKey o. ä.) und PIN. Die PIN
    kann verschlüsselt gespeichert werden (`ENCRYPTION_KEY` nötig).
 5. Je nach Bank verlangt die Bank alle 90–180 Tage eine neue TAN-Freigabe

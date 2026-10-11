@@ -252,6 +252,7 @@ export const bankSyncAPI = {
 
 export const fintsAPI = {
   status: () => api.get("/fints/status"),
+  searchBanks: (q: string) => api.get("/fints/banks", { params: { q } }),
   getConnection: (householdId: string, accountId: string) =>
     api.get("/fints/connection", { params: { householdId, accountId } }),
   saveConnection: (body: Record<string, unknown>) =>

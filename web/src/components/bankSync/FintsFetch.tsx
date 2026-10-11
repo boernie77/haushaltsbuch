@@ -31,6 +31,13 @@ interface TanMethod {
   name: string;
 }
 
+interface BankHit {
+  blz: string;
+  name: string;
+  provider: string;
+  url: string;
+}
+
 interface Probe {
   accounts?: string[];
   bankMessages?: string[];
@@ -83,6 +90,8 @@ export default function FintsFetch({
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [tan, setTan] = useState("");
   const [probe, setProbe] = useState<Probe | null>(null);
+  const [bankQuery, setBankQuery] = useState("");
+  const [bankHits, setBankHits] = useState<BankHit[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,6 +160,26 @@ export default function FintsFetch({
     } finally {
       setBusy(false);
     }
+  };
+
+  const searchBanks = async (q: string) => {
+    setBankQuery(q);
+    if (q.trim().length < 2) {
+      setBankHits([]);
+      return;
+    }
+    try {
+      const { data } = await fintsAPI.searchBanks(q.trim());
+      setBankHits(data.banks);
+    } catch {
+      setBankHits([]);
+    }
+  };
+
+  const pickBank = (b: BankHit) => {
+    setForm((f) => ({ ...f, bankCode: b.blz, fintsUrl: b.url }));
+    setBankQuery("");
+    setBankHits([]);
   };
 
   const runProbe = async () => {
@@ -403,6 +432,36 @@ export default function FintsFetch({
 
       {editing && (
         <div className="space-y-3">
+          <div className="relative">
+            <label
+              className="mb-1 block font-medium text-gray-700 text-sm dark:text-gray-300"
+              htmlFor="fints-bank-search"
+            >
+              Bank suchen (Name oder Bankleitzahl)
+            </label>
+            <input
+              className="input"
+              id="fints-bank-search"
+              onChange={(e) => searchBanks(e.target.value)}
+              placeholder="z. B. Sparda oder 76090500"
+              value={bankQuery}
+            />
+            {bankHits.length > 0 && (
+              <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800">
+                {bankHits.map((b) => (
+                  <li key={b.blz}>
+                    <button
+                      className="w-full px-3 py-2 text-left text-gray-800 text-sm hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-slate-700"
+                      onClick={() => pickBank(b)}
+                      type="button"
+                    >
+                      {b.name} <span className="text-gray-500">({b.blz})</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {field("Bankleitzahl", "bankCode", { placeholder: "12345678" })}
             {field("FinTS-Adresse (https://…)", "fintsUrl", {
