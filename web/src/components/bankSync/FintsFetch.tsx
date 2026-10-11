@@ -31,6 +31,19 @@ interface TanMethod {
   name: string;
 }
 
+interface Probe {
+  accounts?: string[];
+  bankMessages?: string[];
+  bankName?: string | null;
+  camt?: string[];
+  ibanFound?: boolean;
+  loginNeedsTan?: boolean;
+  methods?: TanMethod[];
+  mt940?: number[];
+  notes: string[];
+  tanMethodNeeded?: boolean;
+}
+
 const EMPTY_FORM = {
   bankCode: "",
   fintsUrl: "",
@@ -69,6 +82,7 @@ export default function FintsFetch({
   const [busy, setBusy] = useState(false);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [tan, setTan] = useState("");
+  const [probe, setProbe] = useState<Probe | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,6 +152,43 @@ export default function FintsFetch({
       setBusy(false);
     }
   };
+
+  const runProbe = async () => {
+    setBusy(true);
+    setProbe(null);
+    try {
+      const { data } = await fintsAPI.probe({
+        householdId,
+        accountId,
+        bankCode: form.bankCode,
+        fintsUrl: form.fintsUrl,
+        loginName: form.loginName,
+        pin: form.pin || undefined,
+        tanMethod: form.tanMethod || undefined,
+      });
+      setProbe(data.probe);
+      if (data.probe.methods?.length > 1) {
+        setMethods(data.probe.methods);
+      }
+    } catch (err: any) {
+      toast.error(errorText(err, "Verbindungstest fehlgeschlagen"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Diagnose zum Weitergeben (z. B. in einem Issue): ohne PIN, Zugangsname
+  // und IBAN.
+  const diagnosisText = (p: Probe) =>
+    [
+      `Bankleitzahl: ${form.bankCode}`,
+      `Bank: ${p.bankName || "?"}`,
+      `TAN-Verfahren: ${(p.methods || []).map((m) => `${m.code} ${m.name}`).join("; ") || "?"}`,
+      `Umsatzabruf MT940 (HKKAZ): ${p.mt940?.length ? p.mt940.join(", ") : "nein"}`,
+      `Umsatzabruf camt (HKCAZ): ${p.camt?.length ? p.camt.map((v) => `.${v}`).join(", ") : "nein"}`,
+      `Anmeldung braucht TAN: ${p.loginNeedsTan ? "ja" : "nein"}`,
+      `Meldungen der Bank: ${(p.bankMessages || []).join(" | ") || "-"}`,
+    ].join("\n");
 
   const save = async () => {
     setBusy(true);
@@ -390,6 +441,18 @@ export default function FintsFetch({
             >
               TAN-Verfahren laden
             </button>
+            <button
+              className="btn-secondary disabled:opacity-50"
+              disabled={
+                busy ||
+                !(form.bankCode && form.fintsUrl && form.loginName) ||
+                !(form.pin || connection?.hasPin)
+              }
+              onClick={runProbe}
+              type="button"
+            >
+              {busy ? "Teste..." : "Verbindung testen"}
+            </button>
             {methods.length > 0 && (
               <select
                 className="input w-auto"
@@ -407,6 +470,36 @@ export default function FintsFetch({
               </select>
             )}
           </div>
+          {probe && (
+            <div className="space-y-1 rounded-lg border border-gray-200 p-2 text-gray-700 text-xs dark:border-slate-600 dark:text-gray-300">
+              <p className="font-medium">
+                Anmeldung ok{probe.bankName ? ` – ${probe.bankName}` : ""}
+              </p>
+              <p>
+                Umsatzabruf: {probe.mt940?.length ? "MT940" : ""}
+                {probe.mt940?.length && probe.camt?.length ? " + " : ""}
+                {probe.camt?.length ? "camt" : ""}
+                {probe.mt940?.length || probe.camt?.length
+                  ? ""
+                  : "nicht möglich"}
+              </p>
+              {probe.notes.map((n) => (
+                <p className="text-amber-700 dark:text-amber-300" key={n}>
+                  {n}
+                </p>
+              ))}
+              <button
+                className="underline"
+                onClick={() => {
+                  navigator.clipboard.writeText(diagnosisText(probe));
+                  toast.success("Diagnose kopiert");
+                }}
+                type="button"
+              >
+                Diagnose kopieren
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               className="btn-primary disabled:opacity-50"

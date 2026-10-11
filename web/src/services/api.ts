@@ -260,6 +260,8 @@ export const fintsAPI = {
     api.delete("/fints/connection", { params: { householdId, accountId } }),
   tanMethods: (body: Record<string, unknown>) =>
     api.post("/fints/tan-methods", body, { timeout: 3 * 60 * 1000 }),
+  probe: (body: Record<string, unknown>) =>
+    api.post("/fints/probe", body, { timeout: 3 * 60 * 1000 }),
   // Bank-Dialoge mit Push-TAN dauern; Timeout wie bei der Vorschau.
   fetch: (body: Record<string, unknown>) =>
     api.post("/fints/fetch", body, { timeout: BANK_SYNC_PREVIEW_TIMEOUT_MS }),

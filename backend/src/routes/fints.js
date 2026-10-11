@@ -284,6 +284,44 @@ router.post("/tan-methods", auth, async (req, res) => {
   }
 });
 
+// Verbindungstest: Anmeldung + Fähigkeiten der Bank, ohne Umsatzabruf. Nimmt
+// die Formularwerte (auch vor dem Speichern), fehlende Felder kommen aus dem
+// gespeicherten Zugang.
+router.post("/probe", auth, async (req, res) => {
+  try {
+    const ctx = await loadContext(req, res, { needConnection: false });
+    if (!ctx) {
+      return;
+    }
+    const stored = ctx.connection;
+    const body = req.body;
+    const params = {
+      bankCode: body.bankCode || stored?.bankCode,
+      url: body.fintsUrl || stored?.fintsUrl,
+      login: body.loginName || stored?.loginName,
+      pin: body.pin || stored?.pin,
+      tanMethod: body.tanMethod || stored?.tanMethod || null,
+      tanMedium: body.tanMedium || stored?.tanMedium || null,
+      iban: ctx.account.iban || null,
+    };
+    if (!(params.bankCode && params.url && params.login && params.pin)) {
+      return res
+        .status(400)
+        .json({ error: "Bank-Angaben und PIN sind nötig." });
+    }
+    const result = await callService("/probe", params);
+    console.log(
+      `[fints] Verbindungstest Konto ${ctx.accountId}: ${result.status}`
+    );
+    if (result.status === "error") {
+      return res.status(502).json({ error: result.error || "FinTS-Fehler" });
+    }
+    res.json({ probe: result });
+  } catch (err) {
+    serviceDown(res, err);
+  }
+});
+
 router.post("/fetch", auth, async (req, res) => {
   try {
     const ctx = await loadContext(req, res);

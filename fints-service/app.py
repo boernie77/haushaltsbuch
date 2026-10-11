@@ -404,10 +404,34 @@ def done(sid, transactions):
     return {"status": "ok", "transactions": rows}
 
 
+# Verständliche Hinweise zu häufigen Antwortcodes der Bank (FinTS-Rückmeldungen).
+CODE_HINTS = {
+    "9078": "Die Registrierungsnummer dieser Installation ist bei der Bank noch nicht bekannt (die Aktualisierung bei den Banken kann Wochen dauern) oder falsch eingetragen.",
+    "9930": "Zugangsname nicht akzeptiert. Prüfe, welche Kennung die Bank für FinTS erwartet (z. B. Anmeldename, Alias, VR-NetKey, Sparda-NetKey).",
+    "9931": "Zugangsname oder PIN falsch, eventuell ist der Zugang gesperrt. Zur Kontrolle einmal normal im Online-Banking anmelden.",
+    "9942": "Anmeldedaten ungültig: Zugangsname oder PIN stimmen nicht. Mehrfache Fehlversuche können den Zugang sperren.",
+    "9010": "Die Bank lehnt das angefragte Format oder den Auftrag ab.",
+    "9380": "Die Bank verlangt eine TAN-Freigabe oder ein anderes TAN-Verfahren.",
+}
+CODE_PATTERN = re.compile(r"\b(9\d{3})\b")
+
+
+def explain(message):
+    """Deutsche Hinweise zu den in der Meldung vorkommenden Bankcodes."""
+    seen = []
+    for code in CODE_PATTERN.findall(message):
+        if code in CODE_HINTS and CODE_HINTS[code] not in seen:
+            seen.append(CODE_HINTS[code])
+    return seen
+
+
 def error(message, code="error"):
     messages = bank_messages.take()
     if messages:
         message = f"{message} — Meldungen der Bank: {' | '.join(messages)}"
+    hints = explain(message)
+    if hints:
+        message = f"{message} — Hinweis: {' '.join(hints)}"
     # Nie PIN oder Zugangsdaten loggen, nur Fehlertext und Bankcodes.
     log.error("Fehler (%s): %s", code, message)
     return {"status": "error", "code": code, "error": message}
@@ -455,6 +479,65 @@ def methods(c: Connection):
         return {"status": "ok", "methods": tan_methods(client)}
     except Exception as err:
         return error(str(err))
+
+
+class ProbeRequest(Connection):
+    iban: Optional[str] = None
+
+
+def mask(iban):
+    return f"{iban[:4]}…{iban[-4:]}" if iban and len(iban) > 8 else iban
+
+
+@app.post("/probe")
+def probe(req: ProbeRequest):
+    """Verbindungstest: meldet sich an und liest, was die Bank kann — ohne
+    Umsätze abzurufen und ohne TAN-Freigabe (hält vorher an)."""
+    if not PRODUCT_ID:
+        return error("FINTS_PRODUCT_ID ist nicht konfiguriert.", "not_configured")
+    cleanup()
+    bank_messages.take()
+    log.info("Verbindungstest: Bank %s", req.bankCode)
+    out = {"status": "ok", "notes": []}
+    try:
+        client = new_client(req)
+        client.fetch_tan_mechanisms()
+        methods = tan_methods(client)
+        out["methods"] = methods
+        method = req.tanMethod or (methods[0]["code"] if len(methods) == 1 else None)
+        if not method:
+            out["tanMethodNeeded"] = True
+            out["notes"].append("Mehrere TAN-Verfahren: bitte eines auswählen und erneut testen.")
+            return out
+        client.set_tan_mechanism(method)
+        with client:
+            out["bankName"] = getattr(getattr(client, "bpa", None), "bank_name", None)
+            out["loginNeedsTan"] = bool(client.init_tan_response)
+            if out["loginNeedsTan"]:
+                out["notes"].append("Schon die Anmeldung verlangt eine TAN-Freigabe (Test endet hier).")
+            else:
+                accounts = client.get_sepa_accounts()
+                if isinstance(accounts, NeedTANResponse):
+                    out["accountsNeedTan"] = True
+                    out["notes"].append("Das Laden der Konten verlangt eine TAN-Freigabe (Test endet hier).")
+                else:
+                    out["accounts"] = [mask(a.iban) for a in accounts]
+                    if req.iban:
+                        wanted = req.iban.replace(" ", "").upper()
+                        out["ibanFound"] = any((a.iban or "").upper() == wanted for a in accounts)
+                        if not out["ibanFound"]:
+                            out["notes"].append("Die IBAN des Kontos wurde bei der Bank nicht gefunden.")
+            out["mt940"] = sorted({int(x.header.version) for x in client.bpd.find_segments("HIKAZS")})
+            camt = set()
+            for seg in client.bpd.find_segments("HICAZS"):
+                camt.update(CAMT_PATTERN.findall(repr(seg)))
+            out["camt"] = sorted(camt, key=int)
+            if not out["mt940"] and not out["camt"]:
+                out["notes"].append("Die Bank bietet keinen Umsatzabruf per FinTS an (weder MT940 noch camt). Nutze den Datei-Import.")
+        out["bankMessages"] = bank_messages.take()
+        return out
+    except Exception as err:
+        return error(str(err) or err.__class__.__name__)
 
 
 @app.post("/fetch")
