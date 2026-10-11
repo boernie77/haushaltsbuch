@@ -16,12 +16,31 @@ import time
 from datetime import date
 from typing import Optional
 
+import requests
 from fastapi import FastAPI
 from fints.client import FinTS3PinTanClient, NeedTANResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("haushaltsbuch.fints")
+
+# python-fints setzt keinen Timeout: antwortet die Bank nicht, hängt der Abruf
+# ewig. Verbindungsaufbau 15 s, Antwort der Bank max. 120 s.
+BANK_TIMEOUT = (15, 120)
+_original_request = requests.Session.request
+
+
+def _request_with_timeout(self, *args, **kwargs):
+    kwargs.setdefault("timeout", BANK_TIMEOUT)
+    return _original_request(self, *args, **kwargs)
+
+
+requests.Session.request = _request_with_timeout
+
+# FINTS_DEBUG=1: Nachrichten zwischen Server und Bank im Log (python-fints
+# maskiert die PIN). Nur zur Fehlersuche einschalten.
+if os.environ.get("FINTS_DEBUG"):
+    logging.getLogger("fints").setLevel(logging.DEBUG)
 
 PRODUCT_ID = os.environ.get("FINTS_PRODUCT_ID", "").strip()
 PRODUCT_VERSION = os.environ.get("FINTS_PRODUCT_VERSION", "1.0")

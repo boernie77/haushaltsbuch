@@ -61,6 +61,7 @@ services:
     restart: unless-stopped
     environment:
       FINTS_PRODUCT_ID: ${FINTS_PRODUCT_ID:-}
+      FINTS_DEBUG: ${FINTS_DEBUG:-}
 
   web:
     build:
