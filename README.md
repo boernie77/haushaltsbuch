@@ -95,10 +95,49 @@ docker compose up -d --build
 | `LEGAL_NAME`, `LEGAL_ADDRESS`, `LEGAL_EMAIL` | nein* | Betreiberangaben für Impressum und Datenschutz (`LEGAL_ADDRESS` kommagetrennt, z. B. `Musterstr. 1, 12345 Musterstadt`) |
 | `LEGAL_HOSTING`, `LEGAL_AUTHORITY` | nein | Speicherort/Hoster und zuständige Datenschutz-Aufsichtsbehörde für die Datenschutzerklärung |
 | `SOURCE_URL` | nein | Link zum Quellcode, falls du eine geänderte Version betreibst (Pflicht nach AGPL) |
+| `FINTS_PRODUCT_ID` | nein | Eigene FinTS-Registrierungsnummer für den automatischen Kontoabruf (siehe [Kontoumsätze importieren](#kontoumsätze-importieren)). Vertraulich – nie veröffentlichen. Leer = FinTS-Abruf aus, der Datei-Import geht trotzdem |
 
 \* Wer die Installation öffentlich für andere betreibt, braucht in Deutschland
 in der Regel ein Impressum. Für eine rein private Installation im Heimnetz
 können die Felder leer bleiben.
+
+## Kontoumsätze importieren
+
+**Standard: Datei-Import (für alle, ohne Einrichtung).** Unter *Bank-Sync*
+lädst du einen Export deines Online-Bankings hoch (CSV oder MT940). Die App
+erkennt bereits erfasste Buchungen, schlägt Kategorien vor (Regeln, Gelerntes,
+optional KI) und zeigt alles zur Kontrolle, bevor etwas gespeichert wird.
+Funktioniert mit jeder Bank, die einen CSV- oder MT940-Export anbietet.
+
+**Optional: direkter Abruf per FinTS.** Statt Datei-Export holt die App die
+Umsätze selbst bei der Bank (PIN + TAN-Freigabe, z. B. pushTAN oder photoTAN).
+Dafür braucht **jede Installation eine eigene FinTS-Registrierungsnummer**. Die
+Deutsche Kreditwirtschaft (DK) erlaubt nicht, eine gemeinsame Nummer in einem
+öffentlichen Projekt zu veröffentlichen, deshalb liegt in diesem Repo keine.
+
+1. Registrierung bei der DK beantragen (kostenlos): Formular „FinTS-Produktregistrierung“
+   auf [hbci-zka.de](https://www.hbci-zka.de) ausfüllen und an
+   `registrierung@hbci-zka.de` schicken. Als Produkt nennst du z. B.
+   „Haushaltsbuch (selbst gehostet, <dein Name>)“, als Kategorie „Web-Server“.
+   Die Registrierung ist für Privatpersonen möglich.
+2. Es dauert etwa 10–15 Werktage bis zur Nummer (25 Zeichen) und danach
+   mehrere Werktage bis Wochen, bis die Banken sie in ihren Datenbanken haben.
+   Bis dahin lehnt die Bank mit „9078 – Software nicht als FinTS-Produkt
+   registriert“ ab. Nicht bei der DK nachfragen, einfach später erneut probieren.
+3. Nummer in die `.env` eintragen (`FINTS_PRODUCT_ID=...`) und neu starten:
+   `docker compose up -d --build`. **Die Nummer ist vertraulich** – nicht
+   veröffentlichen, nicht committen. Bei Missbrauch kann die DK sie sperren.
+4. In der App: *Bank-Sync → Import → Direkt von der Bank abrufen (FinTS)*
+   einrichten. Du brauchst die **IBAN beim Konto** (Konten → Bearbeiten), die
+   **FinTS-Adresse deiner Bank** (steht in der FinTS-Bankenliste der DK, die du
+   mit der Nummer bekommst, oder auf der Seite deiner Bank), Bankleitzahl,
+   Zugangsname (je nach Bank Anmeldename, VR-NetKey o. ä.) und PIN. Die PIN
+   kann verschlüsselt gespeichert werden (`ENCRYPTION_KEY` nötig).
+5. Je nach Bank verlangt die Bank alle 90–180 Tage eine neue TAN-Freigabe
+   (starke Kundenauthentifizierung); jeder Abruf kann eine TAN verlangen.
+
+Der FinTS-Dienst (`fints`, Python) läuft als eigener Container und ist nicht
+von außen erreichbar. Ohne `FINTS_PRODUCT_ID` bleibt der Abruf ausgeschaltet.
 
 ## Handy-App
 
