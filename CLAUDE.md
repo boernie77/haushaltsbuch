@@ -446,6 +446,8 @@ Eigene Konten pro Haushaltsbuch (Girokonto, Kreditkarte, Bargeld, Darlehen, ...)
 - `transfer`: `accountId` = Quellkonto, `transferTargetAccountId` = Zielkonto. **Wird in Statistiken AUTOMATISCH ignoriert**, weil alle Statistik-Endpoints explizit nach `type IN ('expense','income')` filtern. So sind Kreditkarten-Tilgungen oder Umbuchungen neutral; nur echte Ausgaben (z.B. Zinsen auf Darlehen → `type=expense`, `accountId=Darlehen`) erscheinen in den Statistiken.
 - Der bestehende `targetHouseholdId`-Mechanismus für Haushaltsbuch-zu-Haushaltsbuch-Transfers bleibt parallel erhalten.
 
+**Anzeige von Umbuchungen (v1.0.78):** Buchungsliste (Web) zeigt Umbuchungen ohne Konto-Filter neutral blau `⇄ 250,00 €` mit „Quelle → Ziel“; mit dem neuen Konto-Filter (Dropdown „Alle Konten", rein clientseitig) aus Sicht des Kontos: Ziel = grün +, Quelle = rot −. Vorher wurde jede Umbuchung rot mit Minus gezeigt. Die Salden (`computeBalance`) waren immer korrekt.
+
 **Endpoints:**
 - `GET /api/accounts?householdId=` → `{ accounts: [{ id, name, type, icon, color, startingBalance, isActive, sortOrder, balance }, ...] }`
 - `POST /api/accounts` — Body: `{ householdId, name, type, icon, color, startingBalance, sortOrder }`
@@ -497,7 +499,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.77** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.78** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 

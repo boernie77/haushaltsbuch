@@ -41,6 +41,9 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
+  // Konto-Filter nur in der Anzeige: bei Umbuchungen entscheidet er, ob sie
+  // aus Sicht dieses Kontos ein Eingang (grün) oder Ausgang (rot) sind.
+  const [accountFilter, setAccountFilter] = useState("");
   // "" = alle, "confirmed" = mit Kontoauszug abgeglichen, "unconfirmed" = nur
   // erfasst (siehe GET /api/transactions?bankStatus=).
   const [bankFilter, setBankFilter] = useState("");
@@ -554,7 +557,33 @@ export default function TransactionsPage() {
   };
 
   // Sortierte Buchungen (lokal — keine API-Reload bei Sort-Wechsel)
-  const sortedTransactions = [...transactions].sort((a, b) => {
+  const visibleTransactions = accountFilter
+    ? transactions.filter(
+        (t) =>
+          t.accountId === accountFilter ||
+          t.transferTargetAccountId === accountFilter
+      )
+    : transactions;
+  const accountLabel = (id: string | null | undefined) =>
+    accounts.find((a) => a.id === id)?.name || "?";
+  // Betragsanzeige: Einnahme grün +, Ausgabe rot −. Umbuchung ohne Konto-Filter
+  // neutral (⇄) mit "Quelle → Ziel", mit Konto-Filter aus Sicht dieses Kontos.
+  const amountView = (t: any) => {
+    const amount = Number.parseFloat(t.amount).toFixed(2);
+    if (t.type !== "transfer") {
+      return t.type === "income"
+        ? { className: "text-green-600", text: `+${amount} €` }
+        : { className: "text-[var(--expense)]", text: `-${amount} €` };
+    }
+    if (accountFilter && t.transferTargetAccountId === accountFilter) {
+      return { className: "text-green-600", text: `+${amount} €` };
+    }
+    if (accountFilter && t.accountId === accountFilter) {
+      return { className: "text-[var(--expense)]", text: `-${amount} €` };
+    }
+    return { className: "text-blue-500", text: `⇄ ${amount} €` };
+  };
+  const sortedTransactions = [...visibleTransactions].sort((a, b) => {
     const cmp =
       sortBy === "date"
         ? new Date(a.date).getTime() - new Date(b.date).getTime()
@@ -695,6 +724,22 @@ export default function TransactionsPage() {
             </button>
           ))}
         </div>
+        {typeFilter !== "recurring" && accounts.length > 1 && (
+          <select
+            className="input min-w-[160px]"
+            onChange={(e) => setAccountFilter(e.target.value)}
+            value={accountFilter}
+          >
+            <option value="">Alle Konten</option>
+            {accounts
+              .filter((a) => a.isActive)
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.icon} {a.name}
+                </option>
+              ))}
+          </select>
+        )}
         {typeFilter !== "recurring" && (
           <div className="relative min-w-[180px]">
             <select
@@ -1534,10 +1579,15 @@ export default function TransactionsPage() {
                     {t.merchant || "—"}
                   </td>
                   <td
-                    className={`px-4 py-3 font-bold text-sm ${t.type === "income" ? "text-green-600" : "text-[var(--expense)]"}`}
+                    className={`px-4 py-3 font-bold text-sm ${amountView(t).className}`}
                   >
-                    {t.type === "income" ? "+" : "-"}
-                    {Number.parseFloat(t.amount).toFixed(2)} €
+                    {amountView(t).text}
+                    {t.type === "transfer" && (
+                      <div className="font-normal text-gray-400 text-xs">
+                        {accountLabel(t.accountId)} →{" "}
+                        {accountLabel(t.transferTargetAccountId)}
+                      </div>
+                    )}
                     {t.isRecurring && (
                       <span title="Wiederkehrend">
                         <Repeat className="ml-1 inline opacity-40" size={11} />
