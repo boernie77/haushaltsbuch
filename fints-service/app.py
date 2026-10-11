@@ -21,7 +21,14 @@ import xml.etree.ElementTree as ET
 
 import requests
 from fastapi import FastAPI
-from fints.client import ING_BANK_IDENTIFIER, FinTS3PinTanClient, NeedTANResponse
+from collections import OrderedDict
+
+from fints.client import (
+    IMPLEMENTED_HKTAN_VERSIONS,
+    ING_BANK_IDENTIFIER,
+    FinTS3PinTanClient,
+    NeedTANResponse,
+)
 from fints.exceptions import FinTSUnsupportedOperation
 from fints.formals import SupportedMessageTypes
 from fints.segments.statement import HKCAZ1
@@ -174,7 +181,16 @@ def close(sess):
 
 def tan_methods(client):
     methods = []
-    for code, m in client.get_tan_mechanisms().items():
+    mechanisms = client.get_tan_mechanisms()
+    if not mechanisms:
+        # Erlaubte Verfahren unbekannt (z. B. ING nennt sie erst nach der
+        # Anmeldung): alle Verfahren aus den Bankparametern anbieten.
+        mechanisms = OrderedDict()
+        for version in sorted(IMPLEMENTED_HKTAN_VERSIONS):
+            for seg in client.bpd.find_segments("HITANS", version):
+                for p in seg.parameter.twostep_parameters:
+                    mechanisms[p.security_function] = p
+    for code, m in mechanisms.items():
         methods.append({"code": code, "name": getattr(m, "name", code)})
     return methods
 

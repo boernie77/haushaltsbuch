@@ -155,6 +155,11 @@ export default function FintsFetch({
         pin: form.pin,
       });
       setMethods(data.methods);
+      if (data.methods.length === 0) {
+        toast.error(
+          "Die Bank hat keine TAN-Verfahren genannt. Zugang trotzdem speichern und „Umsätze abrufen“ probieren."
+        );
+      }
       if (data.methods.length === 1) {
         setForm((f) => ({ ...f, tanMethod: data.methods[0].code }));
       }

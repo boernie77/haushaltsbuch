@@ -497,7 +497,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.70** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.71** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -581,6 +581,7 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 - **v1.0.68:** Eigenes Formularfeld „Bankname“ (Migration 039 `fints_connections."bankName"`), bei der Bankensuche vorbelegt, änderbar, gespeichert; Fallback weiter Lookup per BLZ.
 - **v1.0.69:** Verbindungstest zeigte bei „mehrere TAN-Verfahren“ fälschlich „Anmeldung ok / Umsatzabruf nicht möglich“ (Test hält vor dem Login an) → jetzt eigener Zustand mit Auswahl des TAN-Verfahrens im Ergebnisfeld.
 - **v1.0.70 (ING):** python-fints übernimmt die erlaubten TAN-Verfahren (Antwortcode 3920) bei ING nicht (`ING_BANK_IDENTIFIER`-Sonderfall) → `get_tan_mechanisms()` leer, Auswahl im UI leer. `LoggingClient` setzt `allowed_security_functions` für ING selbst (Auswahl bleibt beim Nutzer). Ungetestet gegen ING.
+- **v1.0.71 (ING):** ING nennt die erlaubten TAN-Verfahren schon in der anonymen Anfrage nicht (`POST /tan-methods` lieferte 200 mit leerer Liste) → `tan_methods()` bietet dann alle Verfahren aus den Bankparametern (HITANS) an; UI meldet leere Liste per Toast. Erlaubte Auswahl bei ING damit ungeprüft.
 - **Offene Punkte (Stand 2026-10-11, v1.0.63), in Reihenfolge:**
   1. **Doppelte Buchungen FinTS↔CSV** beobachten (anderer Verwendungszweck → anderer `externalRef`); bei Bedarf Abgleich angleichen.
   2. **Cron-Abruf** (braucht gespeicherte PIN, Entscheidung Christian steht aus; Erinnerungsmail wenn TAN-Freigabe erneuert werden muss).
