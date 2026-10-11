@@ -497,7 +497,7 @@ Sammelkonten pro Kategorie (z.B. Spesen). Migration 026 fügt `categories.hasSub
 - Bei `affectsAccountBalance=false` darf das Frontend die Buchung trotzdem auflisten — sie ist normal sichtbar, beeinflusst aber keinen Konto-Saldo.
 
 ## Versionsnummer
-Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.68** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
+Die App-Version wird in der Sidebar des Webs (Footer, immer sichtbar — auch bei zugeklappter Sidebar) als `v1.0.X` angezeigt — so sieht der User auf einen Blick, welche Version live ist. Aktueller Stand: **v1.0.69** (Stand 2026-10-06). Erstes GitHub-Release: v1.0.21 — Releases nur auf ausdrücklichen Wunsch.
 
 **Quelle der Wahrheit:** `web/src/version.ts` → `APP_VERSION`. **User-Regel:** Bei JEDER Änderung Patch-Stelle um 1 hochzählen (1.0.7 → 1.0.8 → 1.0.9 …), unabhängig vom Umfang. Siehe Memory `feedback_version_bump.md`.
 
@@ -579,6 +579,7 @@ Manueller CSV/MT940-Datei-Import von Kontoumsätzen. Getestet mit Sparda-Bank N�
 - **v1.0.65: Bankenliste** `backend/src/data/fints-banks.json` (1727 BLZ → Name, FinTS-URL, Rechenzentrum; erzeugt aus der DK-Institutsliste „fints_institute NEU mit BIC Master.csv“, Stand 2026-08-20, vom Maintainer aus der Registrierungsmail; Datei enthält keinen Nutzungshinweis; je BLZ erster Eintrag, keine URL-Konflikte; nur https). `GET /api/fints/banks?q=` (Name oder BLZ-Anfang, max. 15) → Web-Suchfeld „Bank suchen“ im Zugangsformular füllt BLZ + Adresse vor (editierbar). Liste aktualisieren: neue CSV (ISO-8859-1, `;`-getrennt, Spalten BLZ=1, Institut=3, RZ=5, URL=24) mit demselben Skriptschema neu einlesen. Sparda Nürnberg: Atruvia-URL, ING: `https://fints.ing.de/fints/`.
 - **v1.0.67:** **Sperrschutz** in `routes/fints.js`: lehnt die Bank die Anmeldung ab (9930/9931/9942), gehen dieselben Daten (Bank|Zugangsname|PIN, SHA-256, nur im Speicher) 1 h lang nicht erneut an die Bank (HTTP 429 mit Erklärung) — Anlass: ING sperrt nach 3 Fehlversuchen, jeder Verbindungstest zählt mit. Bankname wird per BLZ aus der Liste in `connectionJson` mitgeliefert und im Formular unter „Bank suchen“ als „Gewählt: …“ angezeigt. ING-Test 2026-10-11: 9942 „Log-in fehlgeschlagen“ (Zugangsdaten ungeklärt: ING braucht Internetbanking-Zugangsnummer + PIN, evtl. FinTS-Freischaltung).
 - **v1.0.68:** Eigenes Formularfeld „Bankname“ (Migration 039 `fints_connections."bankName"`), bei der Bankensuche vorbelegt, änderbar, gespeichert; Fallback weiter Lookup per BLZ.
+- **v1.0.69:** Verbindungstest zeigte bei „mehrere TAN-Verfahren“ fälschlich „Anmeldung ok / Umsatzabruf nicht möglich“ (Test hält vor dem Login an) → jetzt eigener Zustand mit Auswahl des TAN-Verfahrens im Ergebnisfeld.
 - **Offene Punkte (Stand 2026-10-11, v1.0.63), in Reihenfolge:**
   1. **Doppelte Buchungen FinTS↔CSV** beobachten (anderer Verwendungszweck → anderer `externalRef`); bei Bedarf Abgleich angleichen.
   2. **Cron-Abruf** (braucht gespeicherte PIN, Entscheidung Christian steht aus; Erinnerungsmail wenn TAN-Freigabe erneuert werden muss).

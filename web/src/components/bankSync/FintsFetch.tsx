@@ -543,17 +543,43 @@ export default function FintsFetch({
           </div>
           {probe && (
             <div className="space-y-1 rounded-lg border border-gray-200 p-2 text-gray-700 text-xs dark:border-slate-600 dark:text-gray-300">
-              <p className="font-medium">
-                Anmeldung ok{probe.bankName ? ` – ${probe.bankName}` : ""}
-              </p>
-              <p>
-                Umsatzabruf: {probe.mt940?.length ? "MT940" : ""}
-                {probe.mt940?.length && probe.camt?.length ? " + " : ""}
-                {probe.camt?.length ? "camt" : ""}
-                {probe.mt940?.length || probe.camt?.length
-                  ? ""
-                  : "nicht möglich"}
-              </p>
+              {probe.tanMethodNeeded ? (
+                <div className="space-y-1">
+                  <p className="font-medium">
+                    Noch nicht angemeldet: Die Bank bietet mehrere TAN-Verfahren
+                    an.
+                  </p>
+                  <select
+                    className="input w-auto"
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, tanMethod: e.target.value }))
+                    }
+                    value={form.tanMethod}
+                  >
+                    <option value="">TAN-Verfahren wählen…</option>
+                    {(probe.methods || []).map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p>Danach noch einmal „Verbindung testen“ klicken.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="font-medium">
+                    Anmeldung ok{probe.bankName ? ` – ${probe.bankName}` : ""}
+                  </p>
+                  <p>
+                    Umsatzabruf: {probe.mt940?.length ? "MT940" : ""}
+                    {probe.mt940?.length && probe.camt?.length ? " + " : ""}
+                    {probe.camt?.length ? "camt" : ""}
+                    {probe.mt940?.length || probe.camt?.length
+                      ? ""
+                      : "nicht möglich"}
+                  </p>
+                </>
+              )}
               {probe.notes.map((n) => (
                 <p className="text-amber-700 dark:text-amber-300" key={n}>
                   {n}
