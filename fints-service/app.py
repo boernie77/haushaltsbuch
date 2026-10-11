@@ -195,6 +195,31 @@ def tan_methods(client):
     return methods
 
 
+def discover_via_login(c):
+    """TAN-Verfahren nach der Anmeldung lesen (z. B. ING).
+
+    Manche Banken nennen ihre Parameter und die erlaubten TAN-Verfahren erst
+    im angemeldeten Dialog. Dafür wird einmal mit dem Einschritt-Verfahren
+    angemeldet (ohne Umsätze, ohne TAN) und die Antwort ausgewertet."""
+    login = new_client(c)
+    try:
+        with login:
+            pass
+    except Exception as err:
+        log.info("Anmeldung zur Verfahrenssuche: %s", err)
+        if not login.allowed_security_functions:
+            raise
+    return tan_methods(login)
+
+
+def list_methods(c, client):
+    methods = tan_methods(client)
+    if not methods:
+        log.info("Keine TAN-Verfahren vor der Anmeldung, lese sie nach der Anmeldung")
+        methods = discover_via_login(c)
+    return methods
+
+
 def challenge_json(sid, sess):
     p = sess.pending
     log.info("TAN verlangt (Stufe %s, entkoppelt: %s)", sess.stage, bool(getattr(p, "decoupled", False)))
@@ -465,7 +490,7 @@ def start(sess_args, c: Connection):
         client.set_tan_mechanism(c.tanMethod)
     else:
         client.fetch_tan_mechanisms()
-        methods = tan_methods(client)
+        methods = list_methods(c, client)
         if len(methods) != 1:
             return None, {"status": "tan_method_needed", "methods": methods}
         client.set_tan_mechanism(methods[0]["code"])
@@ -497,7 +522,7 @@ def methods(c: Connection):
     try:
         client = new_client(c)
         client.fetch_tan_mechanisms()
-        return {"status": "ok", "methods": tan_methods(client)}
+        return {"status": "ok", "methods": list_methods(c, client)}
     except Exception as err:
         return error(str(err))
 
@@ -523,7 +548,7 @@ def probe(req: ProbeRequest):
     try:
         client = new_client(req)
         client.fetch_tan_mechanisms()
-        methods = tan_methods(client)
+        methods = list_methods(req, client)
         out["methods"] = methods
         method = req.tanMethod or (methods[0]["code"] if len(methods) == 1 else None)
         if not method:

@@ -602,6 +602,11 @@ export default function FintsFetch({
               </button>
             </div>
           )}
+          <p className="text-gray-500 text-xs dark:text-gray-400">
+            „TAN-Verfahren laden“ und „Verbindung testen“ melden sich bei
+            manchen Banken (z. B. ING) mit PIN an. Nur mit geprüften
+            Zugangsdaten klicken, falsche PINs können den Zugang sperren.
+          </p>
           <div className="flex flex-wrap gap-2">
             <button
               className="btn-primary disabled:opacity-50"
