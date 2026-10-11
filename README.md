@@ -137,6 +137,15 @@ Deutsche Kreditwirtschaft (DK) erlaubt nicht, eine gemeinsame Nummer in einem
 5. Je nach Bank verlangt die Bank alle 90–180 Tage eine neue TAN-Freigabe
    (starke Kundenauthentifizierung); jeder Abruf kann eine TAN verlangen.
 
+**Getestet mit:** Sparda-Bank Nürnberg (Atruvia-Rechenzentrum, Abruf per camt)
+und ING (Einschritt-Anmeldung nur mit PIN). Banken mit demselben Rechenzentrum
+(Volks- und Raiffeisenbanken, andere Sparda-Banken) sollten ähnlich laufen,
+das ist aber nicht getestet. Andere Banken können Eigenheiten haben: Der Button
+„Einrichten und testen“ prüft die Anmeldung, die TAN-Verfahren und die
+Abruf-Fähigkeiten und zeigt bei Problemen eine Diagnose zum Kopieren (ohne PIN,
+Zugangsname und IBAN). Mit dieser Diagnose lässt sich ein Fehler melden; bekannte
+Einstellungen pro Bank stehen in `backend/src/data/fints-profiles.json`.
+
 Der FinTS-Dienst (`fints`, Python) läuft als eigener Container und ist nicht
 von außen erreichbar. Ohne `FINTS_PRODUCT_ID` bleibt der Abruf ausgeschaltet.
 

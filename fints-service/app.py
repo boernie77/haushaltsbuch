@@ -243,6 +243,30 @@ def list_methods(c, client):
     return methods
 
 
+def choose_method(methods):
+    """Automatische Wahl, wenn eindeutig: genau ein Verfahren, oder (Banken
+    ohne lesbare Parameter wie ING) der Einschritt-Weg '999'."""
+    if len(methods) == 1:
+        return methods[0]["code"]
+    if any(m["code"] == "999" for m in methods) and any(
+        "von der Bank gemeldet" in m["name"] for m in methods
+    ):
+        return "999"
+    return None
+
+
+def user_id_label(client):
+    """Beschriftung des Zugangsfelds laut Bank (z. B. "Sparda-NetKey oder Alias")."""
+    try:
+        for seg in client.bpd.find_segments("HIPINS"):
+            text = (seg.parameter.user_id_field_text or "").strip()
+            if text:
+                return text
+    except Exception:
+        pass
+    return None
+
+
 def challenge_json(sid, sess):
     p = sess.pending
     log.info("TAN verlangt (Stufe %s, entkoppelt: %s)", sess.stage, bool(getattr(p, "decoupled", False)))
@@ -514,9 +538,10 @@ def start(sess_args, c: Connection):
     else:
         client.fetch_tan_mechanisms()
         methods = list_methods(c, client)
-        if len(methods) != 1:
+        chosen = choose_method(methods)
+        if not chosen:
             return None, {"status": "tan_method_needed", "methods": methods}
-        client.set_tan_mechanism(methods[0]["code"])
+        client.set_tan_mechanism(chosen)
     client.__enter__()
     if c.tanMedium:
         try:
@@ -573,7 +598,8 @@ def probe(req: ProbeRequest):
         client.fetch_tan_mechanisms()
         methods = list_methods(req, client)
         out["methods"] = methods
-        method = req.tanMethod or (methods[0]["code"] if len(methods) == 1 else None)
+        method = req.tanMethod or choose_method(methods)
+        out["chosenMethod"] = method
         if not method:
             out["tanMethodNeeded"] = True
             out["notes"].append("Mehrere TAN-Verfahren: bitte eines auswählen und erneut testen.")
@@ -581,6 +607,7 @@ def probe(req: ProbeRequest):
         client.set_tan_mechanism(method)
         with client:
             out["bankName"] = getattr(getattr(client, "bpa", None), "bank_name", None)
+            out["userIdLabel"] = user_id_label(client)
             out["loginNeedsTan"] = bool(client.init_tan_response)
             if out["loginNeedsTan"]:
                 out["notes"].append("Schon die Anmeldung verlangt eine TAN-Freigabe (Test endet hier).")

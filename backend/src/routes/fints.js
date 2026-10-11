@@ -9,6 +9,7 @@ const bankSync = require("./bankSync");
 // Institutsliste (BLZ → Name, FinTS-Adresse, Rechenzentrum), Stand 2026-08-20.
 // Nur ein Vorschlag zum Vorausfüllen; die Adresse bleibt im Formular änderbar.
 const BANKS = require("../data/fints-banks.json");
+const PROFILES = require("../data/fints-profiles.json").banks;
 const crypto = require("node:crypto");
 
 const SERVICE_URL = process.env.FINTS_SERVICE_URL || "http://fints:8000";
@@ -135,7 +136,8 @@ function connectionPayload(connection, pin) {
     url: connection.fintsUrl,
     login: connection.loginName,
     pin,
-    tanMethod: connection.tanMethod || null,
+    tanMethod:
+      connection.tanMethod || PROFILES[connection.bankCode]?.tanMethod || null,
     tanMedium: connection.tanMedium || null,
   };
 }
@@ -368,7 +370,11 @@ router.post("/probe", auth, async (req, res) => {
       url: body.fintsUrl || stored?.fintsUrl,
       login: body.loginName || stored?.loginName,
       pin: body.pin || stored?.pin,
-      tanMethod: body.tanMethod || stored?.tanMethod || null,
+      tanMethod:
+        body.tanMethod ||
+        stored?.tanMethod ||
+        PROFILES[body.bankCode || stored?.bankCode]?.tanMethod ||
+        null,
       tanMedium: body.tanMedium || stored?.tanMedium || null,
       iban: ctx.account.iban || null,
     };

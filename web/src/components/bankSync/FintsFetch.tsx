@@ -44,12 +44,14 @@ interface Probe {
   bankMessages?: string[];
   bankName?: string | null;
   camt?: string[];
+  chosenMethod?: string | null;
   ibanFound?: boolean;
   loginNeedsTan?: boolean;
   methods?: TanMethod[];
   mt940?: number[];
   notes: string[];
   tanMethodNeeded?: boolean;
+  userIdLabel?: string | null;
 }
 
 const EMPTY_FORM = {
@@ -212,11 +214,26 @@ export default function FintsFetch({
       if (data.probe.methods?.length > 1) {
         setMethods(data.probe.methods);
       }
+      if (data.probe.chosenMethod && !form.tanMethod) {
+        setForm((f) => ({ ...f, tanMethod: data.probe.chosenMethod }));
+      }
+      return data.probe as Probe;
     } catch (err: any) {
       toast.error(errorText(err, "Verbindungstest fehlgeschlagen"));
+      return null;
     } finally {
       setBusy(false);
     }
+  };
+
+  // Alles in einem Schritt: testen und bei Erfolg (TAN-Verfahren eindeutig,
+  // Anmeldung ok) den Zugang gleich speichern.
+  const setupAndSave = async () => {
+    const result = await runProbe();
+    if (!result || result.tanMethodNeeded) {
+      return;
+    }
+    await save({ tanMethod: form.tanMethod || result.chosenMethod || "" });
   };
 
   // Diagnose zum Weitergeben (z. B. in einem Issue): ohne PIN, Zugangsname
@@ -232,13 +249,14 @@ export default function FintsFetch({
       `Meldungen der Bank: ${(p.bankMessages || []).join(" | ") || "-"}`,
     ].join("\n");
 
-  const save = async () => {
+  const save = async (override: Partial<typeof EMPTY_FORM> = {}) => {
     setBusy(true);
     try {
       await fintsAPI.saveConnection({
         householdId,
         accountId,
         ...form,
+        ...override,
         pin: form.pin || undefined,
         savePin: form.savePin,
       });
@@ -524,10 +542,10 @@ export default function FintsFetch({
                 !(form.bankCode && form.fintsUrl && form.loginName) ||
                 !(form.pin || connection?.hasPin)
               }
-              onClick={runProbe}
+              onClick={setupAndSave}
               type="button"
             >
-              {busy ? "Teste..." : "Verbindung testen"}
+              {busy ? "Richte ein..." : "Einrichten und testen"}
             </button>
             {methods.length > 0 && (
               <select
@@ -548,6 +566,9 @@ export default function FintsFetch({
           </div>
           {probe && (
             <div className="space-y-1 rounded-lg border border-gray-200 p-2 text-gray-700 text-xs dark:border-slate-600 dark:text-gray-300">
+              {probe.userIdLabel && (
+                <p>Zugangsname laut Bank: {probe.userIdLabel}</p>
+              )}
               {probe.tanMethodNeeded ? (
                 <div className="space-y-1">
                   <p className="font-medium">
@@ -568,7 +589,7 @@ export default function FintsFetch({
                       </option>
                     ))}
                   </select>
-                  <p>Danach noch einmal „Verbindung testen“ klicken.</p>
+                  <p>Danach noch einmal „Einrichten und testen“ klicken.</p>
                 </div>
               ) : (
                 <>
@@ -603,7 +624,7 @@ export default function FintsFetch({
             </div>
           )}
           <p className="text-gray-500 text-xs dark:text-gray-400">
-            „TAN-Verfahren laden“ und „Verbindung testen“ melden sich bei
+            „TAN-Verfahren laden“ und „Einrichten und testen“ melden sich bei
             manchen Banken (z. B. ING) mit PIN an. Nur mit geprüften
             Zugangsdaten klicken, falsche PINs können den Zugang sperren.
           </p>
@@ -611,7 +632,7 @@ export default function FintsFetch({
             <button
               className="btn-primary disabled:opacity-50"
               disabled={busy}
-              onClick={save}
+              onClick={() => save()}
               type="button"
             >
               Speichern

@@ -1,0 +1,14 @@
+{
+  "_comment": "Bekannte Einstellungen pro Bankleitzahl, aus erfolgreichen Tests. tanMethod = Kennung des TAN-Verfahrens, das automatisch gewählt wird, wenn der Nutzer keines festlegt.",
+  "banks": {
+    "50010517": {
+      "name": "ING-DiBa",
+      "tanMethod": "999",
+      "note": "ING nennt TAN-Verfahren erst nach der Anmeldung; Zwei-Schritt (900) wird mit 9010 abgelehnt, Einschritt (nur PIN) funktioniert. Getestet 2026-10-11."
+    },
+    "76090500": {
+      "name": "Sparda-Bank Nürnberg eG",
+      "note": "Nur camt (HKCAZ) in Version .08, kein MT940; Umsatzabruf ohne TAN-Freigabe. Getestet 2026-10-11."
+    }
+  }
+}
