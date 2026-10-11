@@ -11,6 +11,7 @@ interface Props {
 
 interface Connection {
   bankCode: string;
+  bankName: string | null;
   fintsUrl: string;
   hasPin: boolean;
   loginName: string;
@@ -92,6 +93,7 @@ export default function FintsFetch({
   const [probe, setProbe] = useState<Probe | null>(null);
   const [bankQuery, setBankQuery] = useState("");
   const [bankHits, setBankHits] = useState<BankHit[]>([]);
+  const [bankName, setBankName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +139,7 @@ export default function FintsFetch({
         : EMPTY_FORM
     );
     setMethods([]);
+    setBankName(connection?.bankName || "");
     setEditing(true);
   };
 
@@ -178,6 +181,7 @@ export default function FintsFetch({
 
   const pickBank = (b: BankHit) => {
     setForm((f) => ({ ...f, bankCode: b.blz, fintsUrl: b.url }));
+    setBankName(b.name);
     setBankQuery("");
     setBankHits([]);
   };
@@ -392,6 +396,7 @@ export default function FintsFetch({
       {!(challenge || editing) && connection && (
         <div className="space-y-2">
           <p className="text-gray-500 text-xs dark:text-gray-400">
+            {connection.bankName ? `${connection.bankName} · ` : ""}
             {connection.loginName} · BLZ {connection.bankCode}
           </p>
           {!connection.hasPin && (
@@ -446,6 +451,11 @@ export default function FintsFetch({
               placeholder="z. B. Sparda oder 76090500"
               value={bankQuery}
             />
+            {bankName && (
+              <p className="mt-1 text-gray-600 text-xs dark:text-gray-300">
+                Gewählt: <strong>{bankName}</strong>
+              </p>
+            )}
             {bankHits.length > 0 && (
               <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-slate-600 dark:bg-slate-800">
                 {bankHits.map((b) => (

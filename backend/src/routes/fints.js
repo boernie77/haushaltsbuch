@@ -9,6 +9,7 @@ const bankSync = require("./bankSync");
 // Institutsliste (BLZ → Name, FinTS-Adresse, Rechenzentrum), Stand 2026-08-20.
 // Nur ein Vorschlag zum Vorausfüllen; die Adresse bleibt im Formular änderbar.
 const BANKS = require("../data/fints-banks.json");
+const crypto = require("node:crypto");
 
 const SERVICE_URL = process.env.FINTS_SERVICE_URL || "http://fints:8000";
 // Bank-Dialoge mit Push-TAN können Minuten dauern.
@@ -40,6 +41,48 @@ async function callService(path, body) {
   });
   return res.json();
 }
+
+// Schutz vor Kontosperrung: Banken sperren den Zugang nach wenigen falschen
+// Anmeldungen (ING: 3). Wurde die Anmeldung mit bestimmten Daten abgelehnt,
+// gehen dieselben Daten (Bank, Zugangsname, PIN) nicht erneut an die Bank,
+// bis sie geändert werden oder eine Stunde vergangen ist.
+const LOGIN_REJECT_CODES = /\b(9930|9931|9942)\b/;
+const LOGIN_BLOCK_MS = 60 * 60 * 1000;
+const loginFailures = new Map();
+
+function loginFingerprint({ bankCode, login, pin }) {
+  return crypto
+    .createHash("sha256")
+    .update(`${bankCode}|${login}|${pin}`)
+    .digest("hex");
+}
+
+function loginBlocked(accountId, params) {
+  const failure = loginFailures.get(accountId);
+  if (!failure) {
+    return false;
+  }
+  if (Date.now() - failure.time > LOGIN_BLOCK_MS) {
+    loginFailures.delete(accountId);
+    return false;
+  }
+  return failure.fingerprint === loginFingerprint(params);
+}
+
+function noteLoginResult(accountId, params, result) {
+  if (
+    result.status === "error" &&
+    LOGIN_REJECT_CODES.test(result.error || "")
+  ) {
+    loginFailures.set(accountId, {
+      fingerprint: loginFingerprint(params),
+      time: Date.now(),
+    });
+  }
+}
+
+const LOGIN_BLOCK_MESSAGE =
+  "Die Bank hat diese Anmeldedaten gerade abgelehnt. Um eine Sperrung deines Zugangs zu vermeiden, wird derselbe Versuch nicht wiederholt. Prüfe Zugangsname und PIN (am besten direkt im Online-Banking), ändere sie hier und versuche es dann erneut.";
 
 const isoDate = (d) => d.toISOString().slice(0, 10);
 
@@ -101,6 +144,7 @@ function connectionJson(c) {
   return c
     ? {
         bankCode: c.bankCode,
+        bankName: BANKS.find((b) => b.blz === c.bankCode)?.name || null,
         fintsUrl: c.fintsUrl,
         loginName: c.loginName,
         hasPin: Boolean(c.pin),
@@ -330,7 +374,11 @@ router.post("/probe", auth, async (req, res) => {
         .status(400)
         .json({ error: "Bank-Angaben und PIN sind nötig." });
     }
+    if (loginBlocked(ctx.accountId, params)) {
+      return res.status(429).json({ error: LOGIN_BLOCK_MESSAGE });
+    }
     const result = await callService("/probe", params);
+    noteLoginResult(ctx.accountId, params, result);
     console.log(
       `[fints] Verbindungstest Konto ${ctx.accountId}: ${result.status}`
     );
@@ -363,11 +411,16 @@ router.post("/fetch", auth, async (req, res) => {
       ...(req.body.dateFrom ? { dateFrom: req.body.dateFrom } : {}),
       ...(req.body.dateTo ? { dateTo: req.body.dateTo } : {}),
     };
+    const params = connectionPayload(ctx.connection, pin);
+    if (loginBlocked(ctx.accountId, params)) {
+      return res.status(429).json({ error: LOGIN_BLOCK_MESSAGE });
+    }
     const result = await callService("/fetch", {
-      ...connectionPayload(ctx.connection, pin),
+      ...params,
       iban: ctx.account.iban,
       ...ctx.range,
     });
+    noteLoginResult(ctx.accountId, params, result);
     await relay(result, ctx, req.user.id, res);
   } catch (err) {
     serviceDown(res, err);
